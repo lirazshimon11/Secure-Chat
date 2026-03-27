@@ -29,8 +29,12 @@ type ChatContextValue = {
   loading: boolean;
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
+  searchUsers: (query: string) => Promise<Profile[]>;
   sendMessage: (input: MessageComposerInput) => Promise<string | null>;
-  createChat: (title: string, memberUsernames: string[]) => Promise<string | null>;
+  createChat: (
+    title: string,
+    memberUsernames: string[],
+  ) => Promise<{ chat: Chat | null; error: string | null }>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
   openViewOnceMessage: (message: Message) => Promise<void>;
 };
@@ -176,6 +180,41 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function searchUsers(query: string) {
+    if (!profile?.id) {
+      return [];
+    }
+
+    let request = supabase
+      .from("profiles")
+      .select("*")
+      .neq("id", profile.id)
+      .order("username", { ascending: true })
+      .limit(20);
+
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) {
+      const escapedQuery = trimmedQuery.replace(/[%_,]/g, "");
+      request = request.or(`username.ilike.%${escapedQuery}%,full_name.ilike.%${escapedQuery}%`);
+    }
+
+    const { data, error } = await request;
+    if (error || !data) {
+      return [];
+    }
+
+    const nextProfiles = data as Profile[];
+    setProfiles((current) => {
+      const merged = { ...current };
+      for (const nextProfile of nextProfiles) {
+        merged[nextProfile.id] = nextProfile;
+      }
+      return merged;
+    });
+
+    return nextProfiles;
+  }
+
   function subscribe(userId: string) {
     if (channelRef.current) {
       void supabase.removeChannel(channelRef.current);
@@ -240,16 +279,12 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   async function createChat(title: string, memberUsernames: string[]) {
     if (!profile?.id) {
-      return "You must be signed in.";
-    }
-
-    if (!title.trim()) {
-      return "Chat title is required.";
+      return { chat: null, error: "You must be signed in." };
     }
 
     const usernames = [...new Set(memberUsernames.map((value) => value.trim()).filter(Boolean))];
     if (!usernames.length) {
-      return "Add at least one member username.";
+      return { chat: null, error: "Add at least one member username." };
     }
 
     const { data: members, error: memberError } = await supabase
@@ -258,15 +293,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
       .in("username", usernames);
 
     if (memberError) {
-      return memberError.message;
+      return { chat: null, error: memberError.message };
     }
 
     const allMemberIds = [...new Set([profile.id, ...(members ?? []).map((member) => member.id)])];
+    const normalizedTitle =
+      title.trim() || (members?.length === 1 ? members[0].username : `Group with ${members?.length ?? 0} members`);
 
     const { data: chat, error: chatError } = await supabase
       .from("chats")
       .insert({
-        title: title.trim(),
+        title: normalizedTitle,
         is_group: allMemberIds.length > 2,
         created_by: profile.id,
       })
@@ -274,7 +311,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       .single();
 
     if (chatError || !chat) {
-      return chatError?.message ?? "Could not create chat.";
+      return { chat: null, error: chatError?.message ?? "Could not create chat." };
     }
 
     const { error: joinError } = await supabase.from("chat_members").insert(
@@ -286,11 +323,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
     );
 
     if (joinError) {
-      return joinError.message;
+      return { chat: null, error: joinError.message };
     }
 
     await refreshChats();
-    return null;
+    return { chat: chat as Chat, error: null };
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -345,6 +382,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       loading,
       refreshChats,
       loadMessages,
+      searchUsers,
       sendMessage,
       createChat,
       toggleReaction,

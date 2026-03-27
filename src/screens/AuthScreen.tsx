@@ -1,5 +1,6 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { AppTextInput } from "@/components/AppTextInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -47,104 +48,128 @@ export function AuthScreen() {
 
   return (
     <Screen scroll>
-      <View style={styles.hero}>
-        <Text style={styles.eyebrow}>Privacy first</Text>
-        <Text style={styles.title}>A chat app built for close friends, not accidental audiences.</Text>
-        <Text style={styles.subtitle}>
-          No images, no calls, no noisy extras. Just text chat, protected rooms, disappearing messages, and one-time reveals.
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.toggleRow}>
-          <PrimaryButton
-            label="Sign in"
-            onPress={() => {
-              setMode("signin");
-              setError(null);
-              setNotice(null);
-            }}
-            tone={mode === "signin" ? "primary" : "soft"}
-            style={styles.toggleButton}
-          />
-          <PrimaryButton
-            label="Create account"
-            onPress={() => {
-              setMode("signup");
-              setError(null);
-              setNotice(null);
-            }}
-            tone={mode === "signup" ? "primary" : "soft"}
-            style={styles.toggleButton}
-          />
+      <View style={styles.container}>
+        <View style={styles.hero}>
+          <View style={styles.logoWrap}>
+            <MaterialCommunityIcons color={theme.colors.textOnAccent} name="message-text" size={32} />
+          </View>
+          <Text style={styles.title}>Private Chat</Text>
+          <Text style={styles.subtitle}>
+            A WhatsApp-style messenger for your circle, but with usernames instead of phone numbers and text only.
+          </Text>
         </View>
 
-        <AppTextInput label="Email" onChangeText={setEmail} value={email} placeholder="you@example.com" />
-        {mode === "signup" ? (
+        <View style={styles.card}>
+          <View style={styles.segmentedRow}>
+            <PrimaryButton
+              label="Log in"
+              onPress={() => {
+                setMode("signin");
+                setError(null);
+                setNotice(null);
+              }}
+              tone={mode === "signin" ? "primary" : "soft"}
+              style={styles.segmentButton}
+            />
+            <PrimaryButton
+              label="Sign up"
+              onPress={() => {
+                setMode("signup");
+                setError(null);
+                setNotice(null);
+              }}
+              tone={mode === "signup" ? "primary" : "soft"}
+              style={styles.segmentButton}
+            />
+          </View>
+
+          <AppTextInput label="Email address" onChangeText={setEmail} value={email} placeholder="you@example.com" />
+          {mode === "signup" ? (
+            <AppTextInput label="Username" onChangeText={setUsername} value={username} placeholder="avi_hater_01" />
+          ) : null}
           <AppTextInput
-            label="Username"
-            onChangeText={setUsername}
-            value={username}
-            placeholder="avi-proof-handle"
+            label="Password"
+            onChangeText={setPassword}
+            secureTextEntry
+            value={password}
+            placeholder="At least 8 characters"
           />
-        ) : null}
-        <AppTextInput
-          label="Password"
-          onChangeText={setPassword}
-          secureTextEntry
-          value={password}
-          placeholder="At least 8 characters"
-        />
 
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          <View style={styles.helperCard}>
+            <Text style={styles.helperTitle}>What is different here?</Text>
+            <Text style={styles.helperText}>You log in with email, password, and username.</Text>
+            <Text style={styles.helperText}>Images, videos, files, and calls are intentionally disabled.</Text>
+          </View>
 
-        <PrimaryButton
-          label={mode === "signin" ? "Enter chats" : "Create secure account"}
-          onPress={submit}
-        />
+          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <PrimaryButton label={mode === "signin" ? "Enter chats" : "Create account"} onPress={submit} />
+        </View>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  hero: {
-    gap: theme.spacing.sm,
-    paddingTop: theme.spacing.xl,
+  container: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl,
+    gap: theme.spacing.lg,
   },
-  eyebrow: {
-    color: theme.colors.accent,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
+  hero: {
+    alignItems: "center",
+    gap: theme.spacing.sm,
+  },
+  logoWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     color: theme.colors.text,
-    fontSize: 34,
+    fontSize: 30,
     fontWeight: "800",
-    lineHeight: 38,
   },
   subtitle: {
     color: theme.colors.textMuted,
-    fontSize: 16,
-    lineHeight: 23,
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: "center",
+    maxWidth: 320,
   },
   card: {
     backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
+    borderRadius: theme.radius.xl,
+    padding: theme.spacing.lg,
     gap: theme.spacing.md,
-    padding: theme.spacing.md,
   },
-  toggleRow: {
+  segmentedRow: {
     flexDirection: "row",
     gap: theme.spacing.sm,
   },
-  toggleButton: {
+  segmentButton: {
     flex: 1,
+  },
+  helperCard: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.md,
+    gap: 6,
+  },
+  helperTitle: {
+    color: theme.colors.text,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  helperText: {
+    color: theme.colors.textMuted,
+    lineHeight: 20,
   },
   notice: {
     color: theme.colors.accent,

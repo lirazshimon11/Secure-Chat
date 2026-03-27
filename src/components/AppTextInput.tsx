@@ -1,4 +1,4 @@
-import { StyleSheet, Text, TextInput, View } from "react-native";
+﻿import { StyleSheet, Text, TextInput, View } from "react-native";
 import { theme } from "@/lib/theme";
 
 type Props = {
@@ -45,16 +45,17 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 13,
     fontWeight: "600",
+    marginLeft: 2,
   },
   input: {
-    backgroundColor: theme.colors.card,
+    backgroundColor: theme.colors.surface,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius.md,
     borderWidth: 1,
+    borderRadius: theme.radius.md,
     color: theme.colors.text,
     fontSize: 16,
     paddingHorizontal: theme.spacing.md,
-    paddingVertical: 14,
+    paddingVertical: 13,
   },
   multiline: {
     minHeight: 110,

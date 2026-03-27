@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+﻿import { useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, Profile, ReactionSummary } from "@/lib/types";
 import { theme } from "@/lib/theme";
 
@@ -17,7 +18,7 @@ type Props = {
   onRevealViewOnce: () => void;
 };
 
-const quickReactions = ["??", "??", "??", "??"];
+const quickReactions = ["\u{1F44D}", "\u{1F602}", "\u{2764}", "\u{1F440}"];
 
 export function MessageBubble({
   currentUserId,
@@ -40,11 +41,11 @@ export function MessageBubble({
         onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) > 8,
         onPanResponderMove: (_evt, gesture) => {
           if (gesture.dx > 0) {
-            translateX.setValue(Math.min(gesture.dx, 72));
+            translateX.setValue(Math.min(gesture.dx, 70));
           }
         },
         onPanResponderRelease: (_evt, gesture) => {
-          if (gesture.dx > 44) {
+          if (gesture.dx > 40) {
             onReply(message);
           }
 
@@ -64,16 +65,21 @@ export function MessageBubble({
         ? "Opened once. Content is no longer available."
         : message.body_ciphertext;
 
-  const meta =
-    message.message_kind === "temporary" && message.expires_at
-      ? `Vanishes at ${new Date(message.expires_at).toLocaleTimeString()}`
-      : message.message_kind === "view_once" && viewOnceState === "revealed"
-        ? "Visible for a moment"
-        : message.message_kind === "view_once" && viewOnceState === "opened"
-          ? "Already opened"
-          : message.message_kind === "view_once"
-            ? "One-time view"
-            : "Protected";
+  const timeLabel = new Date(message.created_at).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const metaLabel =
+    message.message_kind === "temporary"
+      ? "1 min"
+      : message.message_kind === "view_once"
+        ? viewOnceState === "revealed"
+          ? "open"
+          : viewOnceState === "opened"
+            ? "used"
+            : "once"
+        : null;
 
   return (
     <Animated.View
@@ -87,22 +93,38 @@ export function MessageBubble({
       <Pressable
         onLongPress={() => setShowReactions((value) => !value)}
         onPress={message.message_kind === "view_once" && viewOnceState === "hidden" ? onRevealViewOnce : undefined}
-        style={[
-          styles.bubble,
-          mine ? styles.bubbleMine : styles.bubbleTheirs,
-          message.message_kind === "view_once" && styles.viewOnceBubble,
-        ]}
+        style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
       >
         {!mine ? <Text style={styles.author}>{author?.username ?? "member"}</Text> : null}
+
         {replyPreview ? (
           <View style={styles.replyBlock}>
+            <Text style={styles.replyLabel}>Reply</Text>
             <Text numberOfLines={2} style={styles.replyBlockText}>
               {replyPreview}
             </Text>
           </View>
         ) : null}
+
         <Text style={styles.body}>{body}</Text>
-        <Text style={styles.meta}>{meta}</Text>
+
+        <View style={styles.metaRow}>
+          {metaLabel ? (
+            <View style={styles.kindChip}>
+              <Text style={styles.kindChipText}>{metaLabel}</Text>
+            </View>
+          ) : null}
+          <View style={styles.timeRow}>
+            {message.message_kind === "view_once" ? (
+              <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />
+            ) : null}
+            {message.message_kind === "temporary" ? (
+              <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />
+            ) : null}
+            <Text style={styles.meta}>{timeLabel}</Text>
+          </View>
+        </View>
+
         {showReactions ? (
           <View style={styles.quickRow}>
             {quickReactions.map((emoji) => (
@@ -112,6 +134,7 @@ export function MessageBubble({
             ))}
           </View>
         ) : null}
+
         {reactions ? (
           <View style={styles.reactionRow}>
             {Object.entries(reactions).map(([emoji, users]) =>
@@ -132,7 +155,7 @@ export function MessageBubble({
 
 const styles = StyleSheet.create({
   row: {
-    marginVertical: 6,
+    marginVertical: 3,
   },
   rowMine: {
     alignItems: "flex-end",
@@ -141,77 +164,114 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   bubble: {
-    borderRadius: theme.radius.lg,
-    gap: theme.spacing.xs,
-    maxWidth: "84%",
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
+    borderRadius: 10,
+    maxWidth: "83%",
+    minWidth: 96,
+    paddingHorizontal: 10,
+    paddingTop: 7,
+    paddingBottom: 6,
+    shadowColor: "#000000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
   },
   bubbleMine: {
     backgroundColor: theme.colors.mine,
+    borderTopRightRadius: 2,
   },
   bubbleTheirs: {
     backgroundColor: theme.colors.theirs,
-  },
-  viewOnceBubble: {
-    borderColor: theme.colors.warning,
-    borderWidth: 1,
+    borderTopLeftRadius: 2,
   },
   author: {
-    color: theme.colors.accent,
+    color: "#8b5cf6",
     fontSize: 12,
     fontWeight: "700",
+    marginBottom: 4,
   },
   replyBlock: {
-    backgroundColor: "rgba(255,255,255,0.6)",
+    backgroundColor: "rgba(17,27,33,0.06)",
     borderLeftColor: theme.colors.accent,
     borderLeftWidth: 3,
     borderRadius: theme.radius.sm,
-    paddingHorizontal: theme.spacing.sm,
-    paddingVertical: 8,
+    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  replyLabel: {
+    color: theme.colors.accent,
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 2,
   },
   replyBlockText: {
     color: theme.colors.textMuted,
     fontSize: 12,
+    lineHeight: 16,
   },
   body: {
     color: theme.colors.text,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  metaRow: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  kindChip: {
+    backgroundColor: "rgba(17,27,33,0.06)",
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  kindChipText: {
+    color: theme.colors.textMuted,
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginLeft: "auto",
   },
   meta: {
     color: theme.colors.textMuted,
     fontSize: 11,
-    fontWeight: "600",
   },
   quickRow: {
     flexDirection: "row",
     gap: theme.spacing.xs,
-    marginTop: 6,
+    marginTop: 8,
   },
   quickChip: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceAlt,
     borderRadius: theme.radius.pill,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
   },
   quickChipText: {
-    fontSize: 16,
+    fontSize: 15,
   },
   reactionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.xs,
+    marginTop: 6,
   },
   reactionChip: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceAlt,
     borderRadius: theme.radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   reactionText: {
     color: theme.colors.text,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
   },
 });

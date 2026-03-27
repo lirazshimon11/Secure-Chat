@@ -1,7 +1,7 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { theme } from "@/lib/theme";
-import { PrimaryButton } from "@/components/PrimaryButton";
 
 type Props = {
   replyPreview: string | null;
@@ -15,81 +15,104 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend }: Props) 
 
   const expireSeconds = kind === "temporary" ? 60 : null;
 
+  function handleSend() {
+    if (!body.trim()) {
+      return;
+    }
+
+    onSend(body, kind, expireSeconds);
+    setBody("");
+    setKind("standard");
+  }
+
   return (
-    <View style={styles.container}>
+    <View style={styles.wrapper}>
       {replyPreview ? (
         <View style={styles.replyBanner}>
+          <View style={styles.replyAccent} />
           <View style={styles.replyText}>
-            <Text style={styles.replyLabel}>Replying to</Text>
+            <Text style={styles.replyLabel}>Replying to message</Text>
             <Text numberOfLines={1} style={styles.replyPreview}>
               {replyPreview}
             </Text>
           </View>
-          <Pressable onPress={onCancelReply}>
-            <Text style={styles.replyCancel}>Cancel</Text>
+          <Pressable onPress={onCancelReply} style={styles.closeButton}>
+            <Feather color={theme.colors.textMuted} name="x" size={18} />
           </Pressable>
         </View>
       ) : null}
 
       <View style={styles.modeRow}>
-        <ComposerModeChip active={kind === "standard"} label="Normal" onPress={() => setKind("standard")} />
-        <ComposerModeChip active={kind === "temporary"} label="60s vanish" onPress={() => setKind("temporary")} />
-        <ComposerModeChip active={kind === "view_once"} label="View once" onPress={() => setKind("view_once")} />
+        <ModeChip active={kind === "standard"} icon="message-text-outline" label="Message" onPress={() => setKind("standard")} />
+        <ModeChip active={kind === "temporary"} icon="timer-sand" label="1 minute" onPress={() => setKind("temporary")} />
+        <ModeChip active={kind === "view_once"} icon="eye-outline" label="View once" onPress={() => setKind("view_once")} />
       </View>
 
-      <TextInput
-        multiline
-        onChangeText={setBody}
-        placeholder="Write a message..."
-        placeholderTextColor={theme.colors.textMuted}
-        style={styles.input}
-        value={body}
-      />
-
-      <PrimaryButton
-        label="Send"
-        onPress={() => {
-          onSend(body, kind, expireSeconds);
-          setBody("");
-          setKind("standard");
-        }}
-      />
+      <View style={styles.composerRow}>
+        <Pressable style={styles.sideButton}>
+          <Feather color={theme.colors.textMuted} name="smile" size={20} />
+        </Pressable>
+        <View style={styles.inputShell}>
+          <TextInput
+            multiline
+            onChangeText={setBody}
+            placeholder="Type a message"
+            placeholderTextColor={theme.colors.textMuted}
+            style={styles.input}
+            value={body}
+          />
+        </View>
+        <Pressable onPress={handleSend} style={styles.sendButton}>
+          <Feather color={theme.colors.textOnAccent} name="send" size={18} />
+        </Pressable>
+      </View>
     </View>
   );
 }
 
-function ComposerModeChip({
+function ModeChip({
   active,
+  icon,
   label,
   onPress,
 }: {
   active: boolean;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
   label: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+    <Pressable onPress={onPress} style={[styles.modeChip, active && styles.modeChipActive]}>
+      <MaterialCommunityIcons color={active ? theme.colors.accent : theme.colors.textMuted} name={icon} size={15} />
+      <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: theme.colors.card,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    gap: theme.spacing.sm,
-    padding: theme.spacing.md,
+  wrapper: {
+    backgroundColor: theme.colors.background,
+    borderTopColor: theme.colors.separator,
+    borderTopWidth: 1,
+    paddingHorizontal: theme.spacing.sm,
+    paddingTop: theme.spacing.xs,
+    paddingBottom: theme.spacing.sm,
+    gap: theme.spacing.xs,
   },
   replyBanner: {
-    alignItems: "center",
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.md,
     flexDirection: "row",
-    justifyContent: "space-between",
-    padding: theme.spacing.sm,
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    gap: 10,
+  },
+  replyAccent: {
+    width: 4,
+    alignSelf: "stretch",
+    backgroundColor: theme.colors.accent,
+    borderRadius: theme.radius.pill,
   },
   replyText: {
     flex: 1,
@@ -104,40 +127,72 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontSize: 13,
   },
-  replyCancel: {
-    color: theme.colors.danger,
-    fontWeight: "700",
+  closeButton: {
+    padding: 4,
   },
   modeRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: theme.spacing.xs,
   },
-  chip: {
-    backgroundColor: theme.colors.surfaceStrong,
+  modeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.pill,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
-  chipActive: {
-    backgroundColor: theme.colors.accent,
+  modeChipActive: {
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.accentSoft,
   },
-  chipText: {
-    color: theme.colors.text,
+  modeLabel: {
+    color: theme.colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
-  chipTextActive: {
-    color: "#ffffff",
+  modeLabelActive: {
+    color: theme.colors.accent,
+  },
+  composerRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: theme.spacing.xs,
+  },
+  sideButton: {
+    width: 42,
+    height: 42,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inputShell: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 24,
+    paddingHorizontal: 14,
+    minHeight: 44,
+    justifyContent: "center",
   },
   input: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
     color: theme.colors.text,
     fontSize: 16,
-    minHeight: 72,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    textAlignVertical: "top",
+    maxHeight: 120,
+    paddingTop: 10,
+    paddingBottom: 10,
+    textAlignVertical: "center",
+  },
+  sendButton: {
+    width: 46,
+    height: 46,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentStrong,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

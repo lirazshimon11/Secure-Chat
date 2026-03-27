@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, ViewStyle } from "react-native";
+﻿import { Pressable, StyleSheet, Text, ViewStyle } from "react-native";
 import { theme } from "@/lib/theme";
 
 type Props = {
@@ -14,42 +14,48 @@ export function PrimaryButton({ label, onPress, disabled, tone = "primary", styl
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={[
+      style={({ pressed }) => [
         styles.button,
         tone === "primary" ? styles.primary : styles.soft,
         disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
         style,
       ]}
     >
-      <Text style={[styles.label, tone === "primary" ? styles.primaryLabel : styles.softLabel]}>
-        {label}
-      </Text>
+      <Text style={[styles.label, tone === "primary" ? styles.primaryLabel : styles.softLabel]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
+    minHeight: 48,
     borderRadius: theme.radius.pill,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: 14,
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
   },
   primary: {
-    backgroundColor: theme.colors.accent,
+    backgroundColor: theme.colors.accentStrong,
   },
   soft: {
-    backgroundColor: theme.colors.surfaceStrong,
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
   },
   disabled: {
     opacity: 0.45,
   },
+  pressed: {
+    opacity: 0.88,
+  },
   label: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "700",
   },
   primaryLabel: {
-    color: "#ffffff",
+    color: theme.colors.textOnAccent,
   },
   softLabel: {
     color: theme.colors.text,

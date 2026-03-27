@@ -4,6 +4,7 @@ import { LoadingScreen } from "@/screens/LoadingScreen";
 import { ChatsScreen } from "@/screens/ChatsScreen";
 import { ChatScreen } from "@/screens/ChatScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
+import { CreateChatScreen } from "@/screens/CreateChatScreen";
 import { useAuth } from "@/context/AuthContext";
 import { Chat } from "@/lib/types";
 
@@ -11,6 +12,7 @@ export function AppShell() {
   const { session, loading } = useAuth();
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showCreateChat, setShowCreateChat] = useState(false);
 
   if (loading) {
     return <LoadingScreen />;
@@ -24,9 +26,27 @@ export function AppShell() {
     return <SettingsScreen onBack={() => setShowSettings(false)} />;
   }
 
+  if (showCreateChat) {
+    return (
+      <CreateChatScreen
+        onBack={() => setShowCreateChat(false)}
+        onOpenChat={(chat) => {
+          setShowCreateChat(false);
+          setSelectedChat(chat);
+        }}
+      />
+    );
+  }
+
   if (selectedChat) {
     return <ChatScreen chat={selectedChat} onBack={() => setSelectedChat(null)} />;
   }
 
-  return <ChatsScreen onOpenChat={setSelectedChat} onOpenSettings={() => setShowSettings(true)} />;
+  return (
+    <ChatsScreen
+      onOpenChat={setSelectedChat}
+      onOpenSettings={() => setShowSettings(true)}
+      onCreateChat={() => setShowCreateChat(true)}
+    />
+  );
 }

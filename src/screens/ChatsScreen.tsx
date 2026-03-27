@@ -1,7 +1,6 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { AppTextInput } from "@/components/AppTextInput";
-import { PrimaryButton } from "@/components/PrimaryButton";
+import { Feather, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
@@ -11,186 +10,285 @@ import { theme } from "@/lib/theme";
 type Props = {
   onOpenChat: (chat: Chat) => void;
   onOpenSettings: () => void;
+  onCreateChat: () => void;
 };
 
-export function ChatsScreen({ onOpenChat, onOpenSettings }: Props) {
+export function ChatsScreen({ onOpenChat, onOpenSettings, onCreateChat }: Props) {
   const { profile } = useAuth();
-  const { chats, createChat, loading } = useChats();
-  const [title, setTitle] = useState("");
-  const [members, setMembers] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const { chats, loading } = useChats();
 
-  const greeting = useMemo(() => {
-    if (!profile?.username) {
-      return "Private rooms";
-    }
-    return `${profile.username}'s rooms`;
-  }, [profile?.username]);
-
-  async function handleCreateChat() {
-    const nextError = await createChat(
-      title.trim(),
-      members
-        .split(",")
-        .map((value) => value.trim().toLowerCase())
-        .filter(Boolean),
-    );
-
-    setError(nextError);
-    if (!nextError) {
-      setTitle("");
-      setMembers("");
-    }
-  }
+  const username = useMemo(() => `@${profile?.username ?? "you"}`, [profile?.username]);
 
   return (
-    <Screen scroll>
+    <Screen>
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text style={styles.eyebrow}>Locked rooms</Text>
-          <Text style={styles.title}>{greeting}</Text>
-          <Text style={styles.subtitle}>Invite only the usernames you trust. No one else gets into the room.</Text>
+        <View>
+          <Text style={styles.headerTitle}>Private Chat</Text>
+          <Text style={styles.headerSubtitle}>{username}</Text>
         </View>
-        <PrimaryButton label="Settings" onPress={onOpenSettings} tone="soft" />
+        <View style={styles.headerActions}>
+          <Pressable style={styles.headerIcon}>
+            <Feather color={theme.colors.textOnAccent} name="search" size={20} />
+          </Pressable>
+          <Pressable onPress={onOpenSettings} style={styles.headerIcon}>
+            <MaterialCommunityIcons color={theme.colors.textOnAccent} name="dots-vertical" size={22} />
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.createCard}>
-        <Text style={styles.sectionTitle}>Start a new chat</Text>
-        <AppTextInput
-          autoCapitalize="sentences"
-          label="Chat title"
-          onChangeText={setTitle}
-          placeholder="Weekend plan / Core group / etc."
-          value={title}
-        />
-        <AppTextInput
-          label="Members"
-          onChangeText={setMembers}
-          placeholder="username1, username2"
-          value={members}
-        />
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <PrimaryButton label="Create room" onPress={handleCreateChat} />
+      <View style={styles.tabRow}>
+        <Text style={styles.tabActive}>Chats</Text>
+        <Text style={styles.tabMuted}>Groups</Text>
+        <Text style={styles.tabMuted}>Private</Text>
       </View>
 
-      <View style={styles.list}>
-        <Text style={styles.sectionTitle}>{loading ? "Loading rooms..." : "Your chats"}</Text>
-        {chats.length ? (
-          chats.map((chat) => (
-            <Pressable key={chat.id} onPress={() => onOpenChat(chat)} style={styles.chatCard}>
-              <View style={styles.chatInfo}>
-                <Text style={styles.chatTitle}>{chat.title}</Text>
-                <Text numberOfLines={1} style={styles.chatPreview}>
-                  {chat.last_message_preview ?? "No messages yet"}
-                </Text>
-              </View>
-              <Text style={styles.chatMeta}>
-                {chat.last_message_at ? new Date(chat.last_message_at).toLocaleDateString() : "New"}
-              </Text>
-            </Pressable>
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No chats yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Create a room and invite your trusted usernames. That gives you a private place that is separate from WhatsApp and Telegram.
-            </Text>
+      <View style={styles.searchRow}>
+        <Feather color={theme.colors.textMuted} name="search" size={18} />
+        <Text style={styles.searchText}>Search or start a new chat</Text>
+      </View>
+
+      <View style={styles.listShell}>
+        <Pressable onPress={onCreateChat} style={styles.utilityRow}>
+          <View style={styles.utilityIconWrap}>
+            <Ionicons color={theme.colors.textOnAccent} name="add" size={22} />
           </View>
-        )}
+          <View style={styles.utilityCopy}>
+            <Text style={styles.utilityTitle}>New chat</Text>
+            <Text style={styles.utilitySubtitle}>Find usernames and add them to a private chat or group</Text>
+          </View>
+        </Pressable>
+
+        {loading ? <Text style={styles.statusText}>Syncing chats...</Text> : null}
+
+        <View style={styles.chatList}>
+          {chats.length ? (
+            chats.map((chat, index) => (
+              <Pressable key={chat.id} onPress={() => onOpenChat(chat)} style={styles.chatRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{chat.title.slice(0, 1).toUpperCase()}</Text>
+                </View>
+                <View style={[styles.chatMain, index !== chats.length - 1 && styles.chatMainBorder]}>
+                  <View style={styles.chatTopRow}>
+                    <Text numberOfLines={1} style={styles.chatTitle}>
+                      {chat.title}
+                    </Text>
+                    <Text style={styles.chatTime}>
+                      {chat.last_message_at
+                        ? new Date(chat.last_message_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                        : "new"}
+                    </Text>
+                  </View>
+                  <Text numberOfLines={1} style={styles.chatPreview}>
+                    {chat.last_message_preview ?? "No messages yet"}
+                  </Text>
+                </View>
+              </Pressable>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons color={theme.colors.textMuted} name="chat-outline" size={36} />
+              <Text style={styles.emptyTitle}>No chats yet</Text>
+              <Text style={styles.emptySubtitle}>Tap New chat to pick people and start your first conversation.</Text>
+            </View>
+          )}
+        </View>
       </View>
+
+      <Pressable onPress={onCreateChat} style={styles.fab}>
+        <MaterialCommunityIcons color={theme.colors.textOnAccent} name="message-text" size={24} />
+      </Pressable>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    backgroundColor: theme.colors.header,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.md,
     flexDirection: "row",
-    gap: theme.spacing.md,
-    justifyContent: "space-between",
-  },
-  headerText: {
-    flex: 1,
-    gap: theme.spacing.xs,
-  },
-  eyebrow: {
-    color: theme.colors.accent,
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-  },
-  title: {
-    color: theme.colors.text,
-    fontSize: 30,
-    fontWeight: "800",
-  },
-  subtitle: {
-    color: theme.colors.textMuted,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  createCard: {
-    backgroundColor: theme.colors.surface,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    gap: theme.spacing.md,
-    padding: theme.spacing.md,
-  },
-  sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: "800",
-  },
-  list: {
-    gap: theme.spacing.sm,
-  },
-  chatCard: {
     alignItems: "center",
-    backgroundColor: theme.colors.card,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: theme.spacing.sm,
     justifyContent: "space-between",
-    padding: theme.spacing.md,
   },
-  chatInfo: {
+  headerTitle: {
+    color: theme.colors.textOnAccent,
+    fontSize: 22,
+    fontWeight: "800",
+  },
+  headerSubtitle: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 13,
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  headerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: theme.radius.pill,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabRow: {
+    backgroundColor: theme.colors.header,
+    flexDirection: "row",
+    gap: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+  },
+  tabActive: {
+    color: theme.colors.textOnAccent,
+    fontWeight: "800",
+    borderBottomColor: theme.colors.textOnAccent,
+    borderBottomWidth: 3,
+    paddingBottom: 7,
+  },
+  tabMuted: {
+    color: "rgba(255,255,255,0.82)",
+    paddingBottom: 10,
+    fontWeight: "600",
+  },
+  searchRow: {
+    marginHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  searchText: {
+    color: theme.colors.textMuted,
+    fontSize: 14,
+  },
+  listShell: {
     flex: 1,
-    gap: 4,
+    backgroundColor: theme.colors.surface,
   },
-  chatTitle: {
+  utilityRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 14,
+    borderBottomColor: theme.colors.separator,
+    borderBottomWidth: 1,
+  },
+  utilityIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentStrong,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  utilityCopy: {
+    flex: 1,
+  },
+  utilityTitle: {
     color: theme.colors.text,
     fontSize: 16,
     fontWeight: "700",
   },
+  utilitySubtitle: {
+    color: theme.colors.textMuted,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  statusText: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 8,
+  },
+  chatList: {
+    flex: 1,
+    backgroundColor: theme.colors.surface,
+  },
+  chatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: theme.spacing.md,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.surfaceMuted,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  avatarText: {
+    color: theme.colors.accent,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  chatMain: {
+    flex: 1,
+    paddingRight: theme.spacing.md,
+    paddingVertical: 14,
+  },
+  chatMainBorder: {
+    borderBottomColor: theme.colors.separator,
+    borderBottomWidth: 1,
+  },
+  chatTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: theme.spacing.sm,
+  },
+  chatTitle: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  chatTime: {
+    color: theme.colors.textMuted,
+    fontSize: 12,
+  },
   chatPreview: {
     color: theme.colors.textMuted,
     fontSize: 14,
-  },
-  chatMeta: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: "700",
+    marginTop: 4,
   },
   emptyState: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing.xl,
     gap: theme.spacing.xs,
-    padding: theme.spacing.lg,
   },
   emptyTitle: {
     color: theme.colors.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
   },
   emptySubtitle: {
     color: theme.colors.textMuted,
-    lineHeight: 22,
+    textAlign: "center",
+    lineHeight: 21,
   },
-  error: {
-    color: theme.colors.danger,
-    fontWeight: "600",
+  fab: {
+    position: "absolute",
+    right: 18,
+    bottom: 24,
+    width: 58,
+    height: 58,
+    borderRadius: theme.radius.pill,
+    backgroundColor: theme.colors.accentStrong,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
 });

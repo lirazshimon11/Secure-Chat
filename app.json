@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Private Chat",
+    "slug": "private-chat-antiavi",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.privatechat.antiavi"
+    },
+    "android": {
+      "package": "com.privatechat.antiavi",
+      "adaptiveIcon": {
+        "backgroundColor": "#f4efe6"
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "replace-me"
+      }
+    }
+  }
+}

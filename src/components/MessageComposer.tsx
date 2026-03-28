@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   NativeSyntheticEvent,
   Platform,
@@ -13,34 +13,51 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAppTheme } from "@/lib/theme";
 import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
 
-const emojiOptions = ["\u{1F600}", "\u{1F602}", "\u{1F60E}", "\u{1F525}", "\u{1F44D}", "\u{2764}", "\u{1F648}", "\u{1F440}"];
-
 type Props = {
   replyPreview: string | null;
   onCancelReply: () => void;
   onSend: (body: string, kind: "standard" | "temporary" | "view_once", expireSeconds: number | null) => void;
+  emojiKeyboardOpen?: boolean;
+  onToggleEmojiKeyboard?: () => void;
+  emojiEvent?: { emoji: string; ts: number } | null;
+  onInputFocus?: () => void;
+  focusTrigger?: number;
 };
 
-export function MessageComposer({ replyPreview, onCancelReply, onSend }: Props) {
+export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
   const [body, setBody] = useState("");
   const [kind, setKind] = useState<"standard" | "temporary" | "view_once">("standard");
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const inputRef = useRef<TextInput | null>(null);
+
+  useEffect(() => {
+    if (emojiEvent) {
+      setBody((prev) => prev + emojiEvent.emoji);
+    }
+  }, [emojiEvent]);
+
+  // When parent asks us to focus (e.g. switching from emoji panel back to keyboard)
+  useEffect(() => {
+    if (focusTrigger) {
+      // Short delay to let the emoji panel unmount first
+      const t = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+  }, [focusTrigger]);
 
   const expireSeconds = kind === "temporary" ? 60 : null;
 
   const placeholder = useMemo(() => {
     if (kind === "temporary") {
-      return "Type a disappearing message";
+      return "הקלידו הודעה נעלמת";
     }
 
     if (kind === "view_once") {
-      return "Type a view-once message";
+      return "הקלידו הודעה חד-פעמית";
     }
 
-    return "Type a message";
+    return "הקלידו הודעה";
   }, [kind]);
 
   function handleSend() {
@@ -51,7 +68,6 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend }: Props) 
     onSend(body, kind, expireSeconds);
     setBody("");
     setKind("standard");
-    setShowEmojiPicker(false);
   }
 
   function handleSubmit(event: NativeSyntheticEvent<TextInputSubmitEditingEventData>) {
@@ -63,65 +79,53 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend }: Props) 
   }
 
   return (
-    <View style={styles.wrapper}>
-      {replyPreview ? (
-        <View style={styles.replyBanner}>
-          <View style={styles.replyAccent} />
-          <View style={styles.replyText}>
-            <Text style={styles.replyLabel}>Replying to message</Text>
-            <Text numberOfLines={1} style={styles.replyPreview}>
-              {replyPreview}
-            </Text>
+    <View style={styles.safeAreaWrapper}>
+      <View style={styles.wrapper}>
+        {replyPreview ? (
+          <View style={styles.replyBanner}>
+            <View style={styles.replyAccent} />
+            <View style={styles.replyText}>
+              <Text style={styles.replyLabel}>תשובה להודעה</Text>
+              <Text numberOfLines={1} style={styles.replyPreview}>
+                {replyPreview}
+              </Text>
+            </View>
+            <Pressable onPress={onCancelReply} style={styles.closeButton}>
+              <Feather color={theme.colors.textMuted} name="x" size={18} />
+            </Pressable>
           </View>
-          <Pressable onPress={onCancelReply} style={styles.closeButton}>
-            <Feather color={theme.colors.textMuted} name="x" size={18} />
+        ) : null}
+
+        {!emojiKeyboardOpen ? (
+          <View style={styles.modeRow}>
+            <ModeChip active={kind === "standard"} icon="message-text-outline" label="הודעה" onPress={() => setKind("standard")} />
+            <ModeChip active={kind === "temporary"} icon="timer-sand" label="דקה 1" onPress={() => setKind("temporary")} />
+            <ModeChip active={kind === "view_once"} icon="eye-outline" label="צפייה חד-פעמית" onPress={() => setKind("view_once")} />
+          </View>
+        ) : null}
+
+        <View style={styles.composerRow}>
+          <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
+            <MaterialCommunityIcons color={theme.colors.textMuted} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
+          </Pressable>
+          <View style={styles.inputShell}>
+            <TextInput
+              onChangeText={setBody}
+              onSubmitEditing={handleSubmit}
+              placeholder={placeholder}
+              placeholderTextColor={theme.colors.textMuted}
+              ref={inputRef}
+              onFocus={onInputFocus}
+              returnKeyType="send"
+              blurOnSubmit={false}
+              style={[styles.input, webEmbeddedInputReset]}
+              value={body}
+            />
+          </View>
+          <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
+            <Feather color={theme.colors.textOnAccent} name="send" size={18} />
           </Pressable>
         </View>
-      ) : null}
-
-      <View style={styles.modeRow}>
-        <ModeChip active={kind === "standard"} icon="message-text-outline" label="Message" onPress={() => setKind("standard")} />
-        <ModeChip active={kind === "temporary"} icon="timer-sand" label="1 minute" onPress={() => setKind("temporary")} />
-        <ModeChip active={kind === "view_once"} icon="eye-outline" label="View once" onPress={() => setKind("view_once")} />
-      </View>
-
-      {showEmojiPicker ? (
-        <View style={styles.emojiRow}>
-          {emojiOptions.map((emoji) => (
-            <Pressable
-              key={emoji}
-              onPress={() => {
-                setBody((current) => `${current}${emoji}`);
-                inputRef.current?.focus();
-              }}
-              style={styles.emojiChip}
-            >
-              <Text style={styles.emojiText}>{emoji}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
-
-      <View style={styles.composerRow}>
-        <Pressable onPress={() => setShowEmojiPicker((current) => !current)} style={[styles.sideButton, webNoOutline]}>
-          <Feather color={theme.colors.textMuted} name={showEmojiPicker ? "x" : "smile"} size={20} />
-        </Pressable>
-        <View style={styles.inputShell}>
-          <TextInput
-            onChangeText={setBody}
-            onSubmitEditing={handleSubmit}
-            placeholder={placeholder}
-            placeholderTextColor={theme.colors.textMuted}
-            ref={inputRef}
-            returnKeyType="send"
-            blurOnSubmit={false}
-            style={[styles.input, webEmbeddedInputReset]}
-            value={body}
-          />
-        </View>
-        <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
-          <Feather color={theme.colors.textOnAccent} name="send" size={18} />
-        </Pressable>
       </View>
     </View>
   );
@@ -150,12 +154,15 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     wrapper: {
       backgroundColor: theme.colors.composer,
-      borderTopColor: theme.colors.separator,
-      borderTopWidth: 1,
       paddingHorizontal: theme.spacing.sm,
       paddingTop: theme.spacing.xs,
-      paddingBottom: theme.spacing.sm,
+      paddingBottom: theme.spacing.xs,
       gap: theme.spacing.xs,
+    },
+    safeAreaWrapper: {
+      backgroundColor: theme.colors.composer,
+      borderTopColor: theme.colors.separator,
+      borderTopWidth: 1,
     },
     replyBanner: {
       backgroundColor: theme.colors.surface,

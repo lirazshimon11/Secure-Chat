@@ -1,4 +1,5 @@
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMemo, useRef, useState } from "react";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
@@ -64,7 +65,8 @@ function formatChatTime(chat: Chat, hiddenByClear: boolean) {
     return "";
   }
 
-  return new Date(chat.last_message_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const d = new Date(chat.last_message_at);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")} `;
 }
 
 function sortDisplayChats(a: DisplayChat, b: DisplayChat) {
@@ -82,7 +84,8 @@ function sortDisplayChats(a: DisplayChat, b: DisplayChat) {
 
 export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, onCreateChat }: Props) {
   const theme = useAppTheme();
-  const styles = createStyles(theme);
+  const insets = useSafeAreaInsets();
+  const styles = createStyles(theme, insets);
   const {
     chats,
     muteSettings,
@@ -121,7 +124,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
           unreadCount,
           muted,
           hiddenByClear,
-          preview: hiddenByClear ? "Chat cleared on this device" : chat.last_message_preview ?? "No messages yet",
+          preview: hiddenByClear ? "הצ'אט נוקה במכשיר זה" : chat.last_message_preview ?? "אין הודעות עדיין",
           timeLabel: formatChatTime(chat, hiddenByClear),
         } satisfies DisplayChat;
       })
@@ -213,12 +216,12 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     }
 
     Alert.alert(
-      "Clear chat on this device?",
-      "This hides the current messages only on this phone or browser. New messages will still arrive normally.",
+      "לנקות צ'אט במכשיר זה?",
+      "פעולה זו תסתיר את ההודעות הקיימות רק במכשיר זה. הודעות חדשות ימשיכו להגיע כרגיל.",
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "ביטול", style: "cancel" },
         {
-          text: "Clear",
+          text: "ניקוי",
           style: "destructive",
           onPress: () => {
             clearChatsLocally(selectedChatIds);
@@ -238,7 +241,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         delayLongPress={220}
         onLongPress={() => toggleSelection(item.chat.id)}
         onPress={() => handleChatPress(item.chat)}
-        style={[styles.chatRow, selected && styles.chatRowSelected]}
+        style={({ pressed }) => [
+          styles.chatRow,
+          (selected || pressed) && styles.chatRowSelected,
+        ]}
       >
         <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
@@ -317,7 +323,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
               <Pressable onPress={() => setViewMode("home")} style={styles.iconButton}>
                 <Feather color={theme.colors.text} name="arrow-left" size={22} />
               </Pressable>
-              <Text style={styles.brand}>{viewMode === "locked" ? "Secure Chats" : "Archive"}</Text>
+              <Text style={styles.brand}>{viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}</Text>
             </>
           )}
         </View>
@@ -326,7 +332,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
           <Feather color={theme.colors.textMuted} name="search" size={18} />
           <TextInput
             onChangeText={setSearchQuery}
-            placeholder={viewMode === "home" ? "Search" : `Search ${viewMode === "locked" ? "secure chats" : "archive"}`}
+            placeholder={viewMode === "home" ? "חיפוש" : `חיפוש ב${viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}`}
             placeholderTextColor={theme.colors.textMuted}
             ref={searchInputRef}
             style={[styles.searchInput, webEmbeddedInputReset]}
@@ -342,7 +348,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
                   <View style={styles.sectionIconWrap}>
                     <Feather color={theme.colors.textMuted} name="lock" size={18} />
                   </View>
-                  <Text style={styles.sectionLabel}>Secure Chats</Text>
+                  <Text style={styles.sectionLabel}>צ'אטים נעולים</Text>
                 </View>
               </Pressable>
 
@@ -351,13 +357,13 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
                   <View style={styles.sectionIconWrap}>
                     <MaterialCommunityIcons color={theme.colors.textMuted} name="archive-arrow-down-outline" size={18} />
                   </View>
-                  <Text style={styles.sectionLabel}>Archive</Text>
+                  <Text style={styles.sectionLabel}>ארכיון</Text>
                 </View>
               </Pressable>
             </>
           ) : null}
 
-          {loading ? <Text style={styles.statusText}>Syncing chats...</Text> : null}
+          {loading ? <Text style={styles.statusText}>מסנכרן צ'אטים...</Text> : null}
 
           {activeChats.length ? (
             activeChats.map((item) => renderChatRow(item))
@@ -365,12 +371,12 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
             <View style={styles.emptyState}>
               <MaterialCommunityIcons color={theme.colors.textMuted} name="message-text-outline" size={38} />
               <Text style={styles.emptyTitle}>
-                {viewMode === "locked" ? "No secure chats yet" : viewMode === "archived" ? "Nothing in archive" : "No chats yet"}
+                {viewMode === "locked" ? "אין צ'אטים נעולים" : viewMode === "archived" ? "הארכיון ריק" : "אין עדיין צ'אטים"}
               </Text>
               <Text style={styles.emptySubtitle}>
                 {viewMode === "home"
-                  ? "Use the menu to start a new group or open saved messages."
-                  : "Long-press a chat from the main list to move it here."}
+                  ? "השתמשו בתפריט לפתיחת קבוצה חדשה או הודעות שמורות."
+                  : "לחיצה ארוכה על צ'אט מהרשימה תעביר אותו לכאן."}
               </Text>
             </View>
           ) : null}
@@ -387,21 +393,21 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
             <Pressable onPress={() => setShowGeneralMenu(false)} style={styles.backdrop} />
             <View style={styles.menuCard}>
               <MenuItem
-                label="New group"
+                label="קבוצה חדשה"
                 onPress={() => {
                   setShowGeneralMenu(false);
                   onCreateChat();
                 }}
               />
               <MenuItem
-                label="Saved messages"
+                label="הודעות שמורות"
                 onPress={() => {
                   setShowGeneralMenu(false);
                   onOpenSavedMessages();
                 }}
               />
               <MenuItem
-                label="Settings"
+                label="הגדרות"
                 onPress={() => {
                   setShowGeneralMenu(false);
                   onOpenSettings();
@@ -415,10 +421,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
           <View pointerEvents="box-none" style={styles.overlayRoot}>
             <Pressable onPress={() => setShowSelectionMenu(false)} style={styles.backdrop} />
             <View style={styles.menuCard}>
-              <MenuItem label={allSelectedArchived ? "Move out of archive" : "Archive chat"} onPress={handleArchiveToggle} />
-              <MenuItem label={allSelectedPinned ? "Unpin chat" : "Pin chat"} onPress={handlePinToggle} />
-              <MenuItem label={allSelectedLocked ? "Unlock chat" : "Lock chat"} onPress={handleLockToggle} />
-              <MenuItem danger label="Clear on this device" onPress={handleClearLocally} />
+              <MenuItem label={allSelectedArchived ? "הוצאה מהארכיון" : "העברה לארכיון"} onPress={handleArchiveToggle} />
+              <MenuItem label={allSelectedPinned ? "ביטול הצמדה" : "הצמדה"} onPress={handlePinToggle} />
+              <MenuItem label={allSelectedLocked ? "ביטול נעילה" : "נעילת צ'אט"} onPress={handleLockToggle} />
+              <MenuItem danger label="ניקוי במכשיר זה" onPress={handleClearLocally} />
             </View>
           </View>
         ) : null}
@@ -429,7 +435,8 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
 
 function MenuItem({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
   const theme = useAppTheme();
-  const styles = createStyles(theme);
+  const insets = useSafeAreaInsets();
+  const styles = createStyles(theme, insets);
 
   return (
     <Pressable onPress={onPress} style={styles.menuItem}>
@@ -438,11 +445,12 @@ function MenuItem({ label, onPress, danger }: { label: string; onPress: () => vo
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<typeof useSafeAreaInsets>) =>
   StyleSheet.create({
     page: {
       flex: 1,
       backgroundColor: theme.colors.homeBackground,
+      paddingTop: insets.top,
     },
     header: {
       minHeight: 58,
@@ -669,8 +677,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     menuCard: {
       position: "absolute",
-      top: 54,
-      left: 10,
+      top: 54 + insets.top,
+      right: 10,
       minWidth: 220,
       borderRadius: theme.radius.md,
       overflow: "hidden",

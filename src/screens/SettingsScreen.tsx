@@ -21,7 +21,7 @@ export function SettingsScreen({ onBack }: Props) {
         <Pressable onPress={onBack} style={styles.backButton}>
           <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
         </Pressable>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={styles.title}>הגדרות</Text>
       </View>
 
       <View style={styles.body}>
@@ -30,28 +30,28 @@ export function SettingsScreen({ onBack }: Props) {
             <Text style={styles.avatarText}>{profile?.username?.slice(0, 1).toUpperCase() ?? "U"}</Text>
           </View>
           <View style={styles.profileCopy}>
-            <Text style={styles.handle}>@{profile?.username ?? "unknown"}</Text>
-            <Text style={styles.email}>{profile?.email ?? "No email"}</Text>
+            <Text style={styles.handle}>@{profile?.username ?? "לא ידוע"}</Text>
+            <Text style={styles.email}>{profile?.email ?? "אין אימייל"}</Text>
           </View>
         </View>
 
         <View style={styles.listCard}>
-          <SettingRow icon="account-outline" subtitle="Your username-based identity" title="Profile" />
-          <SettingRow icon="shield-lock-outline" subtitle="Disappearing and view-once tools" title="Privacy" />
-          <SettingRow icon="message-text-outline" subtitle="Only text messages are allowed" title="Chats" />
+          <SettingRow icon="account-outline" subtitle="הזהות שלך המבוססת על שם משתמש" title="פרופיל" />
+          <SettingRow icon="shield-lock-outline" subtitle="הודעות נעלמות וצפייה חד-פעמית" title="פרטיות" />
+          <SettingRow icon="message-text-outline" subtitle="רק הודעות טקסט מותרות באפליקציה" title="צ'אטים" />
         </View>
 
         <View style={styles.actions}>
           <PrimaryButton
-            label="Copy username"
+            label="העתקת שם משתמש"
             onPress={async () => {
               await Clipboard.setStringAsync(profile?.username ?? "");
-              Alert.alert("Copied", "Your username was copied to the clipboard.");
+              Alert.alert("הועתק", "שם המשתמש הועתק ללוח.");
             }}
             tone="soft"
           />
-          <PrimaryButton label="Back to chats" onPress={onBack} tone="soft" />
-          <PrimaryButton label="Sign out" onPress={() => void signOut()} />
+          <PrimaryButton label="חזרה לצ'אטים" onPress={onBack} tone="soft" />
+          <PrimaryButton label="התנתקות" onPress={() => void signOut()} />
         </View>
       </View>
     </Screen>

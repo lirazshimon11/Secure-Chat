@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { PrimaryButton } from "@/components/PrimaryButton";
@@ -44,12 +44,12 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
 
   async function handleCreate() {
     if (!selectedUsers.length) {
-      setError("Pick at least one user.");
+      setError("יש לבחור משתמש אחד לפחות.");
       return;
     }
 
     if (selectedUsers.length > 1 && !groupTitle.trim()) {
-      setError("Add a group name before continuing.");
+      setError("יש להוסיף שם קבוצה לפני שממשיכים.");
       return;
     }
 
@@ -63,7 +63,7 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
 
     setCreating(false);
     if (result.error || !result.chat) {
-      setError(result.error ?? "Could not create chat.");
+      setError(result.error ?? "לא ניתן היה ליצור קבוצה.");
       return;
     }
 
@@ -86,8 +86,8 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
           <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
         </Pressable>
         <View style={styles.headerCopy}>
-          <Text style={styles.headerTitle}>New chat</Text>
-          <Text style={styles.headerSubtitle}>Pick people by username</Text>
+          <Text style={styles.headerTitle}>צ'אט חדש</Text>
+          <Text style={styles.headerSubtitle}>בחר אנשים לפי שם משתמש</Text>
         </View>
       </View>
 
@@ -95,7 +95,7 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
         <Feather color={theme.colors.textMuted} name="search" size={18} />
         <TextInput
           onChangeText={setQuery}
-          placeholder="Search by username or name"
+          placeholder="חיפוש לפי שם או שם משתמש"
           placeholderTextColor={theme.colors.textMuted}
           style={[styles.searchInput, webEmbeddedInputReset]}
           value={query}
@@ -114,7 +114,7 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
       ) : null}
 
       <View style={styles.listShell}>
-        <Text style={styles.sectionTitle}>{loadingResults ? "Searching users..." : "Users"}</Text>
+        <Text style={styles.sectionTitle}>{loadingResults ? "מחפש משתמשים..." : "משתמשים"}</Text>
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
           {results.length ? (
             results.map((user, index) => {
@@ -137,8 +137,8 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
           ) : (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons color={theme.colors.textMuted} name="account-search-outline" size={36} />
-              <Text style={styles.emptyTitle}>No users found</Text>
-              <Text style={styles.emptySubtitle}>Try a different username or create more test accounts first.</Text>
+              <Text style={styles.emptyTitle}>לא נמצאו משתמשים</Text>
+              <Text style={styles.emptySubtitle}>נסו שם משתמש אחר לחפש אותו.</Text>
             </View>
           )}
         </ScrollView>
@@ -147,11 +147,11 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
       <View style={styles.bottomPanel}>
         {selectedUsers.length > 1 ? (
           <View style={styles.groupFieldWrap}>
-            <Text style={styles.groupLabel}>Group name</Text>
+            <Text style={styles.groupLabel}>שם הקבוצה</Text>
             <TextInput
               autoCapitalize="sentences"
               onChangeText={setGroupTitle}
-              placeholder="Weekend crew"
+              placeholder="צוות סופ״ש"
               placeholderTextColor={theme.colors.textMuted}
               style={[styles.groupInput, webNoOutline]}
               value={groupTitle}
@@ -161,7 +161,7 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
           disabled={!selectedUsers.length || creating}
-          label={creating ? "Creating..." : selectedUsers.length > 1 ? "Create group" : "Continue"}
+          label={creating ? "יוצר..." : selectedUsers.length > 1 ? "יצירת קבוצה" : "המשך"}
           onPress={() => void handleCreate()}
         />
       </View>

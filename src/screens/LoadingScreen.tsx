@@ -14,7 +14,7 @@ export function LoadingScreen() {
           <MaterialCommunityIcons color={theme.colors.textOnAccent} name="shield-lock" size={34} />
         </View>
         <Text style={styles.title}>Secure</Text>
-        <Text style={styles.subtitle}>Syncing your conversations...</Text>
+        <Text style={styles.subtitle}>מסנכרן את השיחות שלך...</Text>
         <ActivityIndicator color={theme.colors.accentStrong} size="large" />
       </View>
     </Screen>

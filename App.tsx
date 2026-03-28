@@ -1,5 +1,8 @@
 import "react-native-gesture-handler";
-import { useColorScheme } from "react-native";
+import { I18nManager, useColorScheme } from "react-native";
+
+I18nManager.allowRTL(true);
+I18nManager.forceRTL(true);
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";

@@ -82,8 +82,8 @@ export function SavedMessagesScreen({ onBack }: Props) {
           <MaterialCommunityIcons color={theme.colors.textOnAccent} name="bookmark-outline" size={22} />
         </View>
         <View style={styles.headerCopy}>
-          <Text style={styles.title}>Saved Messages</Text>
-          <Text style={styles.subtitle}>Only visible on this device</Text>
+          <Text style={styles.title}>הודעות שמורות</Text>
+          <Text style={styles.subtitle}>גלוי רק במכשיר זה</Text>
         </View>
       </View>
 
@@ -105,15 +105,18 @@ export function SavedMessagesScreen({ onBack }: Props) {
                 <View style={styles.bubble}>
                   <Text style={styles.body}>{message.body}</Text>
                   <Text style={styles.meta}>
-                    {new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {(() => {
+                      const d = new Date(message.created_at);
+                      return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+                    })()}
                   </Text>
                 </View>
               </View>
             ))
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>Saved Messages</Text>
-              <Text style={styles.emptySubtitle}>Drop private notes, reminders, or links here.</Text>
+              <Text style={styles.emptyTitle}>הודעות שמורות</Text>
+              <Text style={styles.emptySubtitle}>יש להכניס כאן הערות פרטיות, תזכורות או קישורים.</Text>
             </View>
           )}
         </ScrollView>
@@ -123,7 +126,7 @@ export function SavedMessagesScreen({ onBack }: Props) {
         <TextInput
           onChangeText={setDraft}
           onSubmitEditing={handleSave}
-          placeholder="Write a note"
+          placeholder="כתיבת הערה"
           placeholderTextColor={theme.colors.textMuted}
           returnKeyType="send"
           style={[styles.input, webEmbeddedInputReset]}

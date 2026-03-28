@@ -56,6 +56,7 @@ type ChatContextValue = {
   createChat: (title: string, memberUsernames: string[]) => Promise<{ chat: Chat | null; error: string | null }>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
   openViewOnceMessage: (message: Message) => Promise<void>;
+  deleteMessages: (messageIds: string[]) => Promise<void>;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -632,19 +633,23 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const currentUsers = reactionsByMessage[messageId]?.[emoji] ?? [];
-    const alreadyReacted = currentUsers.includes(profile.id);
+    // Check if the user already has this specific emoji applied
+    const currentUsersForEmoji = reactionsByMessage[messageId]?.[emoji] ?? [];
+    const alreadyReactedWithThisEmoji = currentUsersForEmoji.includes(profile.id);
 
-    if (alreadyReacted) {
-      await supabase
-        .from("message_reactions")
-        .delete()
-        .eq("message_id", messageId)
-        .eq("user_id", profile.id)
-        .eq("emoji", emoji);
+    // Delete any existing reactions this user has on this message
+    await supabase
+      .from("message_reactions")
+      .delete()
+      .eq("message_id", messageId)
+      .eq("user_id", profile.id);
+
+    // If they just clicked the exact same emoji, the delete above successfully toggled it off.
+    if (alreadyReactedWithThisEmoji) {
       return;
     }
 
+    // Otherwise, insert the newly selected emoji reaction
     await supabase.from("message_reactions").insert({
       message_id: messageId,
       user_id: profile.id,
@@ -667,6 +672,27 @@ export function ChatProvider({ children }: PropsWithChildren) {
       ...current,
       [message.id]: true,
     }));
+  }
+
+  async function deleteMessages(messageIds: string[]) {
+    if (!profile?.id || !messageIds.length) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from("messages")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", messageIds);
+
+    if (!error) {
+      setMessagesByChat((current) => {
+        const next = { ...current };
+        for (const chatId in next) {
+          next[chatId] = next[chatId].filter((m) => !messageIds.includes(m.id));
+        }
+        return next;
+      });
+    }
   }
 
   const value = useMemo(
@@ -697,6 +723,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       createChat,
       toggleReaction,
       openViewOnceMessage,
+      deleteMessages,
     }),
     [chatPreferences, chats, loading, messagesByChat, muteSettings, openedViewOnceIds, profiles, reactionsByMessage, unreadCounts],
   );

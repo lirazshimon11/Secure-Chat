@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
@@ -25,14 +25,14 @@ function isChatMuted(setting?: ChatMuteSetting) {
 
 function describeMute(setting?: ChatMuteSetting) {
   if (!isChatMuted(setting)) {
-    return "Notifications are on";
+    return "ההתראות פועלות";
   }
 
   if (setting?.mute_always) {
-    return "Muted forever";
+    return "הושתק לתמיד";
   }
 
-  return setting?.mute_until ? `Muted until ${new Date(setting.mute_until).toLocaleString()}` : "Muted";
+  return setting?.mute_until ? `הושתק עד ${new Date(setting.mute_until).toLocaleString("he-IL")}` : "מושתק";
 }
 
 export function ChatSettingsScreen({ chat, onBack }: Props) {
@@ -57,7 +57,7 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
         <Pressable onPress={onBack} style={styles.backButton}>
           <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
         </Pressable>
-        <Text style={styles.headerTitle}>Chat info</Text>
+        <Text style={styles.headerTitle}>פרטי צ'אט</Text>
       </View>
 
       <View style={styles.heroCard}>
@@ -65,29 +65,29 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
           <Text style={styles.avatarText}>{chat.title.slice(0, 1).toUpperCase()}</Text>
         </View>
         <Text style={styles.chatTitle}>{chat.title}</Text>
-        <Text style={styles.chatSubtitle}>{chat.is_group ? "Private group" : "Private 1-on-1 chat"}</Text>
+        <Text style={styles.chatSubtitle}>{chat.is_group ? "קבוצה פרטית" : "צ'אט פרטי"}</Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <SettingRow icon="bell-outline" subtitle={muteLabel} theme={theme} title="Mute notifications" />
+        <Text style={styles.sectionTitle}>התראות</Text>
+        <SettingRow icon="bell-outline" subtitle={muteLabel} theme={theme} title="השתקת התראות" />
         <View style={styles.muteActions}>
-          <MuteChip label="8 hours" onPress={() => setChatMute(chat.id, "8_hours")} theme={theme} />
-          <MuteChip label="7 days" onPress={() => setChatMute(chat.id, "7_days")} theme={theme} />
-          <MuteChip label="Always" onPress={() => setChatMute(chat.id, "always")} theme={theme} />
-          <MuteChip danger label="Unmute" onPress={() => clearChatMute(chat.id)} theme={theme} />
+          <MuteChip label="8 שעות" onPress={() => setChatMute(chat.id, "8_hours")} theme={theme} />
+          <MuteChip label="7 ימים" onPress={() => setChatMute(chat.id, "7_days")} theme={theme} />
+          <MuteChip label="תמיד" onPress={() => setChatMute(chat.id, "always")} theme={theme} />
+          <MuteChip danger label="ביטול השתקה" onPress={() => clearChatMute(chat.id)} theme={theme} />
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Chat settings</Text>
-        <SettingRow icon="timer-sand" subtitle="1-minute disappearing option available" theme={theme} title="Temporary messages" />
-        <SettingRow icon="eye-outline" subtitle="One-time reveal for sensitive messages" theme={theme} title="View once" />
-        <SettingRow icon="message-text-outline" subtitle="Only plain text is allowed in this app" theme={theme} title="Text only" />
+        <Text style={styles.sectionTitle}>הגדרות צ'אט</Text>
+        <SettingRow icon="timer-sand" subtitle="אפשרות להודעות נעלמות אחרי דקה" theme={theme} title="הודעות זמניות" />
+        <SettingRow icon="eye-outline" subtitle="חשיפה חד-פעמית להודעות רגישות" theme={theme} title="צפייה חד-פעמית" />
+        <SettingRow icon="message-text-outline" subtitle="באפליקציה זו מותר טקסט פשוט בלבד" theme={theme} title="טקסט בלבד" />
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Members</Text>
+        <Text style={styles.sectionTitle}>חברים</Text>
         {members.length ? (
           <ScrollView scrollEnabled={false}>
             {members.map((member, index) => (
@@ -103,7 +103,7 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
             ))}
           </ScrollView>
         ) : (
-          <Text style={styles.emptyText}>Loading members...</Text>
+          <Text style={styles.emptyText}>טוען חברים...</Text>
         )}
       </View>
     </Screen>

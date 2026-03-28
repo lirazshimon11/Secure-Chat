@@ -23,17 +23,17 @@ export function AuthScreen() {
     setNotice(null);
 
     if (!email.trim()) {
-      setError("Email is required.");
+      setError("נדרש אימייל.");
       return;
     }
 
     if (!password.trim()) {
-      setError("Password is required.");
+      setError("נדרשת סיסמה.");
       return;
     }
 
     if (mode === "signup" && !username.trim()) {
-      setError("Username is required.");
+      setError("נדרש שם משתמש.");
       return;
     }
 
@@ -57,14 +57,14 @@ export function AuthScreen() {
           </View>
           <Text style={styles.title}>Secure</Text>
           <Text style={styles.subtitle}>
-            Private messaging with usernames instead of phone numbers, with text only and privacy-first tools.
+            הודעות פרטיות עם שמות משתמש במקום מספרי טלפון, עם כלי פרטיות וטקסט בלבד.
           </Text>
         </View>
 
         <View style={styles.card}>
           <View style={styles.segmentedRow}>
             <PrimaryButton
-              label="Log in"
+              label="התחברות"
               onPress={() => {
                 setMode("signin");
                 setError(null);
@@ -74,7 +74,7 @@ export function AuthScreen() {
               style={styles.segmentButton}
             />
             <PrimaryButton
-              label="Sign up"
+              label="הרשמה"
               onPress={() => {
                 setMode("signup");
                 setError(null);
@@ -85,28 +85,28 @@ export function AuthScreen() {
             />
           </View>
 
-          <AppTextInput label="Email address" onChangeText={setEmail} value={email} placeholder="you@example.com" />
+          <AppTextInput label="כתובת אימייל" onChangeText={setEmail} value={email} placeholder="you@example.com" />
           {mode === "signup" ? (
-            <AppTextInput label="Username" onChangeText={setUsername} value={username} placeholder="secure_user_01" />
+            <AppTextInput label="שם משתמש" onChangeText={setUsername} value={username} placeholder="secure_user_01" />
           ) : null}
           <AppTextInput
-            label="Password"
+            label="סיסמה"
             onChangeText={setPassword}
             secureTextEntry
             value={password}
-            placeholder="At least 8 characters"
+            placeholder="8 תווים לפחות"
           />
 
           <View style={styles.helperCard}>
-            <Text style={styles.helperTitle}>How Secure is different</Text>
-            <Text style={styles.helperText}>You log in with email, password, and username.</Text>
-            <Text style={styles.helperText}>Images, videos, files, and calls are intentionally disabled.</Text>
+            <Text style={styles.helperTitle}>במה Secure שונה</Text>
+            <Text style={styles.helperText}>ההתחברות מתבצעת עם אימייל, סיסמה ושם משתמש.</Text>
+            <Text style={styles.helperText}>תמונות, סרטונים, קבצים ושיחות מושבתים בכוונה תחילה.</Text>
           </View>
 
           {notice ? <Text style={styles.notice}>{notice}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <PrimaryButton label={mode === "signin" ? "Enter chats" : "Create account"} onPress={submit} />
+          <PrimaryButton label={mode === "signin" ? "כניסה לצ'אטים" : "יצירת חשבון"} onPress={submit} />
         </View>
       </View>
     </Screen>

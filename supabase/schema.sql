@@ -1,4 +1,4 @@
-create extension if not exists "pgcrypto";
+﻿create extension if not exists "pgcrypto";
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -111,6 +111,13 @@ create table if not exists public.message_views (
   primary key (message_id, viewer_id)
 );
 
+create table if not exists public.chat_reads (
+  chat_id uuid not null references public.chats(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  last_read_at timestamptz not null default timezone('utc', now()),
+  primary key (chat_id, user_id)
+);
+
 create or replace function public.touch_chat_from_message()
 returns trigger
 language plpgsql
@@ -155,6 +162,7 @@ alter table public.chat_members enable row level security;
 alter table public.messages enable row level security;
 alter table public.message_reactions enable row level security;
 alter table public.message_views enable row level security;
+alter table public.chat_reads enable row level security;
 
 drop policy if exists "profiles readable by signed in users" on public.profiles;
 create policy "profiles readable by signed in users"
@@ -276,3 +284,28 @@ on public.message_views for update
 to authenticated
 using (viewer_id = auth.uid())
 with check (viewer_id = auth.uid());
+
+drop policy if exists "users can read own chat reads" on public.chat_reads;
+create policy "users can read own chat reads"
+on public.chat_reads for select
+to authenticated
+using (user_id = auth.uid());
+
+drop policy if exists "members can insert own chat reads" on public.chat_reads;
+create policy "members can insert own chat reads"
+on public.chat_reads for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and public.is_chat_member(chat_reads.chat_id)
+);
+
+drop policy if exists "users can update own chat reads" on public.chat_reads;
+create policy "users can update own chat reads"
+on public.chat_reads for update
+to authenticated
+using (user_id = auth.uid())
+with check (
+  user_id = auth.uid()
+  and public.is_chat_member(chat_reads.chat_id)
+);

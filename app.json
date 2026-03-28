@@ -4,7 +4,8 @@
     "slug": "private-chat-antiavi",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
+    "icon": "./public/images/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -15,8 +16,12 @@
     "android": {
       "package": "com.privatechat.antiavi",
       "adaptiveIcon": {
+        "foregroundImage": "./public/images/icon.png",
         "backgroundColor": "#f4efe6"
       }
+    },
+    "web": {
+      "favicon": "./public/images/icon.png"
     },
     "plugins": [
       "expo-secure-store"

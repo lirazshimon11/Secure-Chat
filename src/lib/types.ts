@@ -1,4 +1,5 @@
 export type MessageKind = "standard" | "temporary" | "view_once";
+export type MuteDurationOption = "8_hours" | "7_days" | "always";
 
 export type Profile = {
   id: string;
@@ -29,6 +30,18 @@ export type Message = {
   expires_at: string | null;
   created_at: string;
   deleted_at: string | null;
+};
+
+export type ChatMuteSetting = {
+  mute_until: string | null;
+  mute_always: boolean;
+};
+
+export type ChatLocalPreferences = {
+  archived: boolean;
+  pinned_at: string | null;
+  locked: boolean;
+  cleared_at: string | null;
 };
 
 export type ReactionSummary = Record<string, string[]>;

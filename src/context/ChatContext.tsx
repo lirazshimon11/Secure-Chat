@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createContext,
   PropsWithChildren,
@@ -10,7 +11,15 @@ import {
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
-import { Chat, Message, Profile, ReactionSummary } from "@/lib/types";
+import {
+  Chat,
+  ChatLocalPreferences,
+  ChatMuteSetting,
+  Message,
+  MuteDurationOption,
+  Profile,
+  ReactionSummary,
+} from "@/lib/types";
 
 type MessageComposerInput = {
   chatId: string;
@@ -26,20 +35,62 @@ type ChatContextValue = {
   messagesByChat: Record<string, Message[]>;
   reactionsByMessage: Record<string, ReactionSummary>;
   openedViewOnceIds: Record<string, boolean>;
+  unreadCounts: Record<string, number>;
+  muteSettings: Record<string, ChatMuteSetting>;
+  chatPreferences: Record<string, ChatLocalPreferences>;
   loading: boolean;
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
+  loadChatMembers: (chatId: string) => Promise<Profile[]>;
+  markChatSeen: (chatId: string) => Promise<void>;
+  setChatMute: (chatId: string, duration: MuteDurationOption) => void;
+  clearChatMute: (chatId: string) => void;
+  archiveChats: (chatIds: string[]) => void;
+  unarchiveChats: (chatIds: string[]) => void;
+  togglePinnedChats: (chatIds: string[]) => void;
+  lockChats: (chatIds: string[]) => void;
+  unlockChats: (chatIds: string[]) => void;
+  clearChatsLocally: (chatIds: string[]) => void;
   searchUsers: (query: string) => Promise<Profile[]>;
   sendMessage: (input: MessageComposerInput) => Promise<string | null>;
-  createChat: (
-    title: string,
-    memberUsernames: string[],
-  ) => Promise<{ chat: Chat | null; error: string | null }>;
+  createChat: (title: string, memberUsernames: string[]) => Promise<{ chat: Chat | null; error: string | null }>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
   openViewOnceMessage: (message: Message) => Promise<void>;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
+const LOCAL_CHAT_STATE_KEY_PREFIX = "private-chat-local-state";
+
+function buildMuteSetting(duration: MuteDurationOption): ChatMuteSetting {
+  if (duration === "always") {
+    return { mute_until: null, mute_always: true };
+  }
+
+  const now = Date.now();
+  const offset = duration === "8_hours" ? 8 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  return {
+    mute_until: new Date(now + offset).toISOString(),
+    mute_always: false,
+  };
+}
+
+function getDefaultChatPreferences(): ChatLocalPreferences {
+  return {
+    archived: false,
+    pinned_at: null,
+    locked: false,
+    cleared_at: null,
+  };
+}
+
+function normalizeChatPreferences(value: Partial<ChatLocalPreferences> | null | undefined): ChatLocalPreferences {
+  return {
+    archived: Boolean(value?.archived),
+    pinned_at: typeof value?.pinned_at === "string" ? value.pinned_at : null,
+    locked: Boolean(value?.locked),
+    cleared_at: typeof value?.cleared_at === "string" ? value.cleared_at : null,
+  };
+}
 
 export function ChatProvider({ children }: PropsWithChildren) {
   const { profile } = useAuth();
@@ -48,7 +99,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({});
   const [reactionsByMessage, setReactionsByMessage] = useState<Record<string, ReactionSummary>>({});
   const [openedViewOnceIds, setOpenedViewOnceIds] = useState<Record<string, boolean>>({});
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [muteSettings, setMuteSettings] = useState<Record<string, ChatMuteSetting>>({});
+  const [chatPreferences, setChatPreferences] = useState<Record<string, ChatLocalPreferences>>({});
   const [loading, setLoading] = useState(true);
+  const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
   const loadedChatIdsRef = useRef<string[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
@@ -58,7 +113,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
       setMessagesByChat({});
       setReactionsByMessage({});
       setOpenedViewOnceIds({});
+      setUnreadCounts({});
+      setMuteSettings({});
+      setChatPreferences({});
       loadedChatIdsRef.current = [];
+      setLocalPreferencesReady(false);
       setLoading(false);
       return;
     }
@@ -73,32 +132,165 @@ export function ChatProvider({ children }: PropsWithChildren) {
     };
   }, [profile?.id]);
 
+  useEffect(() => {
+    if (!profile?.id) {
+      setChatPreferences({});
+      setLocalPreferencesReady(false);
+      return;
+    }
+
+    let active = true;
+    const storageKey = `${LOCAL_CHAT_STATE_KEY_PREFIX}:${profile.id}`;
+    setLocalPreferencesReady(false);
+
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(storageKey);
+        if (!active) {
+          return;
+        }
+
+        if (!raw) {
+          setChatPreferences({});
+          setLocalPreferencesReady(true);
+          return;
+        }
+
+        const parsed = JSON.parse(raw) as Record<string, Partial<ChatLocalPreferences>>;
+        const normalizedEntries = Object.entries(parsed ?? {}).map(([chatId, value]) => [chatId, normalizeChatPreferences(value)]);
+        setChatPreferences(Object.fromEntries(normalizedEntries));
+      } catch {
+        if (active) {
+          setChatPreferences({});
+        }
+      } finally {
+        if (active) {
+          setLocalPreferencesReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id || !localPreferencesReady) {
+      return;
+    }
+
+    const storageKey = `${LOCAL_CHAT_STATE_KEY_PREFIX}:${profile.id}`;
+    void AsyncStorage.setItem(storageKey, JSON.stringify(chatPreferences));
+  }, [chatPreferences, localPreferencesReady, profile?.id]);
+
+  function updateChatPreferences(chatIds: string[], updater: (current: ChatLocalPreferences) => ChatLocalPreferences) {
+    if (!chatIds.length) {
+      return;
+    }
+
+    setChatPreferences((current) => {
+      const next = { ...current };
+      for (const chatId of [...new Set(chatIds)]) {
+        next[chatId] = updater(normalizeChatPreferences(current[chatId]));
+      }
+      return next;
+    });
+  }
+
   async function refreshChats() {
     if (!profile?.id) {
       return;
     }
 
     setLoading(true);
+
     const { data } = await supabase
       .from("chat_member_details")
       .select("*")
       .eq("user_id", profile.id)
       .order("last_message_at", { ascending: false, nullsFirst: false });
 
-    if (data) {
-      const nextChats = data.map((row) => ({
-        id: row.chat_id,
-        title: row.chat_title,
-        is_group: row.is_group,
-        created_by: row.created_by,
-        created_at: row.created_at,
-        last_message_preview: row.last_message_preview,
-        last_message_at: row.last_message_at,
-      })) as Chat[];
+    const rows = data ?? [];
+    const chatIds = rows.map((row) => row.chat_id);
+    const directChatIds = rows.filter((row) => !row.is_group).map((row) => row.chat_id);
 
-      setChats(nextChats);
+    const { data: membershipRows } = directChatIds.length
+      ? await supabase.from("chat_members").select("chat_id,user_id").in("chat_id", directChatIds)
+      : { data: [] };
+
+    const otherUserIds = [
+      ...new Set(
+        (membershipRows ?? [])
+          .filter((row) => row.user_id !== profile.id)
+          .map((row) => row.user_id),
+      ),
+    ];
+
+    const { data: otherProfiles } = otherUserIds.length
+      ? await supabase.from("profiles").select("*").in("id", otherUserIds)
+      : { data: [] };
+
+    const { data: readRows } = chatIds.length
+      ? await supabase.from("chat_reads").select("chat_id,last_read_at").eq("user_id", profile.id).in("chat_id", chatIds)
+      : { data: [] };
+
+    const { data: unreadMessageRows } = chatIds.length
+      ? await supabase
+          .from("messages")
+          .select("chat_id,sender_id,created_at")
+          .in("chat_id", chatIds)
+          .is("deleted_at", null)
+      : { data: [] };
+
+    const profileMap = Object.fromEntries(((otherProfiles ?? []) as Profile[]).map((item) => [item.id, item]));
+    const directTitles = Object.fromEntries(
+      (membershipRows ?? [])
+        .filter((row) => row.user_id !== profile.id)
+        .map((row) => [row.chat_id, profileMap[row.user_id]?.username])
+        .filter((entry): entry is [string, string] => Boolean(entry[1])),
+    );
+
+    if (otherProfiles?.length) {
+      setProfiles((current) => {
+        const merged = { ...current };
+        for (const nextProfile of otherProfiles as Profile[]) {
+          merged[nextProfile.id] = nextProfile;
+        }
+        return merged;
+      });
     }
 
+    const lastReadMap = Object.fromEntries((readRows ?? []).map((row) => [row.chat_id, row.last_read_at]));
+    const nextUnreadCounts: Record<string, number> = {};
+
+    for (const chatId of chatIds) {
+      nextUnreadCounts[chatId] = 0;
+    }
+
+    for (const row of unreadMessageRows ?? []) {
+      if (row.sender_id === profile.id) {
+        continue;
+      }
+
+      const lastReadAt = lastReadMap[row.chat_id];
+      if (!lastReadAt || new Date(row.created_at).getTime() > new Date(lastReadAt).getTime()) {
+        nextUnreadCounts[row.chat_id] = (nextUnreadCounts[row.chat_id] ?? 0) + 1;
+      }
+    }
+
+    const nextChats = rows.map((row) => ({
+      id: row.chat_id,
+      title: row.is_group ? row.chat_title : directTitles[row.chat_id] ?? row.chat_title,
+      is_group: row.is_group,
+      created_by: row.created_by,
+      created_at: row.created_at,
+      last_message_preview: row.last_message_preview,
+      last_message_at: row.last_message_at,
+    })) as Chat[];
+
+    setChats(nextChats);
+    setUnreadCounts(nextUnreadCounts);
     setLoading(false);
   }
 
@@ -178,6 +370,107 @@ export function ChatProvider({ children }: PropsWithChildren) {
         return next;
       });
     }
+  }
+
+  async function loadChatMembers(chatId: string) {
+    const { data: members, error } = await supabase.from("chat_members").select("user_id").eq("chat_id", chatId);
+
+    if (error || !members?.length) {
+      return [];
+    }
+
+    const memberIds = members.map((member) => member.user_id);
+    const { data: memberProfiles } = await supabase.from("profiles").select("*").in("id", memberIds);
+    const nextProfiles = (memberProfiles as Profile[]) ?? [];
+
+    if (nextProfiles.length) {
+      setProfiles((current) => {
+        const merged = { ...current };
+        for (const nextProfile of nextProfiles) {
+          merged[nextProfile.id] = nextProfile;
+        }
+        return merged;
+      });
+    }
+
+    return nextProfiles.sort((a, b) => a.username.localeCompare(b.username));
+  }
+
+  async function markChatSeen(chatId: string) {
+    if (!profile?.id) {
+      return;
+    }
+
+    await supabase.from("chat_reads").upsert({
+      chat_id: chatId,
+      user_id: profile.id,
+      last_read_at: new Date().toISOString(),
+    });
+
+    setUnreadCounts((current) => ({
+      ...current,
+      [chatId]: 0,
+    }));
+  }
+
+  function setChatMute(chatId: string, duration: MuteDurationOption) {
+    setMuteSettings((current) => ({
+      ...current,
+      [chatId]: buildMuteSetting(duration),
+    }));
+  }
+
+  function clearChatMute(chatId: string) {
+    setMuteSettings((current) => ({
+      ...current,
+      [chatId]: { mute_until: null, mute_always: false },
+    }));
+  }
+
+  function archiveChats(chatIds: string[]) {
+    updateChatPreferences(chatIds, (current) => ({
+      ...current,
+      archived: true,
+    }));
+  }
+
+  function unarchiveChats(chatIds: string[]) {
+    updateChatPreferences(chatIds, (current) => ({
+      ...current,
+      archived: false,
+    }));
+  }
+
+  function togglePinnedChats(chatIds: string[]) {
+    const shouldPin = chatIds.some((chatId) => !chatPreferences[chatId]?.pinned_at);
+    const pinnedAt = shouldPin ? new Date().toISOString() : null;
+
+    updateChatPreferences(chatIds, (current) => ({
+      ...current,
+      pinned_at: pinnedAt,
+    }));
+  }
+
+  function lockChats(chatIds: string[]) {
+    updateChatPreferences(chatIds, (current) => ({
+      ...current,
+      locked: true,
+    }));
+  }
+
+  function unlockChats(chatIds: string[]) {
+    updateChatPreferences(chatIds, (current) => ({
+      ...current,
+      locked: false,
+    }));
+  }
+
+  function clearChatsLocally(chatIds: string[]) {
+    const clearedAt = new Date().toISOString();
+    updateChatPreferences(chatIds, (current) => ({
+      ...current,
+      cleared_at: clearedAt,
+    }));
   }
 
   async function searchUsers(query: string) {
@@ -297,6 +590,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }
 
     const allMemberIds = [...new Set([profile.id, ...(members ?? []).map((member) => member.id)])];
+    const isGroup = allMemberIds.length > 2;
     const normalizedTitle =
       title.trim() || (members?.length === 1 ? members[0].username : `Group with ${members?.length ?? 0} members`);
 
@@ -304,7 +598,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       .from("chats")
       .insert({
         title: normalizedTitle,
-        is_group: allMemberIds.length > 2,
+        is_group: isGroup,
         created_by: profile.id,
       })
       .select()
@@ -326,8 +620,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return { chat: null, error: joinError.message };
     }
 
+    const displayTitle = !isGroup && members?.[0]?.username ? members[0].username : normalizedTitle;
+    const nextChat = { ...(chat as Chat), title: displayTitle };
+
     await refreshChats();
-    return { chat: chat as Chat, error: null };
+    return { chat: nextChat, error: null };
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
@@ -379,16 +676,29 @@ export function ChatProvider({ children }: PropsWithChildren) {
       messagesByChat,
       reactionsByMessage,
       openedViewOnceIds,
+      unreadCounts,
+      muteSettings,
+      chatPreferences,
       loading,
       refreshChats,
       loadMessages,
+      loadChatMembers,
+      markChatSeen,
+      setChatMute,
+      clearChatMute,
+      archiveChats,
+      unarchiveChats,
+      togglePinnedChats,
+      lockChats,
+      unlockChats,
+      clearChatsLocally,
       searchUsers,
       sendMessage,
       createChat,
       toggleReaction,
       openViewOnceMessage,
     }),
-    [chats, loading, messagesByChat, openedViewOnceIds, profiles, reactionsByMessage],
+    [chatPreferences, chats, loading, messagesByChat, muteSettings, openedViewOnceIds, profiles, reactionsByMessage, unreadCounts],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

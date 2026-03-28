@@ -1,8 +1,9 @@
-﻿import { useMemo, useRef, useState } from "react";
-import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, Profile, ReactionSummary } from "@/lib/types";
-import { theme } from "@/lib/theme";
+import { useAppTheme } from "@/lib/theme";
+import { webDefaultCursor } from "@/lib/webStyles";
 
 type ViewOnceState = "hidden" | "revealed" | "opened";
 
@@ -31,30 +32,34 @@ export function MessageBubble({
   onToggleReaction,
   onRevealViewOnce,
 }: Props) {
+  const theme = useAppTheme();
+  const styles = createStyles(theme);
   const mine = message.sender_id === currentUserId;
   const translateX = useRef(new Animated.Value(0)).current;
   const [showReactions, setShowReactions] = useState(false);
 
   const responder = useMemo(
     () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) > 8,
-        onPanResponderMove: (_evt, gesture) => {
-          if (gesture.dx > 0) {
-            translateX.setValue(Math.min(gesture.dx, 70));
-          }
-        },
-        onPanResponderRelease: (_evt, gesture) => {
-          if (gesture.dx > 40) {
-            onReply(message);
-          }
+      Platform.OS === "web"
+        ? null
+        : PanResponder.create({
+            onMoveShouldSetPanResponder: (_evt, gesture) => Math.abs(gesture.dx) > 8,
+            onPanResponderMove: (_evt, gesture) => {
+              if (gesture.dx > 0) {
+                translateX.setValue(Math.min(gesture.dx, 70));
+              }
+            },
+            onPanResponderRelease: (_evt, gesture) => {
+              if (gesture.dx > 40) {
+                onReply(message);
+              }
 
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-          }).start();
-        },
-      }),
+              Animated.spring(translateX, {
+                toValue: 0,
+                useNativeDriver: true,
+              }).start();
+            },
+          }),
     [message, onReply, translateX],
   );
 
@@ -83,7 +88,7 @@ export function MessageBubble({
 
   return (
     <Animated.View
-      {...responder.panHandlers}
+      {...(responder?.panHandlers ?? {})}
       style={[
         styles.row,
         mine ? styles.rowMine : styles.rowTheirs,
@@ -91,9 +96,10 @@ export function MessageBubble({
       ]}
     >
       <Pressable
+        delayLongPress={250}
         onLongPress={() => setShowReactions((value) => !value)}
         onPress={message.message_kind === "view_once" && viewOnceState === "hidden" ? onRevealViewOnce : undefined}
-        style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}
+        style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, webDefaultCursor]}
       >
         {!mine ? <Text style={styles.author}>{author?.username ?? "member"}</Text> : null}
 
@@ -153,125 +159,126 @@ export function MessageBubble({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    marginVertical: 3,
-  },
-  rowMine: {
-    alignItems: "flex-end",
-  },
-  rowTheirs: {
-    alignItems: "flex-start",
-  },
-  bubble: {
-    borderRadius: 10,
-    maxWidth: "83%",
-    minWidth: 96,
-    paddingHorizontal: 10,
-    paddingTop: 7,
-    paddingBottom: 6,
-    shadowColor: "#000000",
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  bubbleMine: {
-    backgroundColor: theme.colors.mine,
-    borderTopRightRadius: 2,
-  },
-  bubbleTheirs: {
-    backgroundColor: theme.colors.theirs,
-    borderTopLeftRadius: 2,
-  },
-  author: {
-    color: "#8b5cf6",
-    fontSize: 12,
-    fontWeight: "700",
-    marginBottom: 4,
-  },
-  replyBlock: {
-    backgroundColor: "rgba(17,27,33,0.06)",
-    borderLeftColor: theme.colors.accent,
-    borderLeftWidth: 3,
-    borderRadius: theme.radius.sm,
-    marginBottom: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  replyLabel: {
-    color: theme.colors.accent,
-    fontSize: 11,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-  replyBlockText: {
-    color: theme.colors.textMuted,
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  body: {
-    color: theme.colors.text,
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  metaRow: {
-    marginTop: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  kindChip: {
-    backgroundColor: "rgba(17,27,33,0.06)",
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  kindChipText: {
-    color: theme.colors.textMuted,
-    fontSize: 10,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  timeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    marginLeft: "auto",
-  },
-  meta: {
-    color: theme.colors.textMuted,
-    fontSize: 11,
-  },
-  quickRow: {
-    flexDirection: "row",
-    gap: theme.spacing.xs,
-    marginTop: 8,
-  },
-  quickChip: {
-    backgroundColor: theme.colors.surfaceAlt,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  quickChipText: {
-    fontSize: 15,
-  },
-  reactionRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing.xs,
-    marginTop: 6,
-  },
-  reactionChip: {
-    backgroundColor: theme.colors.surfaceAlt,
-    borderRadius: theme.radius.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  reactionText: {
-    color: theme.colors.text,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-});
+const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    row: {
+      marginVertical: 3,
+    },
+    rowMine: {
+      alignItems: "flex-end",
+    },
+    rowTheirs: {
+      alignItems: "flex-start",
+    },
+    bubble: {
+      borderRadius: 10,
+      maxWidth: "83%",
+      minWidth: 96,
+      paddingHorizontal: 10,
+      paddingTop: 7,
+      paddingBottom: 6,
+      shadowColor: "#000000",
+      shadowOpacity: theme.colors.background === "#0b141a" ? 0.16 : 0.05,
+      shadowRadius: 2,
+      shadowOffset: { width: 0, height: 1 },
+    },
+    bubbleMine: {
+      backgroundColor: theme.colors.mine,
+      borderTopRightRadius: 2,
+    },
+    bubbleTheirs: {
+      backgroundColor: theme.colors.theirs,
+      borderTopLeftRadius: 2,
+    },
+    author: {
+      color: "#8b5cf6",
+      fontSize: 12,
+      fontWeight: "700",
+      marginBottom: 4,
+    },
+    replyBlock: {
+      backgroundColor: theme.colors.surfaceAlt,
+      borderLeftColor: theme.colors.accent,
+      borderLeftWidth: 3,
+      borderRadius: theme.radius.sm,
+      marginBottom: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+    },
+    replyLabel: {
+      color: theme.colors.accent,
+      fontSize: 11,
+      fontWeight: "700",
+      marginBottom: 2,
+    },
+    replyBlockText: {
+      color: theme.colors.textMuted,
+      fontSize: 12,
+      lineHeight: 16,
+    },
+    body: {
+      color: theme.colors.text,
+      fontSize: 15,
+      lineHeight: 20,
+    },
+    metaRow: {
+      marginTop: 4,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
+    kindChip: {
+      backgroundColor: theme.colors.surfaceAlt,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    kindChipText: {
+      color: theme.colors.textMuted,
+      fontSize: 10,
+      fontWeight: "700",
+      textTransform: "uppercase",
+    },
+    timeRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      marginLeft: "auto",
+    },
+    meta: {
+      color: theme.colors.textMuted,
+      fontSize: 11,
+    },
+    quickRow: {
+      flexDirection: "row",
+      gap: theme.spacing.xs,
+      marginTop: 8,
+    },
+    quickChip: {
+      backgroundColor: theme.colors.surfaceAlt,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+    },
+    quickChipText: {
+      fontSize: 15,
+    },
+    reactionRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: theme.spacing.xs,
+      marginTop: 6,
+    },
+    reactionChip: {
+      backgroundColor: theme.colors.surfaceAlt,
+      borderRadius: theme.radius.pill,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    reactionText: {
+      color: theme.colors.text,
+      fontSize: 11,
+      fontWeight: "600",
+    },
+  });

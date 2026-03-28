@@ -1,26 +1,29 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useRef, useState } from "react";
-import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useColorScheme } from "react-native";
+import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { useAppTheme } from "@/lib/theme";
-import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
 
-type SavedMessage = {
+export type SavedMessage = {
   id: string;
   body: string;
   created_at: string;
+  source_chat_title?: string;
+  /** The chat ID needed to navigate back to the source chat. */
+  chat_id?: string;
 };
 
 type Props = {
   onBack: () => void;
+  onNavigateToChat?: (chatId: string, messageId: string) => void;
 };
 
 const lightBg = require("../../public/images/default_white_background.png");
 const darkBg = require("../../public/images/default_dark_background.png");
 
-export function SavedMessagesScreen({ onBack }: Props) {
+export function SavedMessagesScreen({ onBack, onNavigateToChat }: Props) {
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
   const styles = createStyles(theme);
@@ -29,70 +32,104 @@ export function SavedMessagesScreen({ onBack }: Props) {
   const scrollRef = useRef<ScrollView | null>(null);
   const { profile } = useAuth();
   const [messages, setMessages] = useState<SavedMessage[]>([]);
-  const [draft, setDraft] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const storageKey = `saved-messages:${profile?.id ?? "guest"}`;
+
+  const isSelectionMode = selectedIds.length > 0;
 
   useEffect(() => {
     let active = true;
 
     void (async () => {
       const raw = await AsyncStorage.getItem(storageKey);
-      if (!active) {
-        return;
-      }
+      if (!active) return;
       setMessages(raw ? (JSON.parse(raw) as SavedMessage[]) : []);
     })();
 
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, [storageKey]);
 
-  useEffect(() => {
-    void AsyncStorage.setItem(storageKey, JSON.stringify(messages));
-    requestAnimationFrame(() => {
-      scrollRef.current?.scrollToEnd({ animated: true });
-    });
-  }, [messages, storageKey]);
+  function toggleSelection(id: string) {
+    setSelectedIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    );
+  }
 
-  function handleSave() {
-    const body = draft.trim();
-    if (!body) {
+  async function handleUnsaveSelected() {
+    const updated = messages.filter((m) => !selectedIds.includes(m.id));
+    await AsyncStorage.setItem(storageKey, JSON.stringify(updated));
+    setMessages(updated);
+    setSelectedIds([]);
+  }
+
+  function handleBack() {
+    if (isSelectionMode) {
+      setSelectedIds([]);
+    } else {
+      onBack();
+    }
+  }
+
+  function handleMessageTap(msg: SavedMessage) {
+    if (isSelectionMode) {
+      toggleSelection(msg.id);
       return;
     }
+    if (msg.chat_id && onNavigateToChat) {
+      onNavigateToChat(msg.chat_id, msg.id);
+    }
+  }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: `${Date.now()}`,
-        body,
-        created_at: new Date().toISOString(),
-      },
-    ]);
-    setDraft("");
+  function handleMessageLongPress(id: string) {
+    if (!isSelectionMode) {
+      setSelectedIds([id]);
+    }
   }
 
   return (
     <Screen>
+      {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.headerButton}>
+        <Pressable onPress={handleBack} style={styles.headerButton}>
           <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
         </Pressable>
-        <View style={styles.avatar}>
-          <MaterialCommunityIcons color={theme.colors.textOnAccent} name="bookmark-outline" size={22} />
-        </View>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>הודעות שמורות</Text>
-          <Text style={styles.subtitle}>גלוי רק במכשיר זה</Text>
-        </View>
+
+        {isSelectionMode ? (
+          <>
+            <Text style={styles.selectionCount}>{selectedIds.length}</Text>
+            <View style={styles.selectionActions}>
+              <Pressable onPress={handleUnsaveSelected} style={styles.headerButton}>
+                <MaterialCommunityIcons
+                  color={theme.colors.textOnAccent}
+                  name="star-off"
+                  size={22}
+                />
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <View style={styles.avatar}>
+              <MaterialCommunityIcons color={theme.colors.textOnAccent} name="bookmark-outline" size={22} />
+            </View>
+            <View style={styles.headerCopy}>
+              <Text style={styles.title}>הודעות שמורות</Text>
+              <Text style={styles.subtitle}>גלוי רק במכשיר זה</Text>
+            </View>
+          </>
+        )}
       </View>
 
+      {/* Thread area */}
       <View style={styles.thread}>
-        <ImageBackground
-          source={chatBgSource}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode="repeat"
-        />
+        {/* Same tiled background as regular chat */}
+        <View style={[StyleSheet.absoluteFillObject, { overflow: "hidden" }]} pointerEvents="none">
+          <ImageBackground
+            source={chatBgSource}
+            style={{ width: "100%", height: "100%", transform: [{ scale: 1.8 }] }}
+            resizeMode="repeat"
+          />
+        </View>
 
         <ScrollView
           ref={scrollRef}
@@ -100,41 +137,55 @@ export function SavedMessagesScreen({ onBack }: Props) {
           showsVerticalScrollIndicator={false}
         >
           {messages.length ? (
-            messages.map((message) => (
-              <View key={message.id} style={styles.bubbleRow}>
-                <View style={styles.bubble}>
-                  <Text style={styles.body}>{message.body}</Text>
-                  <Text style={styles.meta}>
-                    {(() => {
-                      const d = new Date(message.created_at);
-                      return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-                    })()}
-                  </Text>
-                </View>
-              </View>
-            ))
+            messages.map((message) => {
+              const isSelected = selectedIds.includes(message.id);
+              const d = new Date(message.created_at);
+              const timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+              const canNavigate = Boolean(message.chat_id && onNavigateToChat);
+
+              return (
+                <Pressable
+                  key={message.id}
+                  delayLongPress={220}
+                  onPress={() => handleMessageTap(message)}
+                  onLongPress={() => handleMessageLongPress(message.id)}
+                  style={[styles.bubbleRow, isSelected && styles.bubbleRowSelected]}
+                >
+                  <View style={styles.bubble}>
+                    {/* Source chat label */}
+                    {message.source_chat_title ? (
+                      <Text style={styles.sourceLabel}>{message.source_chat_title}</Text>
+                    ) : null}
+
+                    <Text style={styles.body}>{message.body}</Text>
+
+                    {/* Time + star + navigate hint */}
+                    <View style={styles.metaRow}>
+                      <MaterialCommunityIcons name="star" size={12} color={theme.colors.textMuted} />
+                      <Text style={styles.meta}>{timeLabel}</Text>
+                      {canNavigate && !isSelectionMode ? (
+                        <MaterialCommunityIcons
+                          name="arrow-top-right"
+                          size={12}
+                          color={theme.colors.accent}
+                          style={{ marginLeft: 2 }}
+                        />
+                      ) : null}
+                    </View>
+                  </View>
+                </Pressable>
+              );
+            })
           ) : (
             <View style={styles.emptyState}>
+              <MaterialCommunityIcons name="star-outline" size={40} color={theme.colors.textMuted} />
               <Text style={styles.emptyTitle}>הודעות שמורות</Text>
-              <Text style={styles.emptySubtitle}>יש להכניס כאן הערות פרטיות, תזכורות או קישורים.</Text>
+              <Text style={styles.emptySubtitle}>
+                סמן הודעה בצ'אט כדי שתופיע כאן.{"\n"}לחץ עליה כדי לחזור למקומה בצ'אט.
+              </Text>
             </View>
           )}
         </ScrollView>
-      </View>
-
-      <View style={styles.composer}>
-        <TextInput
-          onChangeText={setDraft}
-          onSubmitEditing={handleSave}
-          placeholder="כתיבת הערה"
-          placeholderTextColor={theme.colors.textMuted}
-          returnKeyType="send"
-          style={[styles.input, webEmbeddedInputReset]}
-          value={draft}
-        />
-        <Pressable onPress={handleSave} style={[styles.sendButton, webNoOutline]}>
-          <Feather color={theme.colors.textOnAccent} name="send" size={18} />
-        </Pressable>
       </View>
     </Screen>
   );
@@ -150,13 +201,26 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingHorizontal: theme.spacing.sm,
       paddingTop: theme.spacing.sm,
       paddingBottom: theme.spacing.sm,
+      height: 58,
     },
     headerButton: {
-      width: 34,
-      height: 34,
+      width: 40,
+      height: 40,
       borderRadius: theme.radius.pill,
       alignItems: "center",
       justifyContent: "center",
+    },
+    selectionCount: {
+      color: theme.colors.textOnAccent,
+      fontSize: 20,
+      fontWeight: "700",
+      marginLeft: 4,
+    },
+    selectionActions: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginLeft: "auto",
+      gap: 2,
     },
     avatar: {
       width: 40,
@@ -187,10 +251,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexGrow: 1,
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.md,
+      gap: 6,
     },
     bubbleRow: {
       alignItems: "flex-end",
-      marginVertical: 4,
+    },
+    bubbleRowSelected: {
+      backgroundColor: "rgba(0,168,132,0.38)",
     },
     bubble: {
       maxWidth: "84%",
@@ -198,18 +265,34 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderRadius: 12,
       borderTopRightRadius: 3,
       paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingTop: 8,
+      paddingBottom: 6,
+      shadowColor: "#000000",
+      shadowOpacity: theme.colors.background === "#0b141a" ? 0.16 : 0.05,
+      shadowRadius: 2,
+      shadowOffset: { width: 0, height: 1 },
+      elevation: 1,
+    },
+    sourceLabel: {
+      fontSize: 12,
+      color: theme.colors.accent,
+      fontWeight: "700",
+      marginBottom: 3,
     },
     body: {
       color: theme.colors.text,
       fontSize: 15,
       lineHeight: 20,
     },
+    metaRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+      marginTop: 4,
+    },
     meta: {
       color: theme.colors.textMuted,
       fontSize: 11,
-      alignSelf: "flex-end",
-      marginTop: 5,
     },
     emptyState: {
       marginTop: "auto",
@@ -219,7 +302,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderRadius: theme.radius.lg,
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: theme.spacing.md,
-      gap: 4,
+      gap: 8,
+      alignItems: "center",
     },
     emptyTitle: {
       color: theme.colors.text,
@@ -231,33 +315,5 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.textMuted,
       textAlign: "center",
       lineHeight: 20,
-    },
-    composer: {
-      backgroundColor: theme.colors.composer,
-      borderTopColor: theme.colors.separator,
-      borderTopWidth: 1,
-      paddingHorizontal: theme.spacing.sm,
-      paddingTop: theme.spacing.xs,
-      paddingBottom: theme.spacing.sm,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing.xs,
-    },
-    input: {
-      flex: 1,
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: 16,
-      minHeight: 44,
-      color: theme.colors.text,
-      fontSize: 16,
-    },
-    sendButton: {
-      width: 46,
-      height: 46,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.accentStrong,
-      alignItems: "center",
-      justifyContent: "center",
     },
   });

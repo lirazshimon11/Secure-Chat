@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, Profile, ReactionSummary } from "@/lib/types";
@@ -24,6 +24,8 @@ type Props = {
   onShowReactionsSheet: (id: string) => void;
   onPlusExtra: (id: string) => void;
   showReactions: boolean;
+  onReportPickerLayout?: (layout: { x: number; y: number; width: number; height: number } | null) => void;
+  isSaved?: boolean;
 };
 
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
@@ -45,11 +47,27 @@ export function MessageBubble({
   onShowReactionsSheet,
   onPlusExtra,
   showReactions,
+  onReportPickerLayout,
+  isSaved,
 }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
   const mine = message.sender_id === currentUserId;
   const translateX = useRef(new Animated.Value(0)).current;
+  const pickerRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (showReactions && pickerRef.current && onReportPickerLayout) {
+      // Delay measurement slightly to ensure layout is complete
+      setTimeout(() => {
+        pickerRef.current?.measure((x, y, w, h, pageX, pageY) => {
+          onReportPickerLayout({ x: pageX, y: pageY, width: w, height: h });
+        });
+      }, 50);
+    } else if (!showReactions && onReportPickerLayout) {
+      onReportPickerLayout(null);
+    }
+  }, [showReactions, onReportPickerLayout]);
 
   const responder = useMemo(
     () =>
@@ -151,6 +169,13 @@ export function MessageBubble({
           <Text style={styles.body}>{body}</Text>
 
           <View style={styles.metaRow}>
+            {/* RTL spacer: fills right side, pushes content to physical left */}
+            <View style={{ flex: 1 }} />
+            {metaLabel ? (
+              <View style={styles.kindChip}>
+                <Text style={styles.kindChipText}>{metaLabel}</Text>
+              </View>
+            ) : null}
             <View style={styles.timeRow}>
               {message.message_kind === "view_once" ? (
                 <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />
@@ -158,17 +183,15 @@ export function MessageBubble({
               {message.message_kind === "temporary" ? (
                 <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />
               ) : null}
+              {isSaved ? (
+                <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />
+              ) : null}
               <Text style={styles.meta}>{timeLabel}</Text>
             </View>
-            {metaLabel ? (
-              <View style={styles.kindChip}>
-                <Text style={styles.kindChipText}>{metaLabel}</Text>
-              </View>
-            ) : null}
           </View>
 
           {showReactions ? (
-            <View style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
+            <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
               <View style={styles.pickerInner}>
                 {quickReactions.map((emoji) => (
                   <Pressable
@@ -302,7 +325,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       marginTop: 2,
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
       gap: 6,
     },
     kindChip: {
@@ -321,7 +343,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 3,
-      marginRight: "auto",
     },
     meta: {
       color: theme.colors.textMuted,
@@ -379,10 +400,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       zIndex: 10,
     },
     reactionPillMine: {
-      left: -4,
+      right: -4,
     },
     reactionPillTheirs: {
-      left: -4,
+      right: -4,
     },
     reactionPillEmojis: {
       flexDirection: "row",

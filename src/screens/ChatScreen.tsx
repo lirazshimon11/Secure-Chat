@@ -19,6 +19,7 @@ type Props = {
   chat: Chat;
   onBack: () => void;
   onOpenChatSettings: () => void;
+  scrollToMessageId?: string | null;
 };
 
 function isChatMuted(setting?: ChatMuteSetting) {
@@ -59,7 +60,7 @@ const ChatBackground = React.memo(({ source, scale }: { source: any; scale: numb
   </View>
 ));
 
-export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
+export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId }: Props) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
@@ -93,6 +94,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
   const [showReactionsForId, setShowReactionsForId] = useState<string | null>(null);
   const [showSelectionOverflowMenu, setShowSelectionOverflowMenu] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [pickerLayout, setPickerLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [viewInfoMessage, setViewInfoMessage] = useState<Message | null>(null);
   const [showEmojiPickerForId, setShowEmojiPickerForId] = useState<string | null>(null);
   const [showReactionsSheetForId, setShowReactionsSheetForId] = useState<string | null>(null);
@@ -103,6 +105,22 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
   const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
   const [emojiRecents, setEmojiRecents] = useState<string[]>([]);
   const [composerFocusTrigger, setComposerFocusTrigger] = useState(0);
+
+  const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(`saved-messages:${profile?.id ?? "guest"}`).then((raw) => {
+      if (!active) return;
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          setSavedMessageIds(new Set(parsed.map((m: any) => m.id)));
+        } catch {}
+      }
+    });
+    return () => { active = false; };
+  }, [profile?.id, selectedIds.length]);
 
   // Load recent emojis from storage
   useEffect(() => {
@@ -133,6 +151,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  // Track each message's Y offset so we can scroll to a specific message
+  const messageLayoutsRef = useRef<Record<string, number>>({});
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
 
   const visibleMessages = useMemo(() => {
     const allMessages = messagesByChat[chat.id] ?? [];
@@ -188,6 +209,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
     });
   }
 
+  function scrollToMessageWithRetry(messageId: string, attemptsLeft = 6) {
+    const y = messageLayoutsRef.current[messageId];
+    if (y !== undefined) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+      setHighlightedMessageId(messageId);
+      setTimeout(() => setHighlightedMessageId(null), 2000);
+    } else if (attemptsLeft > 0) {
+      // Layout not captured yet — wait for onLayout callbacks and retry
+      setTimeout(() => scrollToMessageWithRetry(messageId, attemptsLeft - 1), 250);
+    }
+  }
+
   useEffect(() => {
     void (async () => {
       await loadMessages(chat.id);
@@ -203,7 +236,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
     }
 
     void markChatSeen(chat.id);
-    scrollToBottom(true);
+
+    if (scrollToMessageId) {
+      // Wait for onLayout callbacks before attempting scroll
+      setTimeout(() => scrollToMessageWithRetry(scrollToMessageId), 300);
+    } else {
+      scrollToBottom(true);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.id, visibleMessages.length]);
 
@@ -213,6 +252,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    // Hide emotion list if more than 1 message is selected, or if 0 messages are selected.
+    if (selectedIds.length !== 1) {
+      setShowReactionsForId(null);
+    }
+  }, [selectedIds.length]);
 
   function showToast(text: string) {
     setToastMessage(text);
@@ -224,11 +270,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
     setSelectedIds((current) => {
       const isAlreadySelected = current.includes(id);
       if (isAlreadySelected) {
-        const next = current.filter((x) => x !== id);
-        if (next.length === 0) {
-          setShowReactionsForId(null);
-        }
-        return next;
+        return current.filter((x) => x !== id);
       } else {
         return [...current, id];
       }
@@ -247,6 +289,39 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
   function handleDeleteSelected() {
     if (!selectedIds.length) return;
     setShowDeleteModal(true);
+  }
+
+  async function handleToggleStarSelected() {
+    if (!selectedIds.length) return;
+
+    const allStarred = selectedIds.every((id) => savedMessageIds.has(id));
+    const key = `saved-messages:${profile?.id ?? "guest"}`;
+    const raw = await AsyncStorage.getItem(key);
+    let currentSaved: any[] = raw ? JSON.parse(raw) : [];
+
+    if (allStarred) {
+      currentSaved = currentSaved.filter((m) => !selectedIds.includes(m.id));
+      showToast("הוסר מההודעות השמורות");
+    } else {
+      const toAddIds = selectedIds.filter((id) => !savedMessageIds.has(id));
+      const toAddMsgs = toAddIds.map((id) => {
+        const msg = messageMap[id];
+        return {
+          id: msg.id,
+          body: msg.body_ciphertext,
+          created_at: msg.created_at,
+          source_chat_title: chat.title,
+          chat_id: chat.id,
+        };
+      });
+      currentSaved = [...currentSaved, ...toAddMsgs];
+      showToast("נשמר בהודעות השמורות");
+    }
+
+    await AsyncStorage.setItem(key, JSON.stringify(currentSaved));
+    setSavedMessageIds(new Set(currentSaved.map((m) => m.id)));
+    setSelectedIds([]);
+    setShowReactionsForId(null);
   }
 
   async function performDelete(everyone: boolean) {
@@ -288,8 +363,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
                   <MaterialCommunityIcons color={theme.colors.textOnAccent} name="reply" size={22} />
                 </Pressable>
               )}
-              <Pressable onPress={() => handleGenericAction("Star")} style={styles.headerButton}>
-                <MaterialCommunityIcons color={theme.colors.textOnAccent} name="star" size={22} />
+              <Pressable onPress={handleToggleStarSelected} style={styles.headerButton}>
+                <MaterialCommunityIcons 
+                  color={theme.colors.textOnAccent} 
+                  name={selectedIds.every((id) => savedMessageIds.has(id)) ? "star-off" : "star"} 
+                  size={22} 
+                />
               </Pressable>
               <Pressable onPress={handleDeleteSelected} style={styles.headerButton}>
                 <MaterialCommunityIcons color={theme.colors.textOnAccent} name="trash-can" size={22} />
@@ -330,8 +409,36 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
     );
   };
 
+  const handleGlobalTouch = (e: any) => {
+    if (showReactionsForId) {
+      if (!pickerLayout) {
+        setShowReactionsForId(null);
+        return false;
+      }
+      const { pageX, pageY } = e.nativeEvent;
+      const x = pickerLayout.x || 0;
+      const y = pickerLayout.y || 0;
+      const w = pickerLayout.width || 0;
+      const h = pickerLayout.height || 0;
+      
+      const isInside = 
+        pageX >= x - 30 && 
+        pageX <= x + w + 30 && 
+        pageY >= y - 30 && 
+        pageY <= y + h + 30;
+
+      if (!isInside) {
+        setShowReactionsForId(null);
+      }
+    }
+    return false;
+  };
+
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+    <View 
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      onStartShouldSetResponderCapture={handleGlobalTouch}
+    >
       <SafeAreaView edges={["top"]} style={{ backgroundColor: theme.colors.header, zIndex: 10 }}>
         {renderHeader()}
       </SafeAreaView>
@@ -379,6 +486,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
             if (showReactionsForId) setShowReactionsForId(null);
           }}
         >
+          <Pressable 
+            style={{ flexGrow: 1 }} 
+            onPress={() => {
+              if (showReactionsForId) setShowReactionsForId(null);
+              if (isSelectionMode && selectedIds.length === 0) {
+                // optional: disable selection mode if clicking background, but we already have handleBack for that.
+              }
+            }}
+          >
           {groupedMessages.length ? (
             groupedMessages.map((item, idx) => {
               if (item.type === "date") {
@@ -403,32 +519,41 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
                       : "hidden";
 
               return (
-                <MessageBubble
+                <View
                   key={message.id}
-                  author={profiles[message.sender_id]}
-                  currentUserId={profile?.id ?? ""}
-                  message={message}
-                  onReply={setReplyTo}
-                  onRevealViewOnce={() => {
-                    if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
-                    setRevealedMessageId(message.id);
-                    revealTimeoutRef.current = setTimeout(() => {
-                      void openViewOnceMessage(message);
-                      setRevealedMessageId((c) => (c === message.id ? null : c));
-                    }, 5000);
+                  onLayout={(e) => {
+                    messageLayoutsRef.current[message.id] = e.nativeEvent.layout.y;
                   }}
-                  onToggleReaction={(e) => toggleReaction(message.id, e)}
-                  onToggleSelection={toggleSelection}
-                  onShowReactions={setShowReactionsForId}
-                  onShowReactionsSheet={setShowReactionsSheetForId}
-                  onPlusExtra={setShowEmojiPickerForId}
-                  reactions={reactionsByMessage[message.id]}
-                  replyPreview={replyPreview}
-                  isSelected={selectedIds.includes(message.id)}
-                  isSelectionMode={isSelectionMode}
-                  showReactions={showReactionsForId === message.id}
-                  viewOnceState={viewOnceState}
-                />
+                  style={highlightedMessageId === message.id ? { backgroundColor: "rgba(0,168,132,0.28)" } : undefined}
+                >
+                  <MessageBubble
+                    author={profiles[message.sender_id]}
+                    currentUserId={profile?.id ?? ""}
+                    message={message}
+                    onReply={setReplyTo}
+                    onRevealViewOnce={() => {
+                      if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+                      setRevealedMessageId(message.id);
+                      revealTimeoutRef.current = setTimeout(() => {
+                        void openViewOnceMessage(message);
+                        setRevealedMessageId((c) => (c === message.id ? null : c));
+                      }, 5000);
+                    }}
+                    onToggleReaction={(e) => toggleReaction(message.id, e)}
+                    onToggleSelection={toggleSelection}
+                    onShowReactions={setShowReactionsForId}
+                    onShowReactionsSheet={setShowReactionsSheetForId}
+                    onPlusExtra={setShowEmojiPickerForId}
+                    reactions={reactionsByMessage[message.id]}
+                    replyPreview={replyPreview}
+                    isSelected={selectedIds.includes(message.id)}
+                    isSelectionMode={isSelectionMode}
+                    showReactions={showReactionsForId === message.id}
+                    viewOnceState={viewOnceState}
+                    onReportPickerLayout={setPickerLayout}
+                    isSaved={savedMessageIds.has(message.id)}
+                  />
+                </View>
               );
             })
           ) : (
@@ -443,11 +568,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings }: Props) {
               </Text>
             </View>
           )}
+          </Pressable>
         </ScrollView>
       </View>
       </View>
 
       <MessageComposer
+        onInputFocus={() => {
+          if (showReactionsForId) setShowReactionsForId(null);
+        }}
         onCancelReply={() => setReplyTo(null)}
         onSend={async (body, kind, expireSeconds) => {
           scrollToBottom(true);

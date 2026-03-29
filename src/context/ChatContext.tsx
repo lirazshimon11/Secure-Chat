@@ -29,6 +29,15 @@ type MessageComposerInput = {
   expireSeconds?: number | null;
 };
 
+function getUtcTime(timestamp: string): number {
+  if (timestamp.endsWith("Z")) return new Date(timestamp).getTime();
+  const timePart = timestamp.includes("T") ? timestamp.split("T")[1] : "";
+  if (timePart.includes("+") || timePart.includes("-")) {
+    return new Date(timestamp).getTime();
+  }
+  return new Date(timestamp + "Z").getTime();
+}
+
 type ChatContextValue = {
   chats: Chat[];
   profiles: Record<string, Profile>;
@@ -42,7 +51,7 @@ type ChatContextValue = {
   refreshChats: () => Promise<void>;
   loadMessages: (chatId: string) => Promise<void>;
   loadChatMembers: (chatId: string) => Promise<Profile[]>;
-  markChatSeen: (chatId: string) => Promise<void>;
+  markChatSeen: (chatId: string, timestamp?: string, nextUnreadCount?: number) => Promise<void>;
   setChatMute: (chatId: string, duration: MuteDurationOption) => void;
   clearChatMute: (chatId: string) => void;
   archiveChats: (chatIds: string[]) => void;
@@ -233,7 +242,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       : { data: [] };
 
     const { data: readRows } = chatIds.length
-      ? await supabase.from("chat_reads").select("chat_id,last_read_at").eq("user_id", profile.id).in("chat_id", chatIds)
+      ? await supabase.from("chat_members").select("chat_id,last_read_at").eq("user_id", profile.id).in("chat_id", chatIds)
       : { data: [] };
 
     const { data: unreadMessageRows } = chatIds.length
@@ -262,7 +271,12 @@ export function ChatProvider({ children }: PropsWithChildren) {
       });
     }
 
-    const lastReadMap = Object.fromEntries((readRows ?? []).map((row) => [row.chat_id, row.last_read_at]));
+    const lastReadMap: Record<string, string> = {};
+    for (const row of readRows ?? []) {
+      if (!lastReadMap[row.chat_id] || getUtcTime(row.last_read_at) > getUtcTime(lastReadMap[row.chat_id])) {
+        lastReadMap[row.chat_id] = row.last_read_at;
+      }
+    }
     const nextUnreadCounts: Record<string, number> = {};
 
     for (const chatId of chatIds) {
@@ -275,7 +289,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       }
 
       const lastReadAt = lastReadMap[row.chat_id];
-      if (!lastReadAt || new Date(row.created_at).getTime() > new Date(lastReadAt).getTime()) {
+      if (!lastReadAt || getUtcTime(row.created_at) > getUtcTime(lastReadAt)) {
         nextUnreadCounts[row.chat_id] = (nextUnreadCounts[row.chat_id] ?? 0) + 1;
       }
     }
@@ -291,7 +305,17 @@ export function ChatProvider({ children }: PropsWithChildren) {
     })) as Chat[];
 
     setChats(nextChats);
-    setUnreadCounts(nextUnreadCounts);
+    // Merge: take the lower value so a locally-zeroed chat (just marked seen) isn't
+    // overwritten by a stale count from a DB read that landed before the upsert propagated.
+    setUnreadCounts((current) => {
+      const merged: Record<string, number> = { ...nextUnreadCounts };
+      for (const chatId of Object.keys(current)) {
+        if (current[chatId] === 0 && (merged[chatId] ?? 0) > 0) {
+          merged[chatId] = 0;
+        }
+      }
+      return merged;
+    });
     setLoading(false);
   }
 
@@ -397,21 +421,30 @@ export function ChatProvider({ children }: PropsWithChildren) {
     return nextProfiles.sort((a, b) => a.username.localeCompare(b.username));
   }
 
-  async function markChatSeen(chatId: string) {
+  async function markChatSeen(chatId: string, timestamp?: string, nextUnreadCount?: number) {
     if (!profile?.id) {
       return;
     }
 
-    await supabase.from("chat_reads").upsert({
-      chat_id: chatId,
-      user_id: profile.id,
-      last_read_at: new Date().toISOString(),
-    });
+    const newTimestamp = timestamp || new Date().toISOString();
+    const countToSet = nextUnreadCount !== undefined ? nextUnreadCount : 0;
 
+    // Immediately clear locally so the badge updates while the DB write is in-flight
     setUnreadCounts((current) => ({
       ...current,
-      [chatId]: 0,
+      [chatId]: countToSet,
     }));
+
+    // Update the existing member row with the new read timestamp
+    const { error } = await supabase
+      .from("chat_members")
+      .update({ last_read_at: newTimestamp })
+      .eq("chat_id", chatId)
+      .eq("user_id", profile.id);
+
+    if (error) {
+       console.warn("markChatSeen failed:", error);
+    }
   }
 
   function setChatMute(chatId: string, duration: MuteDurationOption) {

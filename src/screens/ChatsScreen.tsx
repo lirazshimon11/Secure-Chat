@@ -1,4 +1,4 @@
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View, TouchableHighlight } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMemo, useRef, useState } from "react";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -236,17 +236,20 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     const selected = selectedChatIds.includes(item.chat.id);
 
     return (
-      <Pressable
+      <TouchableHighlight
         key={item.chat.id}
+        underlayColor={theme.colors.homeSelection}
+        delayPressIn={75}
         delayLongPress={220}
         onLongPress={() => toggleSelection(item.chat.id)}
         onPress={() => handleChatPress(item.chat)}
-        style={({ pressed }) => [
+        style={[
           styles.chatRow,
-          (selected || pressed) && styles.chatRowSelected,
+          selected && styles.chatRowSelected,
         ]}
       >
-        <View style={styles.avatarWrap}>
+        <View style={{ flexDirection: "row", alignItems: "center", width: "100%", gap: 12 }}>
+          <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{item.chat.title.slice(0, 1).toUpperCase()}</Text>
           </View>
@@ -280,7 +283,8 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
             {item.preview}
           </Text>
         </View>
-      </Pressable>
+        </View>
+      </TouchableHighlight>
     );
   }
 

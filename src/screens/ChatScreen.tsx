@@ -20,6 +20,7 @@ type Props = {
   onBack: () => void;
   onOpenChatSettings: () => void;
   scrollToMessageId?: string | null;
+  onForward?: (messages: Message[]) => void;
 };
 
 function isChatMuted(setting?: ChatMuteSetting) {
@@ -60,7 +61,7 @@ const ChatBackground = React.memo(({ source, scale }: { source: any; scale: numb
   </View>
 ));
 
-export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId }: Props) {
+export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward }: Props) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
@@ -70,6 +71,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const {
     loadMessages,
     markChatSeen,
+    unreadCounts,
     messagesByChat,
     profiles,
     reactionsByMessage,
@@ -105,6 +107,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
   const [emojiRecents, setEmojiRecents] = useState<string[]>([]);
   const [composerFocusTrigger, setComposerFocusTrigger] = useState(0);
+  const initialScrollDone = useRef(false);
+  const scrollMetricsRef = useRef({ y: 0, height: 0, contentHeight: 0 });
 
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
 
@@ -209,42 +213,92 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     });
   }
 
-  function scrollToMessageWithRetry(messageId: string, attemptsLeft = 6) {
+  function scrollToMessageWithRetry(messageId: string, highlight = true, attemptsLeft = 6) {
     const y = messageLayoutsRef.current[messageId];
     if (y !== undefined) {
       scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
-      setHighlightedMessageId(messageId);
-      setTimeout(() => setHighlightedMessageId(null), 2000);
+      if (highlight) {
+         setHighlightedMessageId(messageId);
+         setTimeout(() => setHighlightedMessageId(null), 2000);
+      }
     } else if (attemptsLeft > 0) {
       // Layout not captured yet — wait for onLayout callbacks and retry
-      setTimeout(() => scrollToMessageWithRetry(messageId, attemptsLeft - 1), 250);
+      setTimeout(() => scrollToMessageWithRetry(messageId, highlight, attemptsLeft - 1), 250);
     }
   }
 
   useEffect(() => {
+    initialScrollDone.current = false;
     void (async () => {
       await loadMessages(chat.id);
-      await markChatSeen(chat.id);
-      scrollToBottom(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.id]);
 
   useEffect(() => {
-    if (!visibleMessages.length) {
+    if (!visibleMessages.length || initialScrollDone.current) {
       return;
     }
 
-    void markChatSeen(chat.id);
+    const currentUnread = unreadCounts[chat.id] || 0;
 
     if (scrollToMessageId) {
-      // Wait for onLayout callbacks before attempting scroll
-      setTimeout(() => scrollToMessageWithRetry(scrollToMessageId), 300);
+      setTimeout(() => scrollToMessageWithRetry(scrollToMessageId, true), 300);
+      initialScrollDone.current = true;
+    } else if (currentUnread > 0) {
+      // Find the first unread message
+      const unreadStartIndex = Math.max(0, visibleMessages.length - currentUnread);
+      const firstUnreadMsg = visibleMessages[unreadStartIndex];
+      
+      if (firstUnreadMsg) {
+        setTimeout(() => {
+           scrollToMessageWithRetry(firstUnreadMsg.id, false);
+           setTimeout(checkVisibility, 600); // Check once after jump
+        }, 300);
+      } else {
+        scrollToBottom(false);
+      }
+      initialScrollDone.current = true;
     } else {
-      scrollToBottom(true);
+      setTimeout(() => scrollToBottom(false), 50);
+      initialScrollDone.current = true;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.id, visibleMessages.length]);
+  }, [chat.id, visibleMessages.length, scrollToMessageId, unreadCounts]);
+
+  function checkVisibility() {
+    if (!profile?.id || !visibleMessages.length) return;
+    
+    const { y, height: h, contentHeight } = scrollMetricsRef.current;
+    if (h === 0) return; // Not measured yet
+    
+    const bottomEdge = y + h;
+
+    let latestSeenMsg: Message | null = null;
+    
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+       const msg = visibleMessages[i];
+       if (msg.sender_id !== profile.id) {
+          const topY = messageLayoutsRef.current[msg.id];
+          if (topY !== undefined && topY <= bottomEdge + 50) {
+             latestSeenMsg = msg;
+             break;
+          }
+       }
+    }
+
+    if (latestSeenMsg) {
+      const remainingUnread = visibleMessages.filter((m) => m.sender_id !== profile?.id && new Date(m.created_at).getTime() > new Date(latestSeenMsg!.created_at).getTime()).length;
+      const currentUnread = unreadCounts[chat.id] || 0;
+      if (remainingUnread < currentUnread) {
+        markChatSeen(chat.id, latestSeenMsg.created_at, remainingUnread);
+      }
+    }
+  }
+
+  function handleScrollEnd() {
+    checkVisibility();
+  }
 
   useEffect(() => {
     return () => {
@@ -342,6 +396,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }
 
   function handleGenericAction(name: string) {
+    if (name === "Forward") {
+      if (onForward) {
+        const messagesToForward = selectedIds
+          .map((id) => messageMap[id])
+          .filter(Boolean)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        onForward(messagesToForward);
+      }
+      setSelectedIds([]);
+      setShowReactionsForId(null);
+      return;
+    }
     Alert.alert("Action", `${name} performed on ${selectedIds.length} message(s).`);
     setSelectedIds([]);
     setShowReactionsForId(null);
@@ -482,9 +548,25 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          onLayout={(e) => {
+             scrollMetricsRef.current.height = e.nativeEvent.layout.height;
+             checkVisibility(); // Also check instantly in case it's a short chat that doesn't scroll
+          }}
+          onContentSizeChange={(w, h) => {
+             scrollMetricsRef.current.contentHeight = h;
+          }}
+          onScroll={(e) => {
+             scrollMetricsRef.current.y = e.nativeEvent.contentOffset.y;
+             // height and contentSize aren't always perfect in onScroll compared to onLayout, but let's keep them synced:
+             scrollMetricsRef.current.height = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
+             scrollMetricsRef.current.contentHeight = e.nativeEvent.contentSize.height || scrollMetricsRef.current.contentHeight;
+          }}
           onScrollBeginDrag={() => {
             if (showReactionsForId) setShowReactionsForId(null);
           }}
+          onMomentumScrollEnd={handleScrollEnd}
+          onScrollEndDrag={handleScrollEnd}
         >
           <Pressable 
             style={{ flexGrow: 1 }} 
@@ -576,6 +658,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       <MessageComposer
         onInputFocus={() => {
           if (showReactionsForId) setShowReactionsForId(null);
+          if (showEmojiKeyboard) setShowEmojiKeyboard(false);
         }}
         onCancelReply={() => setReplyTo(null)}
         onSend={async (body, kind, expireSeconds) => {
@@ -607,9 +690,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             setShowEmojiKeyboard(true);
             Keyboard.dismiss();
           }
-        }}
-        onInputFocus={() => {
-          if (showEmojiKeyboard) setShowEmojiKeyboard(false);
         }}
         emojiEvent={composerEmojiEvent}
       />

@@ -7,18 +7,20 @@ import { SettingsScreen } from "@/screens/SettingsScreen";
 import { CreateChatScreen } from "@/screens/CreateChatScreen";
 import { ChatSettingsScreen } from "@/screens/ChatSettingsScreen";
 import { SavedMessagesScreen } from "@/screens/SavedMessagesScreen";
+import { ForwardScreen } from "@/screens/ForwardScreen";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
-import { Chat } from "@/lib/types";
+import { Chat, Message } from "@/lib/types";
 
 export function AppShell() {
   const { session, loading } = useAuth();
-  const { chats } = useChats();
+  const { chats, sendMessage } = useChats();
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateChat, setShowCreateChat] = useState(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showSavedMessages, setShowSavedMessages] = useState(false);
+  const [forwardPayload, setForwardPayload] = useState<Message[] | null>(null);
   // When navigating from SavedMessages to a chat, optionally scroll to a message
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
 
@@ -60,6 +62,38 @@ export function AppShell() {
     );
   }
 
+  if (forwardPayload) {
+    return (
+      <ForwardScreen
+        messages={forwardPayload}
+        onCancel={() => setForwardPayload(null)}
+        onSend={async (chatIds) => {
+          setForwardPayload(null);
+          // Only single-chat returns you to the chat. Multi-chat drops you at ChatsScreen.
+          if (chatIds.length === 1) {
+            const nextChat = chats.find(c => c.id === chatIds[0]);
+            if (nextChat) setSelectedChat(nextChat);
+          } else {
+            setSelectedChat(null); // return to home screen
+          }
+
+          // In a real app we might want a progress indicator if there are many messages,
+          // but for now we dispatch them asynchronously.
+          const sorted = [...forwardPayload].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+          for (const chatId of chatIds) {
+            for (const msg of sorted) {
+              await sendMessage({
+                chatId,
+                body: msg.body_ciphertext,
+                messageKind: "standard",
+              });
+            }
+          }
+        }}
+      />
+    );
+  }
+
   if (selectedChat && showChatSettings) {
     return <ChatSettingsScreen chat={selectedChat} onBack={() => setShowChatSettings(false)} />;
   }
@@ -74,6 +108,7 @@ export function AppShell() {
         }}
         onOpenChatSettings={() => setShowChatSettings(true)}
         scrollToMessageId={scrollToMessageId}
+        onForward={(messages) => setForwardPayload(messages)}
       />
     );
   }

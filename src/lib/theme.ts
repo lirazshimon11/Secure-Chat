@@ -1,4 +1,4 @@
-﻿import { useColorScheme } from "react-native";
+import { useColorScheme } from "react-native";
 
 export const themeTokens = {
   radius: {
@@ -31,23 +31,28 @@ const lightColors = {
   accent: "#008069",
   accentStrong: "#00a884",
   accentSoft: "#d9fdd3",
-  header: "#008069",
+  header: "#ffffff",
+  headerText: "#000000",
+  headerSubtitle: "#667781",
+  headerIcon: "#111b21",
   danger: "#b42318",
   warning: "#a15c00",
   mine: "#d9fdd3",
   theirs: "#ffffff",
-  composer: "#f0f2f5",
+  composer: "#ffffff",
   chatBackdrop: "#efeae2",
   overlay: "rgba(17,27,33,0.12)",
   shadow: "rgba(0,0,0,0.14)",
   noticeBackground: "#fff8d6",
   noticeText: "#667781",
   noticeBorder: "#f4df9a",
-  homeBackground: "#f7f8fa",
+  homeBackground: "#ffffff",
   homeHeader: "#ffffff",
   homeSearch: "#f0f2f5",
   homeRow: "#ffffff",
   homeSelection: "#d9fdd3",
+  datePill: "#ffffff",
+  datePillText: "#54656f",
 };
 
 const darkColors = {
@@ -65,6 +70,9 @@ const darkColors = {
   accentStrong: "#00a884",
   accentSoft: "rgba(0,168,132,0.18)",
   header: "#111b21",
+  headerText: "#ffffff",
+  headerSubtitle: "rgba(255,255,255,0.82)",
+  headerIcon: "#ffffff",
   danger: "#ffb4ab",
   warning: "#f9c74f",
   mine: "#144d37",
@@ -76,11 +84,13 @@ const darkColors = {
   noticeBackground: "#1d272e",
   noticeText: "#aebdc6",
   noticeBorder: "#2f3d45",
-  homeBackground: "#0b141a",
-  homeHeader: "#0b141a",
+  homeBackground: "#111b21",
+  homeHeader: "#111b21",
   homeSearch: "#202c33",
-  homeRow: "#0b141a",
+  homeRow: "#111b21",
   homeSelection: "#123526",
+  datePill: "rgba(32,44,51,0.92)",
+  datePillText: "#ffffff",
 };
 
 export type AppTheme = typeof lightTheme;

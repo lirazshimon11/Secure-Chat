@@ -315,7 +315,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
             </>
           ) : viewMode === "home" ? (
             <>
-              <Text style={styles.brand}>Secure</Text>
+              <Text style={styles.brand}>SecureApp</Text>
               <View style={{ flexDirection: "row", gap: 6 }}>
                 <Pressable onPress={() => setShowGeneralMenu(true)} style={styles.iconButton}>
                   <MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={24} />
@@ -468,7 +468,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<
     },
     brand: {
       flex: 1,
-      color: theme.colors.text,
+      color: "#008069",
       fontSize: 24,
       fontWeight: "700",
     },

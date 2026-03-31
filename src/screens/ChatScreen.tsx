@@ -417,7 +417,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     return (
       <View style={styles.header}>
         <Pressable onPress={handleBack} style={styles.headerButton}>
-          <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
+          <Feather color={theme.colors.headerIcon} name="arrow-left" size={22} />
         </Pressable>
 
         {isSelectionMode ? (
@@ -426,24 +426,24 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <View style={styles.selectionActions}>
               {selectedIds.length === 1 && (
                 <Pressable onPress={handleReplyToSelected} style={styles.headerButton}>
-                  <MaterialCommunityIcons color={theme.colors.textOnAccent} name="reply" size={22} />
+                  <MaterialCommunityIcons color={theme.colors.headerIcon} name="reply" size={22} />
                 </Pressable>
               )}
               <Pressable onPress={handleToggleStarSelected} style={styles.headerButton}>
                 <MaterialCommunityIcons 
-                  color={theme.colors.textOnAccent} 
+                  color={theme.colors.headerIcon} 
                   name={selectedIds.every((id) => savedMessageIds.has(id)) ? "star-off" : "star"} 
                   size={22} 
                 />
               </Pressable>
               <Pressable onPress={handleDeleteSelected} style={styles.headerButton}>
-                <MaterialCommunityIcons color={theme.colors.textOnAccent} name="trash-can" size={22} />
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can" size={22} />
               </Pressable>
               <Pressable onPress={() => handleGenericAction("Forward")} style={styles.headerButton}>
-                <MaterialCommunityIcons color={theme.colors.textOnAccent} name="share-outline" size={22} style={{ transform: [{ scaleX: -1 }] }} />
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="share-outline" size={22} style={{ transform: [{ scaleX: -1 }] }} />
               </Pressable>
               <Pressable onPress={() => setShowSelectionOverflowMenu(true)} style={styles.headerButton}>
-                <MaterialCommunityIcons color={theme.colors.textOnAccent} name="dots-vertical" size={22} />
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={22} />
               </Pressable>
             </View>
           </>
@@ -467,7 +467,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
               </Text>
             </Pressable>
             <Pressable onPress={() => setShowOverflowMenu(true)} style={styles.headerButton}>
-              <MaterialCommunityIcons color={theme.colors.textOnAccent} name="dots-vertical" size={20} />
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={20} />
             </Pressable>
           </>
         )}
@@ -502,25 +502,21 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   return (
     <View 
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      style={{ flex: 1, backgroundColor: theme.colors.chatBackdrop }}
       onStartShouldSetResponderCapture={handleGlobalTouch}
     >
+      <ChatBackground source={chatBgSource} scale={1.8} />
       <SafeAreaView edges={["top"]} style={{ backgroundColor: theme.colors.header, zIndex: 10 }}>
         {renderHeader()}
       </SafeAreaView>
 
-      <SafeAreaView edges={["left", "right", "bottom"]} style={{ flex: 1, backgroundColor: theme.colors.composer }}>
+      <SafeAreaView edges={["left", "right", "bottom"]} style={{ flex: 1, backgroundColor: 'transparent' }}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={{ 
-            flex: 1, 
-            paddingBottom: Platform.OS === "android" && androidNativeKeyboardPadding > 0
-              ? Math.max(0, androidNativeKeyboardPadding - insets.bottom + 15) 
-              : 0 
-          }}
+          style={{ flex: 1 }}
         >
 
-        <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        <View style={{ flex: 1, backgroundColor: 'transparent' }}>
         {searchOpen ? (
           <View style={styles.searchBar}>
             <Feather color={theme.colors.textMuted} name="search" size={16} />
@@ -543,7 +539,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       ) : null}
 
       <View style={styles.thread}>
-        <ChatBackground source={chatBgSource} scale={1.8} />
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={styles.scrollContent}
@@ -842,7 +837,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         <View style={styles.fullscreenOverlay}>
           <View style={styles.infoTitleRow}>
             <Pressable onPress={() => setViewInfoMessage(null)} style={styles.headerButton}>
-              <Feather color={theme.colors.textOnAccent} name="arrow-right" size={24} />
+              <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
             </Pressable>
             <Text style={styles.infoTitle}>פרטי הודעה</Text>
           </View>
@@ -873,7 +868,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
               </View>
               <View style={styles.infoUserRow}>
                 <View style={[styles.avatar, { width: 44, height: 44 }]}>
-                  <MaterialCommunityIcons name="account" color={theme.colors.textOnAccent} size={28} />
+                  <MaterialCommunityIcons name="account" color={theme.colors.headerIcon} size={28} />
                 </View>
                 <View style={styles.infoUserText}>
                   <Text style={styles.infoUsername}>אבי צייד הסקווידווידיות</Text>
@@ -917,7 +912,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <View style={styles.reactionUserList}>
               <View style={styles.reactionUserRow}>
                 <View style={[styles.avatar, { width: 44, height: 44 }]}>
-                  <MaterialCommunityIcons name="account" color={theme.colors.textOnAccent} size={28} />
+                  <MaterialCommunityIcons name="account" color={theme.colors.headerIcon} size={28} />
                 </View>
                 <View style={styles.reactionUserInfo}>
                   <Text style={styles.reactionUserName}>התגובה שלך</Text>
@@ -1016,29 +1011,29 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       width: 40,
       height: 40,
       borderRadius: theme.radius.pill,
-      backgroundColor: "rgba(255,255,255,0.22)",
+      backgroundColor: theme.colors.surfaceAlt,
       alignItems: "center",
       justifyContent: "center",
     },
     avatarText: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerIcon,
       fontWeight: "800",
     },
     headerCopy: {
       flex: 1,
     },
     title: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 17,
       fontWeight: "700",
     },
     subtitle: {
-      color: "rgba(255,255,255,0.82)",
+      color: theme.colors.headerSubtitle,
       fontSize: 12,
       marginTop: 1,
     },
     selectionCount: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 20,
       fontWeight: "700",
       marginLeft: 4,
@@ -1092,15 +1087,20 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       width: "100%",
     },
     datePill: {
-      backgroundColor: "rgba(32,44,51,0.92)",
-      paddingHorizontal: 12,
-      paddingVertical: 5,
-      borderRadius: 8,
+      backgroundColor: theme.colors.datePill,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+      borderRadius: 12,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 1,
+      elevation: 1,
     },
     datePillText: {
-      color: theme.colors.textMuted,
-      fontSize: 12,
-      fontWeight: "600",
+      color: theme.colors.datePillText,
+      fontSize: 12.5,
+      fontWeight: "400",
     },
     emptyState: {
       marginTop: "auto",
@@ -1240,7 +1240,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       gap: 16,
     },
     infoTitle: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 20,
       fontWeight: "700",
       textAlign: "right",
@@ -1251,7 +1251,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     },
     infoBubbleRow: {
       paddingVertical: 20,
-      backgroundColor: "rgba(0,0,0,0.1)",
+      backgroundColor: theme.colors.surfaceAlt,
     },
     infoSection: {
       paddingHorizontal: 24,
@@ -1291,7 +1291,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     },
     reactionsSheet: {
       marginTop: "auto",
-      backgroundColor: "#0b141a",
+      backgroundColor: theme.colors.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       paddingBottom: 40,
@@ -1358,7 +1358,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     },
     emojiPickerSheet: {
       marginTop: "auto",
-      backgroundColor: "#0b141a",
+      backgroundColor: theme.colors.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       paddingBottom: 40,
@@ -1410,7 +1410,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       zIndex: 1000,
     },
     toastPill: {
-      backgroundColor: "rgba(32,44,51,0.92)",
+      backgroundColor: theme.colors.datePill,
       borderRadius: 30,
       paddingHorizontal: 20,
       paddingVertical: 10,
@@ -1427,7 +1427,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       height: 20,
     },
     toastText: {
-      color: "#ffffff",
+      color: theme.colors.datePillText,
       fontSize: 14,
       fontWeight: "600",
     },

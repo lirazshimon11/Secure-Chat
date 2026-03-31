@@ -105,10 +105,11 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
         ) : null}
 
         <View style={styles.composerRow}>
-          <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
-            <MaterialCommunityIcons color={theme.colors.textMuted} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
-          </Pressable>
-          <View style={styles.inputShell}>
+          <View style={styles.inputContainer}>
+            <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
+              <MaterialCommunityIcons color={theme.colors.textMuted} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
+            </Pressable>
+            <View style={styles.inputShell}>
             <TextInput
               onChangeText={setBody}
               onSubmitEditing={handleSubmit}
@@ -121,6 +122,7 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
               style={[styles.input, webEmbeddedInputReset]}
               value={body}
             />
+            </View>
           </View>
           <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
             <Feather color={theme.colors.textOnAccent} name="send" size={18} />
@@ -153,16 +155,15 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     wrapper: {
-      backgroundColor: theme.colors.composer,
+      backgroundColor: 'transparent',
       paddingHorizontal: theme.spacing.sm,
       paddingTop: theme.spacing.xs,
       paddingBottom: theme.spacing.xs,
       gap: theme.spacing.xs,
     },
     safeAreaWrapper: {
-      backgroundColor: theme.colors.composer,
-      borderTopColor: theme.colors.separator,
-      borderTopWidth: 1,
+      backgroundColor: 'transparent',
+      borderTopWidth: 0,
     },
     replyBanner: {
       backgroundColor: theme.colors.surface,
@@ -205,11 +206,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       alignItems: "center",
       gap: 6,
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.pill,
+      borderRadius: 18,
       borderColor: theme.colors.border,
       borderWidth: 1,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 8,
     },
     modeChipActive: {
       backgroundColor: theme.colors.accentSoft,
@@ -244,22 +245,26 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     composerRow: {
       flexDirection: "row",
-      alignItems: "center",
+      alignItems: "flex-end",
       gap: theme.spacing.xs,
+    },
+    inputContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "flex-end",
+      backgroundColor: theme.colors.surface,
+      borderRadius: 24,
     },
     sideButton: {
       width: 42,
-      height: 42,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.surface,
+      height: 44,
       alignItems: "center",
       justifyContent: "center",
     },
     inputShell: {
       flex: 1,
-      backgroundColor: theme.colors.surface,
-      borderRadius: 24,
-      paddingHorizontal: 14,
+      paddingLeft: 4,
+      paddingRight: 14,
       minHeight: 44,
       justifyContent: "center",
     },

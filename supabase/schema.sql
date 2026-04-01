@@ -1,4 +1,4 @@
-﻿create extension if not exists "pgcrypto";
+create extension if not exists "pgcrypto";
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -39,6 +39,7 @@ create table if not exists public.chats (
   id uuid primary key default gen_random_uuid(),
   title text not null,
   is_group boolean not null default true,
+  description text,
   created_by uuid not null references public.profiles(id) on delete cascade,
   created_at timestamptz not null default timezone('utc', now()),
   last_message_preview text,
@@ -152,7 +153,8 @@ select
   c.created_by,
   c.created_at,
   c.last_message_preview,
-  c.last_message_at
+  c.last_message_at,
+  c.description
 from public.chat_members cm
 join public.chats c on c.id = cm.chat_id;
 

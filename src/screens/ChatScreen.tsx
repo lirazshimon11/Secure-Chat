@@ -12,7 +12,7 @@ import { MessageComposer } from "@/components/MessageComposer";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
-import { Chat, ChatMuteSetting, Message } from "@/lib/types";
+import { Chat, ChatMuteSetting, Message, Profile } from "@/lib/types";
 import { webEmbeddedInputReset } from "@/lib/webStyles";
 
 type Props = {
@@ -84,6 +84,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     openViewOnceMessage,
     toggleReaction,
     deleteMessages,
+    loadChatMembers,
+    clearChatsLocally,
   } = useChats();
 
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -91,7 +93,16 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showMuteMenu, setShowMuteMenu] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  
+  const [muteSelection, setMuteSelection] = useState<"8_hours" | "1_week" | "always">("always");
+  const [clearSelection, setClearSelection] = useState<"all" | "media">("all");
+  const [clearStarred, setClearStarred] = useState(false);
+  const [reportExit, setReportExit] = useState(true);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showReactionsForId, setShowReactionsForId] = useState<string | null>(null);
   const [showSelectionOverflowMenu, setShowSelectionOverflowMenu] = useState(false);
@@ -111,6 +122,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const scrollMetricsRef = useRef({ y: 0, height: 0, contentHeight: 0 });
 
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+  const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
+
+  useEffect(() => {
+    if (chat.is_group) {
+      loadChatMembers(chat.id).then(setGroupMembers);
+    }
+  }, [chat.id, chat.is_group]);
 
   useEffect(() => {
     let active = true;
@@ -413,11 +431,21 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     setShowReactionsForId(null);
   }
 
+  const groupSubtitle = useMemo(() => {
+    if (!chat.is_group || !groupMembers.length) return "קבוצה";
+    const allNames = groupMembers.map(m => m.id === profile?.id ? "את/ה" : m.username);
+    const text = allNames.join(", ");
+    if (text.length > 32 && allNames.length > 2) {
+      return allNames.slice(0, 3).join(", ") + "...";
+    }
+    return text.length > 40 ? text.slice(0, 37) + "..." : text;
+  }, [groupMembers, chat.is_group, profile?.id]);
+
   const renderHeader = () => {
     return (
       <View style={styles.header}>
         <Pressable onPress={handleBack} style={styles.headerButton}>
-          <Feather color={theme.colors.headerIcon} name="arrow-left" size={22} />
+          <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
         </Pressable>
 
         {isSelectionMode ? (
@@ -440,10 +468,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 <MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can" size={22} />
               </Pressable>
               <Pressable onPress={() => handleGenericAction("Forward")} style={styles.headerButton}>
-                <MaterialCommunityIcons color={theme.colors.headerIcon} name="share-outline" size={22} style={{ transform: [{ scaleX: -1 }] }} />
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="share-outline" size={24} style={{ transform: [{ scaleX: -1 }] }} />
               </Pressable>
               <Pressable onPress={() => setShowSelectionOverflowMenu(true)} style={styles.headerButton}>
-                <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={22} />
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={26} />
               </Pressable>
             </View>
           </>
@@ -456,18 +484,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
               <Text numberOfLines={1} style={styles.title}>
                 {chat.title}
               </Text>
-              <Text style={styles.subtitle}>
-                {chatPreferences[chat.id]?.locked
-                  ? "נעול במכשיר זה"
-                  : chatMuted
-                    ? `מושתק · ${describeMute(muteSetting)}`
-                    : chat.is_group
-                      ? "קבוצה"
-                      : "צ'אט פרטי"}
-              </Text>
+              {chatPreferences[chat.id]?.locked || chatMuted || chat.is_group ? (
+                <Text numberOfLines={1} style={styles.subtitle}>
+                  {chatPreferences[chat.id]?.locked
+                    ? "נעול במכשיר זה"
+                    : chatMuted
+                      ? `מושתק · ${describeMute(muteSetting)}`
+                      : groupSubtitle}
+                </Text>
+              ) : null}
             </Pressable>
             <Pressable onPress={() => setShowOverflowMenu(true)} style={styles.headerButton}>
-              <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={20} />
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={26} />
             </Pressable>
           </>
         )}
@@ -514,6 +542,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         <KeyboardAvoidingView 
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={{ flex: 1 }}
+          enabled={Platform.OS === "ios"}
         >
 
         <View style={{ flex: 1, backgroundColor: 'transparent' }}>
@@ -702,6 +731,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
              onRecentsUpdate={setEmojiRecents}
            />
          </View>
+      ) : Platform.OS === "android" && androidNativeKeyboardPadding > 0 ? (
+         <View style={{ height: androidNativeKeyboardPadding, width: "100%" }} />
       ) : null}
 
       </SafeAreaView>
@@ -710,66 +741,218 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         <View pointerEvents="box-none" style={styles.overlayRoot}>
           <Pressable onPress={() => setShowOverflowMenu(false)} style={styles.backdrop} />
           <View style={styles.menuCard}>
-            <MenuItem
-              label="חיפוש בצ'אט"
-              onPress={() => {
-                setShowOverflowMenu(false);
-                setSearchOpen(true);
-              }}
-            />
-            <MenuItem
-              label="השתקת התראות"
-              secondary={describeMute(muteSetting)}
-              onPress={() => {
-                setShowOverflowMenu(false);
-                setShowMuteMenu(true);
-              }}
-            />
-            <MenuItem
-              label={chat.is_group ? "פרטי קבוצה" : "פרטי צ'אט"}
-              onPress={() => {
-                setShowOverflowMenu(false);
-                onOpenChatSettings();
-              }}
-            />
+            
+            {chat.is_group ? (
+              <>
+                <MenuItem label="הוספה לרשימה" onPress={() => { setShowOverflowMenu(false); Alert.alert("רשימה", "בקרוב"); }} />
+                <MenuDivider />
+                <MenuItem label="פרטי הקבוצה" onPress={() => { setShowOverflowMenu(false); onOpenChatSettings(); }} />
+                <MenuItem label="מדיה קבוצתית" onPress={() => { setShowOverflowMenu(false); Alert.alert("מדיה", "זמין דרך מסך פרטי הקבוצה"); }} />
+                <MenuItem label="חיפוש" onPress={() => { setShowOverflowMenu(false); setSearchOpen(true); }} />
+                <MenuItem label="השתקת התראות" secondary={describeMute(muteSetting)} onPress={() => { setShowOverflowMenu(false); setShowMuteMenu(true); }} />
+                <MenuItem label="הודעות זמניות" onPress={() => { setShowOverflowMenu(false); Alert.alert("הודעות זמניות", "ניתן להגדיר דרך מסך הגדרות הצ'אט"); }} />
+                <MenuItem label="ערכת הנושא של הצאט" onPress={() => { setShowOverflowMenu(false); Alert.alert("ערכת נושא", "בקרוב"); }} />
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                   <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
+                   <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
+                </View>
+              </>
+            ) : (
+              <>
+                <MenuItem label="קבוצה חדשה" onPress={() => { setShowOverflowMenu(false); Alert.alert("קבוצה חדשה", "בקרוב..."); }} />
+                <MenuDivider />
+                <MenuItem label="הצגת איש הקשר" onPress={() => { setShowOverflowMenu(false); onOpenChatSettings(); }} />
+                <MenuItem label="חיפוש" onPress={() => { setShowOverflowMenu(false); setSearchOpen(true); }} />
+                <MenuItem label="מדיה, קישורים ומסמכים" onPress={() => { setShowOverflowMenu(false); Alert.alert("מדיה", "זמין דרך מסך איש הקשר"); }} />
+                <MenuItem label="השתקת התראות" secondary={describeMute(muteSetting)} onPress={() => { setShowOverflowMenu(false); setShowMuteMenu(true); }} />
+                <MenuItem label="הודעות זמניות" onPress={() => { setShowOverflowMenu(false); Alert.alert("הודעות זמניות", "ניתן להגדיר דרך מסך הגדרות הצ'אט"); }} />
+                <MenuItem label="ערכת הנושא של הצ'אט" onPress={() => { setShowOverflowMenu(false); Alert.alert("ערכת נושא", "בקרוב"); }} />
+                <MenuDivider />
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                   <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
+                   <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
+                </View>
+              </>
+            )}
+
+          </View>
+        </View>
+      ) : null}
+
+      {showMoreMenu ? (
+        <View pointerEvents="box-none" style={styles.overlayRoot}>
+          <Pressable onPress={() => setShowMoreMenu(false)} style={styles.backdrop} />
+          <View style={styles.menuCard}>
+            {chat.is_group ? (
+              <>
+                <MenuItem label="ניקוי הצאט" onPress={() => { setShowMoreMenu(false); setShowClearDialog(true); }} />
+                <MenuItem label="יצוא הצאט" onPress={() => { setShowMoreMenu(false); setShowExportDialog(true); }} />
+                <MenuItem label="הוספת קיצור דרך" onPress={() => { setShowMoreMenu(false); Alert.alert("קיצור דרך", "בקרוב"); }} />
+                <MenuItem label="הוספה לרשימה" onPress={() => { setShowMoreMenu(false); Alert.alert("רשימה", "בקרוב"); }} />
+                <MenuDivider />
+                <MenuItem label="דיווח" onPress={() => { setShowMoreMenu(false); setShowReportDialog(true); }} />
+                <MenuItem label="יציאה מהקבוצה" onPress={() => { setShowMoreMenu(false); Alert.alert("יציאה מהקבוצה", "האם לעזוב קבוצה זו?", [{text: "ביטול"}, {text: "עזוב", style: "destructive"}]) }} />
+              </>
+            ) : (
+              <>
+                <MenuItem label="דיווח" onPress={() => { setShowMoreMenu(false); setShowReportDialog(true); }} />
+                <MenuItem label="חסימה" onPress={() => { setShowMoreMenu(false); Alert.alert("חסימה", "בקרוב"); }} />
+                <MenuItem label="ניקוי הצאט" onPress={() => { setShowMoreMenu(false); setShowClearDialog(true); }} />
+                <MenuItem label="יצוא הצאט" onPress={() => { setShowMoreMenu(false); setShowExportDialog(true); }} />
+                <MenuItem label="הוספת קיצור דרך" onPress={() => { setShowMoreMenu(false); Alert.alert("קיצור דרך", "בקרוב"); }} />
+                <MenuItem label="הוספה לרשימה" onPress={() => { setShowMoreMenu(false); Alert.alert("רשימה", "בקרוב"); }} />
+              </>
+            )}
           </View>
         </View>
       ) : null}
 
       {showMuteMenu ? (
-        <View pointerEvents="box-none" style={styles.overlayRoot}>
-          <Pressable onPress={() => setShowMuteMenu(false)} style={styles.backdrop} />
-          <View style={styles.sheetCard}>
-            <Text style={styles.sheetTitle}>השתקת התראות</Text>
-            <SheetButton
-              label="8 שעות"
-              onPress={() => {
-                setChatMute(chat.id, "8_hours");
+        <View pointerEvents="box-none" style={styles.overlayRootCenter}>
+          <Pressable onPress={() => setShowMuteMenu(false)} style={styles.backdropDark} />
+          <View style={styles.dialogCard}>
+            <Text style={styles.dialogTitle}>השתקת התראות על{'\n'}הודעות</Text>
+            <Text style={styles.dialogSub}>חברים אחרים לא יוכלו לראות שהשתקת את הצ'אט הזה. עדיין תשלח לך התראה אם יאזכרו אותך.</Text>
+            
+            <Pressable style={styles.radioRow} onPress={() => setMuteSelection("8_hours")}>
+              <View style={[styles.radioOut, muteSelection === "8_hours" && styles.radioOutActive]}>
+                {muteSelection === "8_hours" && <View style={styles.radioIn} />}
+              </View>
+              <Text style={styles.radioText}>8 שעות</Text>
+            </Pressable>
+
+            <Pressable style={styles.radioRow} onPress={() => setMuteSelection("1_week")}>
+              <View style={[styles.radioOut, muteSelection === "1_week" && styles.radioOutActive]}>
+                {muteSelection === "1_week" && <View style={styles.radioIn} />}
+              </View>
+              <Text style={styles.radioText}>שבוע</Text>
+            </Pressable>
+
+            <Pressable style={styles.radioRow} onPress={() => setMuteSelection("always")}>
+              <View style={[styles.radioOut, muteSelection === "always" && styles.radioOutActive]}>
+                {muteSelection === "always" && <View style={styles.radioIn} />}
+              </View>
+              <Text style={styles.radioText}>תמיד</Text>
+            </Pressable>
+
+            <View style={styles.dialogActions}>
+              <Pressable onPress={() => {
+                const map = {
+                  "8_hours": "8_hours",
+                  "1_week": "7_days",
+                  "always": "always"
+                } as const;
+                setChatMute(chat.id, map[muteSelection]);
                 setShowMuteMenu(false);
-              }}
-            />
-            <SheetButton
-              label="7 ימים"
-              onPress={() => {
-                setChatMute(chat.id, "7_days");
-                setShowMuteMenu(false);
-              }}
-            />
-            <SheetButton
-              label="תמיד"
-              onPress={() => {
-                setChatMute(chat.id, "always");
-                setShowMuteMenu(false);
-              }}
-            />
-            <SheetButton
-              danger
-              label="ביטול השתקה"
-              onPress={() => {
-                clearChatMute(chat.id);
-                setShowMuteMenu(false);
-              }}
-            />
+              }}>
+                <Text style={styles.dialogBtn}>אישור</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowMuteMenu(false)}>
+                <Text style={styles.dialogBtn}>ביטול</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {showClearDialog ? (
+        <View pointerEvents="box-none" style={styles.overlayRootCenter}>
+          <Pressable onPress={() => setShowClearDialog(false)} style={styles.backdropDark} />
+          <View style={styles.dialogCard}>
+            <Text style={styles.dialogTitleSmall}>מחיקת הצ'אט</Text>
+            
+            <Pressable style={styles.radioRow} onPress={() => setClearSelection("all")}>
+              <View style={[styles.radioOut, clearSelection === "all" && styles.radioOutActive]}>
+                {clearSelection === "all" && <View style={styles.radioIn} />}
+              </View>
+              <Text style={styles.radioText}>כל ההודעות</Text>
+            </Pressable>
+
+            <Pressable style={styles.radioRow} onPress={() => setClearSelection("media")}>
+              <View style={[styles.radioOut, clearSelection === "media" && styles.radioOutActive]}>
+                {clearSelection === "media" && <View style={styles.radioIn} />}
+              </View>
+              <Text style={styles.radioText}>רק קובצי מדיה</Text>
+            </Pressable>
+
+            <Pressable style={styles.checkRow} onPress={() => setClearStarred(!clearStarred)}>
+              <View style={[styles.checkBox, clearStarred && styles.checkBoxActive]}>
+                {clearStarred && <Feather name="check" size={14} color="#fff" />}
+              </View>
+              <Text style={styles.radioText}>מחיקת הודעות שמסומנות בכוכב</Text>
+            </Pressable>
+
+            <Text style={styles.dialogFooterNotes}>
+              קובצי מדיה ששמרת מתוך WhatsApp יישארו בגלריה של המכשיר.
+            </Text>
+
+            <Pressable style={styles.dialogFullBtn} onPress={() => {
+              clearChatsLocally([chat.id]);
+              setShowClearDialog(false);
+            }}>
+              <Text style={styles.dialogFullBtnText}>מחיקת הצ'אט</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {showExportDialog ? (
+        <View pointerEvents="box-none" style={styles.overlayRootCenter}>
+          <Pressable onPress={() => setShowExportDialog(false)} style={styles.backdropDark} />
+          <View style={styles.dialogCard}>
+            <Text style={styles.dialogSubBold}>צירוף מדיה יגדיל את נפח הקובץ של יצוא הצ'אט.</Text>
+            
+            <View style={styles.dialogActionsExpand}>
+              <Pressable onPress={() => {
+                setShowExportDialog(false);
+                Alert.alert("יצוא צ'אט", "הכנת קובץ כולל מדיה...");
+              }}>
+                <Text style={styles.dialogBtn}>לכלול מדיה</Text>
+              </Pressable>
+              
+              <Pressable onPress={() => {
+                setShowExportDialog(false);
+                Alert.alert("יצוא צ'אט", "הכנת קובץ טקסט למייל...");
+              }}>
+                <Text style={styles.dialogBtn}>ללא מדיה</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
+
+      {showReportDialog ? (
+        <View pointerEvents="box-none" style={styles.overlayRootCenter}>
+          <Pressable onPress={() => setShowReportDialog(false)} style={styles.backdropDark} />
+          <View style={styles.dialogCard}>
+            <Text style={styles.dialogTitleSmall}>רוצה לדווח ל-WhatsApp על {chat.is_group ? "הקבוצה" : "המשתמש"} הזו?</Text>
+            
+            <Text style={styles.dialogSub}>5 ההודעות האחרונות בקבוצה יועברו ל-WhatsApp. אם החלטת לצאת מהקבוצה ולמחוק את הצ'אט, ההודעות יימחקו רק במכשיר הזה ובמכשירים שמותקנת בהם הגרסה האחרונה של WhatsApp.</Text>
+            <Text style={styles.dialogSub}>לא תישלח על כך הודעה לחברי הקבוצה.</Text>
+
+            <Pressable style={styles.checkRow} onPress={() => setReportExit(!reportExit)}>
+              <View style={[styles.checkBox, reportExit && styles.checkBoxActive]}>
+                {reportExit && <Feather name="check" size={14} color="#fff" />}
+              </View>
+              <Text style={styles.radioText}>יציאה מצ'אט ומחיקתו</Text>
+            </Pressable>
+
+            <View style={styles.dialogActions}>
+              <Pressable onPress={() => {
+                setShowReportDialog(false);
+                Alert.alert("דיווח", "הדיווח התקבל וייבדק.");
+                if (reportExit) {
+                  clearChatsLocally([chat.id]);
+                }
+              }}>
+                <Text style={styles.dialogBtn}>דיווח</Text>
+              </Pressable>
+              <Pressable onPress={() => setShowReportDialog(false)}>
+                <Text style={styles.dialogBtn}>ביטול</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       ) : null}
@@ -964,6 +1147,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   );
 }
 
+function MenuDivider() {
+  const theme = useAppTheme();
+  return <View style={{ height: 1, backgroundColor: theme.colors.separator || "rgba(150,150,150,0.2)", marginVertical: 4 }} />;
+}
+
 function MenuItem({ label, secondary, onPress }: { label: string; secondary?: string; onPress: () => void }) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme, { top: 0, bottom: 0, left: 0, right: 0 }), [theme]);
@@ -1024,7 +1212,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     },
     title: {
       color: theme.colors.headerText,
-      fontSize: 17,
+      fontSize: 18,
       fontWeight: "700",
     },
     subtitle: {
@@ -1129,6 +1317,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       ...StyleSheet.absoluteFillObject,
       zIndex: 100, // Increased z-index
       justifyContent: "flex-start",
+      alignItems: "flex-end",
+      paddingEnd: 8,
     },
     overlayRootCenter: {
       ...StyleSheet.absoluteFillObject,
@@ -1142,12 +1332,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       backgroundColor: theme.colors.overlay,
     },
     menuCard: {
-      position: "absolute",
-      top: insets.top + 56, // status bar + header height → right below the 3-dot button
-      right: 8,
+      marginTop: insets.top + 56, // status bar + header height → right below the 3-dot button
       backgroundColor: theme.colors.surface,
       borderRadius: theme.radius.md,
-      minWidth: 160, // Adjusted width
+      width: 240,
       overflow: "hidden",
       shadowColor: "#000000",
       shadowOpacity: 0.18,
@@ -1158,16 +1346,20 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     menuItem: {
       paddingHorizontal: 20,
       paddingVertical: 14,
+      width: "100%",
+      alignSelf: "stretch",
     },
     menuItemText: {
       color: theme.colors.text,
       fontSize: 16,
       fontWeight: "500",
+      textAlign: "left",
     },
     menuItemSecondary: {
       color: theme.colors.textMuted,
       fontSize: 12,
       marginTop: 3,
+      textAlign: "left",
     },
     sheetCard: {
       marginTop: "auto",
@@ -1400,6 +1592,132 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     },
     emojiCellText: {
       fontSize: 28,
+    },
+    backdropDark: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "rgba(0,0,0,0.5)",
+    },
+    dialogCard: {
+      width: "100%",
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.radius.lg,
+      padding: theme.spacing.xl,
+    },
+    dialogTitle: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: theme.colors.text,
+      marginBottom: theme.spacing.md,
+      textAlign: "right",
+    },
+    dialogTitleSmall: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: theme.colors.text,
+      marginBottom: theme.spacing.lg,
+      textAlign: "right",
+    },
+    dialogSub: {
+      fontSize: 15,
+      color: theme.colors.textMuted,
+      marginBottom: theme.spacing.lg,
+      textAlign: "right",
+      lineHeight: 22,
+    },
+    dialogSubBold: {
+      fontSize: 16,
+      fontWeight: "600",
+      color: theme.colors.textMuted,
+      marginBottom: theme.spacing.lg,
+      textAlign: "right",
+      lineHeight: 24,
+    },
+    radioRow: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.md,
+    },
+    radioOut: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      borderColor: theme.colors.textMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    radioOutActive: {
+      borderColor: theme.colors.accent,
+    },
+    radioIn: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: theme.colors.accent,
+    },
+    radioText: {
+      fontSize: 16,
+      color: theme.colors.text,
+      flex: 1,
+      textAlign: "right",
+    },
+    checkRow: {
+      flexDirection: "row-reverse",
+      alignItems: "flex-start",
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.md,
+    },
+    checkBox: {
+      width: 20,
+      height: 20,
+      borderWidth: 2,
+      borderColor: theme.colors.textMuted,
+      borderRadius: 4,
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 2,
+    },
+    checkBoxActive: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
+    },
+    dialogFooterNotes: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      textAlign: "right",
+      marginTop: theme.spacing.lg,
+      marginBottom: theme.spacing.xl,
+      lineHeight: 18,
+    },
+    dialogFullBtn: {
+      borderWidth: 1,
+      borderColor: "red",
+      borderRadius: theme.radius.pill,
+      paddingVertical: 12,
+      alignItems: "center",
+    },
+    dialogFullBtnText: {
+      color: "red",
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    dialogActions: {
+      flexDirection: "row",
+      justifyContent: "flex-start",
+      gap: theme.spacing.xl,
+      marginTop: theme.spacing.xl,
+    },
+    dialogActionsExpand: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: theme.spacing.lg,
+    },
+    dialogBtn: {
+      fontSize: 15,
+      fontWeight: "600",
+      color: theme.colors.accent,
+      padding: theme.spacing.sm,
     },
     toastContainer: {
       position: "absolute",

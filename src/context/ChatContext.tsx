@@ -66,6 +66,8 @@ type ChatContextValue = {
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
   openViewOnceMessage: (message: Message) => Promise<void>;
   deleteMessages: (messageIds: string[]) => Promise<void>;
+  updateChatDescription: (chatId: string, description: string) => Promise<void>;
+  deleteChats: (chatIds: string[]) => Promise<void>;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -298,6 +300,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       id: row.chat_id,
       title: row.is_group ? row.chat_title : directTitles[row.chat_id] ?? row.chat_title,
       is_group: row.is_group,
+      description: row.description ?? null,
       created_by: row.created_by,
       created_at: row.created_at,
       last_message_preview: row.last_message_preview,
@@ -728,6 +731,46 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function deleteChats(chatIdsToProcess: string[]) {
+    if (!profile?.id || !chatIdsToProcess.length) return;
+
+    for (const chatId of chatIdsToProcess) {
+      const chat = chats.find((c) => c.id === chatId);
+      if (!chat) continue;
+
+      if (chat.is_group) {
+        // Leave the group
+        await supabase
+          .from("chat_members")
+          .delete()
+          .eq("chat_id", chatId)
+          .eq("user_id", profile.id);
+      } else {
+        // Delete the private chat fully (cascades to members and messages)
+        await supabase
+          .from("chats")
+          .delete()
+          .eq("id", chatId);
+      }
+    }
+
+    await refreshChats();
+  }
+
+  async function updateChatDescription(chatId: string, description: string) {
+    if (!profile?.id) {
+      return;
+    }
+
+    const { error } = await supabase.from("chats").update({ description }).eq("id", chatId);
+
+    if (!error) {
+      setChats((current) =>
+        current.map((chat) => (chat.id === chatId ? { ...chat, description } : chat))
+      );
+    }
+  }
+
   const value = useMemo(
     () => ({
       chats,
@@ -757,6 +800,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
       toggleReaction,
       openViewOnceMessage,
       deleteMessages,
+      updateChatDescription,
+      deleteChats,
     }),
     [chatPreferences, chats, loading, messagesByChat, muteSettings, openedViewOnceIds, profiles, reactionsByMessage, unreadCounts],
   );

@@ -1,45 +1,58 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatMuteSetting, Profile } from "@/lib/types";
 
+// Sub-screens
+import { ChatDescriptionModal } from "./chat-settings/ChatDescriptionModal";
+import { ChatMediaVisibilityModal } from "./chat-settings/ChatMediaVisibilityModal";
+import { ChatStorageScreen } from "./chat-settings/ChatStorageScreen";
+import { ChatAdvancedPrivacyScreen } from "./chat-settings/ChatAdvancedPrivacyScreen";
+import { ChatDisappearingMessagesScreen } from "./chat-settings/ChatDisappearingMessagesScreen";
+import { ChatNotificationsScreen } from "./chat-settings/ChatNotificationsScreen";
+import { ChatMediaScreen } from "./chat-settings/ChatMediaScreen";
+import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
+import { ChatPermissionsScreen } from "./chat-settings/ChatPermissionsScreen";
+import { ChatRenameModal } from "./chat-settings/ChatRenameModal";
+
 type Props = {
   chat: Chat;
   onBack: () => void;
 };
 
-function isChatMuted(setting?: ChatMuteSetting) {
-  if (!setting) {
-    return false;
-  }
-
-  if (setting.mute_always) {
-    return true;
-  }
-
-  return Boolean(setting.mute_until && new Date(setting.mute_until).getTime() > Date.now());
-}
-
-function describeMute(setting?: ChatMuteSetting) {
-  if (!isChatMuted(setting)) {
-    return "ההתראות פועלות";
-  }
-
-  if (setting?.mute_always) {
-    return "הושתק לתמיד";
-  }
-
-  return setting?.mute_until ? `הושתק עד ${new Date(setting.mute_until).toLocaleString("he-IL")}` : "מושתק";
-}
-
 export function ChatSettingsScreen({ chat, onBack }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { loadChatMembers, muteSettings, setChatMute, clearChatMute } = useChats();
+  const { loadChatMembers, messagesByChat, chats } = useChats();
   const [members, setMembers] = useState<Profile[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const liveChat = useMemo(() => chats.find((c) => c.id === chat.id) || chat, [chats, chat.id]);
+
+  const messages = messagesByChat[chat.id] || [];
+  const links = useMemo(() => {
+    return messages
+      .filter((m) => m.body_ciphertext && m.body_ciphertext.includes("http"))
+      .map((m) => {
+        const match = m.body_ciphertext!.match(/(https?:\/\/[^\s]+)/);
+        return match ? match[0] : null;
+      })
+      .filter(Boolean);
+  }, [messages]);
+
+  const mediaCount = links.length;
+
+  // Sub-screen orchestration
+  const [activeScreen, setActiveScreen] = useState<
+    "storage" | "notifications" | "disappearing" | "advanced" | "media" | "addMembers" | "permissions" | null
+  >(null);
+  const [showDescription, setShowDescription] = useState(false);
+  const [showVisibility, setShowVisibility] = useState(false);
+  const [showOverflowMenu, setShowOverflowMenu] = useState(false);
+  const [showRenameModal, setShowRenameModal] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -48,274 +61,443 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
     })();
   }, [chat.id, loadChatMembers]);
 
-  const muteSetting = muteSettings[chat.id];
-  const muteLabel = useMemo(() => describeMute(muteSetting), [muteSetting]);
+  const filteredMembers = useMemo(() => {
+    if (!searchQuery) return members;
+    return members.filter((m) =>
+      m.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [members, searchQuery]);
+
+  // Render sub-screens instead of parent if active
+  if (activeScreen === "storage") return <ChatStorageScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "notifications") return <ChatNotificationsScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "disappearing") return <ChatDisappearingMessagesScreen onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "advanced") return <ChatAdvancedPrivacyScreen onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "media") return <ChatMediaScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "permissions") return <ChatPermissionsScreen chat={chat} onBack={() => setActiveScreen(null)} />;
 
   return (
-    <Screen scroll>
-      <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
-        </Pressable>
-        <Text style={styles.headerTitle}>פרטי צ'אט</Text>
-      </View>
+    <Screen>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
 
-      <View style={styles.heroCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{chat.title.slice(0, 1).toUpperCase()}</Text>
+        {/* Transparent-like Header Block */}
+        <View style={styles.header}>
+          <Pressable onPress={onBack} style={styles.headerIcon}>
+            <Feather color={theme.colors.text} name="arrow-right" size={24} />
+          </Pressable>
+          <View style={styles.headerSpacer} />
+          <Pressable style={styles.headerIcon} onPress={() => setShowOverflowMenu(true)}>
+            <MaterialCommunityIcons name="dots-vertical" size={24} color={theme.colors.text} />
+          </Pressable>
         </View>
-        <Text style={styles.chatTitle}>{chat.title}</Text>
-        <Text style={styles.chatSubtitle}>{chat.is_group ? "קבוצה פרטית" : "צ'אט פרטי"}</Text>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>התראות</Text>
-        <SettingRow icon="bell-outline" subtitle={muteLabel} theme={theme} title="השתקת התראות" />
-        <View style={styles.muteActions}>
-          <MuteChip label="8 שעות" onPress={() => setChatMute(chat.id, "8_hours")} theme={theme} />
-          <MuteChip label="7 ימים" onPress={() => setChatMute(chat.id, "7_days")} theme={theme} />
-          <MuteChip label="תמיד" onPress={() => setChatMute(chat.id, "always")} theme={theme} />
-          <MuteChip danger label="ביטול השתקה" onPress={() => clearChatMute(chat.id)} theme={theme} />
+        {/* Hero Section */}
+        <View style={styles.heroSection}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{liveChat.title.slice(0, 1).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.chatTitle}>{liveChat.title}</Text>
+          <Text style={styles.chatSubtitle}>{liveChat.is_group ? `קבוצה · ${members.length} חברים` : "צ'אט פרטי"}</Text>
         </View>
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>הגדרות צ'אט</Text>
-        <SettingRow icon="timer-sand" subtitle="אפשרות להודעות נעלמות אחרי דקה" theme={theme} title="הודעות זמניות" />
-        <SettingRow icon="eye-outline" subtitle="חשיפה חד-פעמית להודעות רגישות" theme={theme} title="צפייה חד-פעמית" />
-        <SettingRow icon="message-text-outline" subtitle="באפליקציה זו מותר טקסט פשוט בלבד" theme={theme} title="טקסט בלבד" />
-      </View>
+        {/* Action Buttons */}
+        <View style={styles.actionRow}>
+          <Pressable style={styles.actionButton} onPress={() => { import('react-native').then(m => m.Alert.alert("חיפוש", "זמין דרך מסך הצ'אט הראשי")); }}>
+            <View style={styles.actionIconBox}>
+              <Feather name="search" size={28} color={theme.colors.accent} />
+            </View>
+            <Text style={styles.actionText}>חיפוש</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton} onPress={() => { import('react-native').then(m => m.Alert.alert("צ'אט קולי", "שירות שיחות קוליות מנותק כעת")); }}>
+            <View style={styles.actionIconBox}>
+              <MaterialCommunityIcons name="phone-outline" size={28} color={theme.colors.accent} />
+            </View>
+            <Text style={styles.actionText}>צ'אט קולי</Text>
+          </Pressable>
+        </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>חברים</Text>
-        {members.length ? (
-          <ScrollView scrollEnabled={false}>
-            {members.map((member, index) => (
-              <View key={member.id} style={[styles.memberRow, index !== members.length - 1 && styles.memberBorder]}>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberAvatarText}>{member.username.slice(0, 1).toUpperCase()}</Text>
-                </View>
-                <View style={styles.memberCopy}>
-                  <Text style={styles.memberName}>@{member.username}</Text>
-                  <Text style={styles.memberEmail}>{member.full_name || member.email}</Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        ) : (
-          <Text style={styles.emptyText}>טוען חברים...</Text>
+        <View style={styles.thickSeparator} />
+
+        {/* Description Section */}
+        {liveChat.is_group && (
+          <View>
+            <Pressable style={styles.descriptionSection} onPress={() => setShowDescription(true)}>
+              <Text style={styles.descriptionText} numberOfLines={3}>
+                {liveChat.description || "הוסף/י תיאור לקבוצה..."}
+              </Text>
+              <Text style={styles.descriptionHint}>הקש/י כדי לערוך</Text>
+            </Pressable>
+
+            <View style={styles.thickSeparator} />
+          </View>
         )}
-      </View>
+
+        {/* Media Block */}
+        <Pressable style={styles.mediaBlockBtn} onPress={() => setActiveScreen("media")}>
+          <View style={styles.mediaBlockHeader}>
+            <Text style={styles.mediaBlockTitle}>מדיה, קישורים ומסמכים</Text>
+            {mediaCount > 0 ? <Text style={styles.mediaBlockCount}>{mediaCount}</Text> : null}
+            <Feather name="chevron-left" size={20} color={theme.colors.textMuted} />
+          </View>
+        </Pressable>
+
+        <View style={styles.thickSeparator} />
+
+        {/* Settings List */}
+        <View style={styles.listSection}>
+          <SettingRow icon="folder-outline" title="ניהול האחסון" subtitle={""} onPress={() => setActiveScreen("storage")} theme={theme} />
+          <SettingRow icon="bell-outline" title="התראות" subtitle="מותאם אישית" onPress={() => setActiveScreen("notifications")} theme={theme} />
+          <SettingRow icon="image-outline" title="הצגת מדיה" subtitle="" onPress={() => setShowVisibility(true)} theme={theme} />
+        </View>
+
+        <View style={styles.thickSeparator} />
+
+        <View style={styles.listSection}>
+          <SettingRow icon="lock-outline" title="הצפנה" subtitle="ההודעות והשיחות מוצפנות מקצה לקצה. יש להקיש לקבלת פרטים נוספים." actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("הצפנה", "הצ'אט מעוגן מאובטח בפרוטוקול קצה-לקצה מלא.")); }} />
+          <SettingRow icon="timer-sand" title="הודעות זמניות" subtitle="כבה" onPress={() => setActiveScreen("disappearing")} theme={theme} />
+          <SettingRow icon="cellphone-lock" title="נעילת הצ'אט" subtitle="נעילה והסתרה של הצ'אט הזה במכשיר" actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("נעילת צ'אט", "ניתן לנעול צ'אטים ממסך הבית (לחיצה ארוכה).")); }} />
+          <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="כבה" onPress={() => setActiveScreen("advanced")} theme={theme} />
+        </View>
+
+        <View style={styles.thickSeparator} />
+
+        {/* Members List */}
+        <View style={styles.membersSection}>
+          <View style={styles.membersHeader}>
+            <Text style={styles.membersCount}>{members.length} חברים</Text>
+            <Feather name="search" size={20} color={theme.colors.textMuted} />
+          </View>
+
+          {/* Members search bar */}
+          <View style={styles.searchBar}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="חיפוש חברים..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+
+          <View style={styles.memberRow}>
+            <View style={styles.memberAvatar}>
+              <Text style={styles.memberAvatarText}>א</Text>
+            </View>
+            <View style={styles.memberCopy}>
+              <Text style={styles.memberName}>את/ה</Text>
+              <Text style={styles.memberSubtitlePrimary}>הוספת תג חבר</Text>
+            </View>
+          </View>
+
+          {filteredMembers.map((member) => (
+            <View key={member.id} style={styles.memberRow}>
+              <View style={styles.memberAvatar}>
+                <Text style={styles.memberAvatarText}>{member.username.slice(0, 1).toUpperCase()}</Text>
+              </View>
+              <View style={styles.memberCopy}>
+                <Text style={styles.memberName}>{member.full_name || member.username}</Text>
+                <Text style={styles.memberSubtitle}>~ {member.username}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+      </ScrollView>
+
+      {/* Modals */}
+      <ChatDescriptionModal chat={chat} visible={showDescription} onClose={() => setShowDescription(false)} />
+      <ChatMediaVisibilityModal visible={showVisibility} onClose={() => setShowVisibility(false)} />
+
+      {/* Overflow Menu */}
+      {showOverflowMenu && (
+        <View pointerEvents="box-none" style={styles.overlayRoot}>
+          <Pressable onPress={() => setShowOverflowMenu(false)} style={styles.backdrop} />
+          <View style={styles.menuCard}>
+            {liveChat.is_group ? (
+              <>
+                <MenuItem label="צירוף חברים" onPress={() => { setShowOverflowMenu(false); setActiveScreen("addMembers"); }} />
+                <MenuItem label="שינוי שם הקבוצה" onPress={() => { setShowOverflowMenu(false); setShowRenameModal(true); }} />
+                <MenuItem label="הרשאות בקבוצה" onPress={() => { setShowOverflowMenu(false); setActiveScreen("permissions"); }} />
+              </>
+            ) : (
+              <>
+                <MenuItem label="שיתוף" onPress={() => { setShowOverflowMenu(false); import('react-native').then(m => m.Alert.alert("שיתוף", "בקרוב")); }} />
+                <MenuItem label="עריכה" onPress={() => { setShowOverflowMenu(false); import('react-native').then(m => m.Alert.alert("עריכה", "בקרוב")); }} />
+                <MenuItem label="אימות קוד אבטחה" onPress={() => { setShowOverflowMenu(false); import('react-native').then(m => m.Alert.alert("קוד אבטחה", "בקרוב")); }} />
+              </>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Rename Modal */}
+      <ChatRenameModal chat={chat} visible={showRenameModal} onClose={() => setShowRenameModal(false)} />
     </Screen>
   );
 }
 
-function SettingRow({
-  icon,
-  title,
-  subtitle,
-  theme,
-}: {
-  icon: keyof typeof MaterialCommunityIcons.glyphMap;
-  title: string;
-  subtitle: string;
-  theme: ReturnType<typeof useAppTheme>;
-}) {
+function MenuItem({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
+  const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
 
+  // Use base sizes similar to screen but padding adapted for dropdowns
   return (
-    <View style={styles.settingRow}>
-      <MaterialCommunityIcons color={theme.colors.textMuted} name={icon} size={22} />
-      <View style={styles.settingCopy}>
-        <Text style={styles.settingTitle}>{title}</Text>
-        <Text style={styles.settingSubtitle}>{subtitle}</Text>
-      </View>
-    </View>
+    <Pressable onPress={onPress} style={{ paddingHorizontal: 16, paddingVertical: 14, width: "100%" }}>
+      <Text style={{ color: danger ? theme.colors.danger : theme.colors.text, fontSize: 16, textAlign: "left" }}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
-function MuteChip({
-  label,
-  onPress,
-  danger,
-  theme,
-}: {
-  label: string;
-  onPress: () => void;
-  danger?: boolean;
-  theme: ReturnType<typeof useAppTheme>;
-}) {
+function SettingRow({ icon, title, subtitle, onPress, actionIcon = true, theme }: any) {
   const styles = useMemo(() => createStyles(theme), [theme]);
-
   return (
-    <Pressable onPress={onPress} style={[styles.muteChip, danger && styles.muteChipDanger]}>
-      <Text style={[styles.muteChipText, danger && styles.muteChipTextDanger]}>{label}</Text>
+    <Pressable style={styles.settingRow} onPress={onPress}>
+      <View style={styles.settingIconBox}>
+        <MaterialCommunityIcons name={icon} size={26} color={theme.colors.textMuted} />
+      </View>
+      <View style={styles.settingCopy}>
+        <Text style={styles.settingTitle}>{title}</Text>
+        {!!subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+      </View>
     </Pressable>
   );
 }
 
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
-    header: {
-      backgroundColor: theme.colors.header,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.md,
-    },
-    backButton: {
-      width: 36,
-      height: 36,
-      borderRadius: theme.radius.pill,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    headerTitle: {
-      color: theme.colors.textOnAccent,
-      fontSize: 20,
-      fontWeight: "800",
-    },
-    heroCard: {
-      alignItems: "center",
+    container: {
+      flex: 1,
       backgroundColor: theme.colors.surface,
-      margin: theme.spacing.md,
-      borderRadius: theme.radius.lg,
-      padding: theme.spacing.lg,
-      gap: 6,
-      borderColor: theme.colors.separator,
-      borderWidth: 1,
+    },
+    overlayRoot: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 40,
+      justifyContent: "flex-start",
+      alignItems: "flex-end",
+      paddingEnd: 8,
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: "transparent",
+    },
+    menuCard: {
+      marginTop: 50,
+      width: 230,
+      borderRadius: theme.radius.md,
+      overflow: "hidden",
+      backgroundColor: theme.colors.surface,
+      shadowColor: "#000000",
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 5,
+    },
+    scrollContent: {
+      paddingBottom: 40,
+    },
+    header: {
+      flexDirection: "row",
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: theme.spacing.md,
+      justifyContent: "space-between",
+    },
+    headerIcon: {
+      padding: theme.spacing.sm,
+    },
+    headerSpacer: {
+      flex: 1,
+    },
+    heroSection: {
+      alignItems: "center",
+      paddingTop: 10,
+      paddingBottom: theme.spacing.xl,
     },
     avatar: {
-      width: 72,
-      height: 72,
-      borderRadius: theme.radius.pill,
+      width: 140,
+      height: 140,
+      borderRadius: 70,
       backgroundColor: theme.colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: 6,
+      marginBottom: 16,
     },
     avatarText: {
-      color: theme.colors.accent,
-      fontSize: 28,
+      fontSize: 54,
       fontWeight: "800",
+      color: theme.colors.accent,
     },
     chatTitle: {
+      fontSize: 26,
+      fontWeight: "700",
       color: theme.colors.text,
-      fontSize: 24,
-      fontWeight: "800",
+      marginBottom: 4,
     },
     chatSubtitle: {
+      fontSize: 16,
       color: theme.colors.textMuted,
+    },
+    actionRow: {
+      flexDirection: "row",
+      paddingHorizontal: theme.spacing.xl,
+      justifyContent: "center",
+      gap: theme.spacing.xl,
+      marginBottom: theme.spacing.lg,
+    },
+    actionButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: 90,
+    },
+    actionIconBox: {
+      width: 54,
+      height: 54,
+      borderRadius: theme.radius.md,
+      backgroundColor: "rgba(37, 211, 102, 0.1)", // WhatsApp standard green tint
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 8,
+    },
+    actionText: {
       fontSize: 14,
+      color: theme.colors.accent,
+      fontWeight: "600",
     },
-    section: {
+    thickSeparator: {
+      height: 8,
+      backgroundColor: theme.colors.separator,
+    },
+    descriptionSection: {
+      padding: theme.spacing.lg,
+      paddingVertical: 24,
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      marginHorizontal: theme.spacing.md,
-      marginBottom: theme.spacing.md,
-      overflow: "hidden",
-      borderColor: theme.colors.separator,
-      borderWidth: 1,
     },
-    sectionTitle: {
+    descriptionText: {
+      fontSize: 16,
+      color: theme.colors.text,
+      fontWeight: "600",
+      lineHeight: 22,
+    },
+    descriptionHint: {
+      fontSize: 13,
       color: theme.colors.textMuted,
-      fontSize: 12,
-      fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.7,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.md,
-      paddingBottom: 8,
+      marginTop: 8,
+    },
+    mediaBlockBtn: {
+      padding: theme.spacing.lg,
+    },
+    mediaBlockHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    mediaBlockTitle: {
+      fontSize: 16,
+      color: theme.colors.text,
+      fontWeight: "600",
+      flex: 1,
+    },
+    mediaBlockCount: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      marginHorizontal: theme.spacing.sm,
+    },
+    listSection: {
+      // Container for settings rows
     },
     settingRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 14,
-      borderTopColor: theme.colors.separator,
-      borderTopWidth: 1,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: 18,
+      gap: theme.spacing.lg,
+    },
+    settingIconBox: {
+      width: 28,
+      alignItems: "center",
+      justifyContent: "center",
     },
     settingCopy: {
       flex: 1,
+      justifyContent: "center",
     },
     settingTitle: {
-      color: theme.colors.text,
-      fontSize: 16,
-      fontWeight: "700",
-    },
-    settingSubtitle: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-      marginTop: 2,
-    },
-    muteActions: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.xs,
-      paddingHorizontal: theme.spacing.md,
-      paddingBottom: theme.spacing.md,
-    },
-    muteChip: {
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.surfaceAlt,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    muteChipDanger: {
-      backgroundColor: theme.colors.surfaceAlt,
-      borderColor: theme.colors.danger,
-      borderWidth: 1,
-    },
-    muteChipText: {
+      fontSize: 17,
       color: theme.colors.text,
       fontWeight: "600",
     },
-    muteChipTextDanger: {
-      color: theme.colors.danger,
+    settingSubtitle: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      marginTop: 2,
+    },
+    membersSection: {
+      paddingBottom: theme.spacing.xl,
+    },
+    membersHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.md,
+    },
+    membersCount: {
+      fontSize: 15,
+      color: theme.colors.textMuted,
+      fontWeight: "600",
+    },
+    searchBar: {
+      paddingHorizontal: theme.spacing.lg,
+      marginBottom: theme.spacing.md,
+    },
+    searchInput: {
+      backgroundColor: theme.colors.surfaceMuted,
+      borderRadius: theme.radius.sm,
+      padding: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      fontSize: 15,
+      color: theme.colors.text,
     },
     memberRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 14,
-    },
-    memberBorder: {
-      borderBottomColor: theme.colors.separator,
-      borderBottomWidth: 1,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: 12,
     },
     memberAvatar: {
       width: 44,
       height: 44,
-      borderRadius: theme.radius.pill,
+      borderRadius: 22,
       backgroundColor: theme.colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
-      marginRight: 12,
     },
     memberAvatarText: {
-      color: theme.colors.accent,
-      fontWeight: "800",
       fontSize: 18,
+      fontWeight: "800",
+      color: theme.colors.accent,
     },
     memberCopy: {
       flex: 1,
+      paddingHorizontal: theme.spacing.md,
+      justifyContent: "center",
     },
     memberName: {
-      color: theme.colors.text,
       fontSize: 16,
-      fontWeight: "700",
+      fontWeight: "600",
+      color: theme.colors.text,
     },
-    memberEmail: {
+    memberSubtitle: {
+      fontSize: 14,
       color: theme.colors.textMuted,
-      fontSize: 13,
       marginTop: 2,
     },
-    emptyText: {
-      color: theme.colors.textMuted,
-      paddingHorizontal: theme.spacing.md,
-      paddingBottom: theme.spacing.md,
+    memberSubtitlePrimary: {
+      fontSize: 14,
+      color: theme.colors.accent,
+      marginTop: 2,
     },
   });

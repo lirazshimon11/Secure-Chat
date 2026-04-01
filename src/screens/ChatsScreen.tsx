@@ -97,6 +97,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     lockChats,
     unlockChats,
     clearChatsLocally,
+    deleteChats,
     loading,
   } = useChats();
   const [searchQuery, setSearchQuery] = useState("");
@@ -210,21 +211,21 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     clearSelection();
   }
 
-  function handleClearLocally() {
+  function handleDeleteChats() {
     if (!selectedChatIds.length) {
       return;
     }
 
     Alert.alert(
-      "לנקות צ'אט במכשיר זה?",
-      "פעולה זו תסתיר את ההודעות הקיימות רק במכשיר זה. הודעות חדשות ימשיכו להגיע כרגיל.",
+      "מחיקת צ'אט?",
+      "האם אתה אינך בטוח שברצונך למחוק את הצ'אט(ים) שנבחר(ו)? פעולה זו לא ניתנת לביטול.",
       [
         { text: "ביטול", style: "cancel" },
         {
-          text: "ניקוי",
+          text: "מחיקה",
           style: "destructive",
           onPress: () => {
-            clearChatsLocally(selectedChatIds);
+            deleteChats(selectedChatIds);
             clearSelection();
           },
         },
@@ -304,6 +305,9 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
                 </Pressable>
                 <Pressable onPress={handlePinToggle} style={styles.iconButton}>
                   <MaterialCommunityIcons color={theme.colors.text} name={allSelectedPinned ? "pin-off-outline" : "pin-outline"} size={21} />
+                </Pressable>
+                <Pressable onPress={handleDeleteChats} style={styles.iconButton}>
+                  <MaterialCommunityIcons color={theme.colors.text} name="trash-can-outline" size={23} />
                 </Pressable>
                 <Pressable onPress={handleLockToggle} style={styles.iconButton}>
                   <MaterialCommunityIcons color={theme.colors.text} name={allSelectedLocked ? "lock-open-variant-outline" : "lock-outline"} size={22} />
@@ -428,7 +432,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
               <MenuItem label={allSelectedArchived ? "הוצאה מהארכיון" : "העברה לארכיון"} onPress={handleArchiveToggle} />
               <MenuItem label={allSelectedPinned ? "ביטול הצמדה" : "הצמדה"} onPress={handlePinToggle} />
               <MenuItem label={allSelectedLocked ? "ביטול נעילה" : "נעילת צ'אט"} onPress={handleLockToggle} />
-              <MenuItem danger label="ניקוי במכשיר זה" onPress={handleClearLocally} />
+              <MenuItem danger label="מחיקת צ'אט" onPress={handleDeleteChats} />
             </View>
           </View>
         ) : null}
@@ -674,16 +678,16 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<
       ...StyleSheet.absoluteFillObject,
       zIndex: 40,
       justifyContent: "flex-start",
+      alignItems: "flex-end",
+      paddingEnd: 10,
     },
     backdrop: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: theme.colors.overlay,
     },
     menuCard: {
-      position: "absolute",
-      top: 54 + insets.top,
-      right: 10,
-      minWidth: 220,
+      marginTop: 54 + insets.top,
+      width: 230,
       borderRadius: theme.radius.md,
       overflow: "hidden",
       backgroundColor: theme.colors.surface,
@@ -695,11 +699,14 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<
     menuItem: {
       paddingHorizontal: 16,
       paddingVertical: 15,
+      width: "100%",
+      alignSelf: "stretch",
     },
     menuItemText: {
       color: theme.colors.text,
       fontSize: 15,
       fontWeight: "600",
+      textAlign: "left",
     },
     menuItemDanger: {
       color: theme.colors.danger,

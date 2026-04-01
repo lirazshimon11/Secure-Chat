@@ -13,6 +13,7 @@ export type Chat = {
   id: string;
   title: string;
   is_group: boolean;
+  description: string | null;
   created_by: string;
   created_at: string;
   last_message_preview: string | null;

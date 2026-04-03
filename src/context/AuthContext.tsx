@@ -7,7 +7,7 @@ type AuthContextValue = {
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
     email: string,
     password: string,
@@ -59,8 +59,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setProfile((data as Profile | null) ?? null);
   }
 
-  async function signIn(email: string, password: string) {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  async function signIn(identifier: string, password: string) {
+    let loginEmail = identifier;
+
+    // If identifier doesn't look like an email, assume it's a username.
+    // We use an RPC function so the lookup works even before the user is authenticated
+    // (the profiles table RLS only allows reads by authenticated users).
+    if (!identifier.includes("@")) {
+      const { data, error: rpcError } = await supabase.rpc("get_email_by_username", {
+        p_username: identifier.toLowerCase(),
+      });
+
+      if (rpcError || !data) {
+        return { error: "שם משתמש אינו קיים במערכת." };
+      }
+      loginEmail = data as string;
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
     return { error: normalizeAuthError(error?.message ?? null) };
   }
 

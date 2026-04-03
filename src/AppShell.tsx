@@ -10,14 +10,14 @@ import { SavedMessagesScreen } from "@/screens/SavedMessagesScreen";
 import { ForwardScreen } from "@/screens/ForwardScreen";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
-import { Chat, Message } from "@/lib/types";
+import { Chat, Message, Profile } from "@/lib/types";
 
 export function AppShell() {
   const { session, loading } = useAuth();
   const { chats, sendMessage } = useChats();
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [showCreateChat, setShowCreateChat] = useState(false);
+  const [showCreateChat, setShowCreateChat] = useState<boolean | Profile[]>(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
   const [showSavedMessages, setShowSavedMessages] = useState(false);
   const [forwardPayload, setForwardPayload] = useState<Message[] | null>(null);
@@ -53,6 +53,7 @@ export function AppShell() {
   if (showCreateChat) {
     return (
       <CreateChatScreen
+        initialSelectedUsers={Array.isArray(showCreateChat) ? showCreateChat : undefined}
         onBack={() => setShowCreateChat(false)}
         onOpenChat={(chat) => {
           setShowCreateChat(false);
@@ -109,15 +110,16 @@ export function AppShell() {
         onOpenChatSettings={() => setShowChatSettings(true)}
         scrollToMessageId={scrollToMessageId}
         onForward={(messages) => setForwardPayload(messages)}
+        onCreateGroupWith={(profile) => setShowCreateChat([profile])}
       />
     );
   }
 
   return (
     <ChatsScreen
-      onOpenChat={(chat) => {
+      onOpenChat={(chat, messageId) => {
         setShowChatSettings(false);
-        setScrollToMessageId(null);
+        setScrollToMessageId(messageId ?? null);
         setSelectedChat(chat);
       }}
       onOpenSavedMessages={() => setShowSavedMessages(true)}

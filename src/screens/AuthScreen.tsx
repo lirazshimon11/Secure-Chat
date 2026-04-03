@@ -12,7 +12,8 @@ export function AuthScreen() {
   const styles = createStyles(theme);
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState(""); // Used for login (email or username)
+  const [email, setEmail] = useState("");           // Used for signup
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -22,30 +23,37 @@ export function AuthScreen() {
     setError(null);
     setNotice(null);
 
-    if (!email.trim()) {
-      setError("נדרש אימייל.");
-      return;
-    }
-
-    if (!password.trim()) {
-      setError("נדרשת סיסמה.");
-      return;
-    }
-
-    if (mode === "signup" && !username.trim()) {
-      setError("נדרש שם משתמש.");
-      return;
-    }
-
     if (mode === "signin") {
-      const result = await signIn(email.trim(), password);
+      if (!identifier.trim()) {
+        setError("נדרש אימייל או שם משתמש.");
+        return;
+      }
+      if (!password.trim()) {
+        setError("נדרשת סיסמה.");
+        return;
+      }
+      const result = await signIn(identifier.trim(), password);
       setError(result.error);
       return;
     }
 
-    const result = await signUp(email.trim(), password, username.trim().toLowerCase());
-    setError(result.error);
-    setNotice(result.notice);
+    if (mode === "signup") {
+      if (!email.trim()) {
+        setError("נדרש אימייל להרשמה.");
+        return;
+      }
+      if (!username.trim()) {
+        setError("נדרש שם משתמש להרשמה.");
+        return;
+      }
+      if (!password.trim()) {
+        setError("נדרשת סיסמה.");
+        return;
+      }
+      const result = await signUp(email.trim(), password, username.trim().toLowerCase());
+      setError(result.error);
+      setNotice(result.notice);
+    }
   }
 
   return (
@@ -85,10 +93,33 @@ export function AuthScreen() {
             />
           </View>
 
-          <AppTextInput label="כתובת אימייל" onChangeText={setEmail} value={email} placeholder="you@example.com" />
-          {mode === "signup" ? (
-            <AppTextInput label="שם משתמש" onChangeText={setUsername} value={username} placeholder="secure_user_01" />
-          ) : null}
+          {mode === "signin" ? (
+            <AppTextInput 
+              label="אימייל או שם משתמש" 
+              onChangeText={setIdentifier} 
+              value={identifier} 
+              placeholder="you@example.com / username" 
+              autoCapitalize="none"
+            />
+          ) : (
+            <>
+              <AppTextInput 
+                label="כתובת אימייל" 
+                onChangeText={setEmail} 
+                value={email} 
+                placeholder="you@example.com" 
+                autoCapitalize="none"
+              />
+              <AppTextInput 
+                label="שם משתמש" 
+                onChangeText={setUsername} 
+                value={username} 
+                placeholder="secure_user_01" 
+                autoCapitalize="none"
+              />
+            </>
+          )}
+
           <AppTextInput
             label="סיסמה"
             onChangeText={setPassword}
@@ -96,12 +127,6 @@ export function AuthScreen() {
             value={password}
             placeholder="8 תווים לפחות"
           />
-
-          <View style={styles.helperCard}>
-            <Text style={styles.helperTitle}>במה Secure שונה</Text>
-            <Text style={styles.helperText}>ההתחברות מתבצעת עם אימייל, סיסמה ושם משתמש.</Text>
-            <Text style={styles.helperText}>תמונות, סרטונים, קבצים ושיחות מושבתים בכוונה תחילה.</Text>
-          </View>
 
           {notice ? <Text style={styles.notice}>{notice}</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}

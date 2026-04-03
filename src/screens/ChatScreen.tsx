@@ -14,6 +14,14 @@ import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatMuteSetting, Message, Profile } from "@/lib/types";
 import { webEmbeddedInputReset } from "@/lib/webStyles";
+import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
+import { ChatMediaScreen } from "./chat-settings/ChatMediaScreen";
+import { ChatDisappearingMessagesScreen } from "./chat-settings/ChatDisappearingMessagesScreen";
+import { ChatThemeScreen } from "./chat-settings/ChatThemeScreen";
+import { CreatePollScreen } from "./chat-settings/CreatePollScreen";
+import { ChatPollVotesScreen } from "./chat-settings/ChatPollVotesScreen";
+import { useScreenshots } from "@/context/ScreenshotContext";
+import { blockScreenshots, unblockScreenshots, addScreenshotListener } from "@/lib/screenshotPermission";
 
 type Props = {
   chat: Chat;
@@ -21,6 +29,7 @@ type Props = {
   onOpenChatSettings: () => void;
   scrollToMessageId?: string | null;
   onForward?: (messages: Message[]) => void;
+  onCreateGroupWith?: (profile: Profile) => void;
 };
 
 function isChatMuted(setting?: ChatMuteSetting) {
@@ -61,7 +70,8 @@ const ChatBackground = React.memo(({ source, scale }: { source: any; scale: numb
   </View>
 ));
 
-export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward }: Props) {
+export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward, onCreateGroupWith }: Props) {
+  // Sub-screen early returns must be placed AFTER all hooks (see below, inside the render block)
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
@@ -98,6 +108,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showReportDialog, setShowReportDialog] = useState(false);
+  const [showAttachmentMenu, setShowAttachmentMenu] = useState(false);
+  const [showScreenshotRequestedModal, setShowScreenshotRequestedModal] = useState(false);
   
   const [muteSelection, setMuteSelection] = useState<"8_hours" | "1_week" | "always">("always");
   const [clearSelection, setClearSelection] = useState<"all" | "media">("all");
@@ -124,11 +136,82 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
   const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
 
+  // Sub-screen navigation (full-screen swap within the chat context)
+  const [activeSubScreen, setActiveSubScreen] = useState<
+    "addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null
+  >(null);
+  const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
+
+  // ── Screenshot permission ──────────────────────────────────────────────
+  const { activePermissions, myRequests, requestScreenshotPermission } = useScreenshots();
+  const hasScreenshotPerm = (activePermissions[chat.id] ?? 0) > Date.now();
+  type BannerType = "none" | "approved";
+  const [screenshotBanner, setScreenshotBanner] = useState<BannerType>("none");
+  const [, setBannerTick] = useState(0); // forces re-render for countdown
+
   useEffect(() => {
     if (chat.is_group) {
       loadChatMembers(chat.id).then(setGroupMembers);
     }
   }, [chat.id, chat.is_group]);
+
+  // Block / unblock screenshots whenever permission status changes
+  useEffect(() => {
+    if (!chat.is_group) return;
+    const tag = `sc-${chat.id}`;
+    if (hasScreenshotPerm) {
+      void unblockScreenshots(tag);
+    } else {
+      void blockScreenshots(tag);
+    }
+    return () => { void unblockScreenshots(tag); };
+  }, [hasScreenshotPerm, chat.id, chat.is_group]);
+
+  // Listen for screenshot attempts and trigger the request flow
+  useEffect(() => {
+    if (!chat.is_group) return;
+    const sub = addScreenshotListener(() => {
+      if ((activePermissions[chat.id] ?? 0) > Date.now()) return; // allowed
+      const curReq = myRequests[chat.id];
+      if (curReq?.status === "pending") {
+        return;
+      }
+      const memberIds = groupMembers.map((m) => m.id);
+      void requestScreenshotPermission(chat.id, memberIds).then((result) => {
+        if (result?.id) {
+          sendMessage({ chatId: chat.id, body: `[SCREENSHOT_REQUEST]:${result.id}`, messageKind: "standard" });
+        }
+      });
+    });
+    return () => sub.remove();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.id, chat.is_group, hasScreenshotPerm, groupMembers]);
+
+  // Show banner when MY request status changes (e.g. realtime update)
+  useEffect(() => {
+    if (!chat.is_group) return;
+    const req = myRequests[chat.id];
+    if (!req) return;
+    if (req.status === "approved" && hasScreenshotPerm) {
+      setScreenshotBanner("approved");
+    } else {
+      setScreenshotBanner("none");
+    }
+  }, [myRequests[chat.id]?.status, chat.id, chat.is_group, hasScreenshotPerm]);
+
+  // Tick every second while approved banner is visible for countdown
+  useEffect(() => {
+    if (screenshotBanner !== "approved") return;
+    const iv = setInterval(() => setBannerTick((t) => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, [screenshotBanner]);
+
+  // When permission expires, hide approved banner
+  useEffect(() => {
+    if (screenshotBanner === "approved" && !hasScreenshotPerm) {
+      setScreenshotBanner("none");
+    }
+  }, [hasScreenshotPerm, screenshotBanner]);
 
   useEffect(() => {
     let active = true;
@@ -397,7 +480,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }
 
   async function performDelete(everyone: boolean) {
-    await deleteMessages(selectedIds);
+    await deleteMessages(selectedIds, everyone);
     setSelectedIds([]);
     setShowReactionsForId(null);
     setShowDeleteModal(false);
@@ -494,8 +577,16 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 </Text>
               ) : null}
             </Pressable>
-            <Pressable onPress={() => setShowOverflowMenu(true)} style={styles.headerButton}>
-              <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={26} />
+            
+            <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
+              <Feather color={theme.colors.headerIcon} name="video" size={20} />
+            </Pressable>
+            <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
+              <Feather color={theme.colors.headerIcon} name="phone" size={19} />
+            </Pressable>
+
+            <Pressable onPress={() => setShowOverflowMenu(true)} style={styles.headerButtonSmall}>
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={24} />
             </Pressable>
           </>
         )}
@@ -527,6 +618,33 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }
     return false;
   };
+
+  // Sub-screen full-screen swaps
+  if (activeSubScreen === "addMembers") {
+    return <ChatAddMembersScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
+  }
+  if (activeSubScreen === "media") {
+    return <ChatMediaScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
+  }
+  if (activeSubScreen === "disappearing") {
+    return <ChatDisappearingMessagesScreen onBack={() => setActiveSubScreen(null)} />;
+  }
+  if (activeSubScreen === "theme") {
+    return <ChatThemeScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
+  }
+  if (activeSubScreen === "createPoll") {
+    return <CreatePollScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
+  }
+  if (activeSubScreen === "pollVotes" && viewPollVotesMessage) {
+    return (
+      <ChatPollVotesScreen 
+        message={viewPollVotesMessage} 
+        reactions={reactionsByMessage[viewPollVotesMessage.id]} 
+        currentUserId={profile?.id || ""} 
+        onBack={() => setActiveSubScreen(null)} 
+      />
+    );
+  }
 
   return (
     <View 
@@ -565,6 +683,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <Feather color={theme.colors.textMuted} name="x" size={18} />
           </Pressable>
         </View>
+      ) : null}
+
+      {/* Screenshot permission banner */}
+      {chat.is_group && screenshotBanner !== "none" ? (
+        <ScreenshotBanner
+          type={screenshotBanner}
+          secondsLeft={Math.max(0, Math.floor(((activePermissions[chat.id] ?? 0) - Date.now()) / 1000))}
+        />
       ) : null}
 
       <View style={styles.thread}>
@@ -658,6 +784,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     viewOnceState={viewOnceState}
                     onReportPickerLayout={setPickerLayout}
                     isSaved={savedMessageIds.has(message.id)}
+                    onOpenPollVotes={(id) => {
+                      setViewPollVotesMessage(messageMap[id]);
+                      setActiveSubScreen("pollVotes");
+                    }}
                   />
                 </View>
               );
@@ -703,6 +833,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         replyPreview={replyTo?.body_preview ?? null}
         emojiKeyboardOpen={showEmojiKeyboard}
         focusTrigger={composerFocusTrigger}
+        onAttachmentPress={() => setShowAttachmentMenu(true)}
         onToggleEmojiKeyboard={() => {
           if (showEmojiKeyboard) {
             // Emoji → Keyboard: focus input, keyboardDidShow will close panel when keyboard is fully up
@@ -744,15 +875,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             
             {chat.is_group ? (
               <>
-                <MenuItem label="הוספה לרשימה" onPress={() => { setShowOverflowMenu(false); Alert.alert("רשימה", "בקרוב"); }} />
+                <MenuItem label="צירוף חברים" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("addMembers"); }} />
                 <MenuDivider />
                 <MenuItem label="פרטי הקבוצה" onPress={() => { setShowOverflowMenu(false); onOpenChatSettings(); }} />
-                <MenuItem label="מדיה קבוצתית" onPress={() => { setShowOverflowMenu(false); Alert.alert("מדיה", "זמין דרך מסך פרטי הקבוצה"); }} />
+                <MenuItem label="מדיה קבוצתית" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("media"); }} />
                 <MenuItem label="חיפוש" onPress={() => { setShowOverflowMenu(false); setSearchOpen(true); }} />
                 <MenuItem label="השתקת התראות" secondary={describeMute(muteSetting)} onPress={() => { setShowOverflowMenu(false); setShowMuteMenu(true); }} />
-                <MenuItem label="הודעות זמניות" onPress={() => { setShowOverflowMenu(false); Alert.alert("הודעות זמניות", "ניתן להגדיר דרך מסך הגדרות הצ'אט"); }} />
-                <MenuItem label="ערכת הנושא של הצאט" onPress={() => { setShowOverflowMenu(false); Alert.alert("ערכת נושא", "בקרוב"); }} />
-                
+                <MenuItem label="הודעות זמניות" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("disappearing"); }} />
+                <MenuItem label="ערכת הנושא של הצאט" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("theme"); }} />
+                <MenuDivider />
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                    <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
                    <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
@@ -760,14 +891,22 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
               </>
             ) : (
               <>
-                <MenuItem label="קבוצה חדשה" onPress={() => { setShowOverflowMenu(false); Alert.alert("קבוצה חדשה", "בקרוב..."); }} />
+                <MenuItem label="קבוצה חדשה" onPress={() => {
+                  setShowOverflowMenu(false);
+                  const otherUser = Object.values(profiles).find(p => p.id !== profile?.id);
+                  if (otherUser && onCreateGroupWith) {
+                    onCreateGroupWith(otherUser);
+                  } else {
+                    Alert.alert("שגיאה", "אנא נסה שוב");
+                  }
+                }} />
                 <MenuDivider />
                 <MenuItem label="הצגת איש הקשר" onPress={() => { setShowOverflowMenu(false); onOpenChatSettings(); }} />
                 <MenuItem label="חיפוש" onPress={() => { setShowOverflowMenu(false); setSearchOpen(true); }} />
-                <MenuItem label="מדיה, קישורים ומסמכים" onPress={() => { setShowOverflowMenu(false); Alert.alert("מדיה", "זמין דרך מסך איש הקשר"); }} />
+                <MenuItem label="מדיה, קישורים ומסמכים" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("media"); }} />
                 <MenuItem label="השתקת התראות" secondary={describeMute(muteSetting)} onPress={() => { setShowOverflowMenu(false); setShowMuteMenu(true); }} />
-                <MenuItem label="הודעות זמניות" onPress={() => { setShowOverflowMenu(false); Alert.alert("הודעות זמניות", "ניתן להגדיר דרך מסך הגדרות הצ'אט"); }} />
-                <MenuItem label="ערכת הנושא של הצ'אט" onPress={() => { setShowOverflowMenu(false); Alert.alert("ערכת נושא", "בקרוב"); }} />
+                <MenuItem label="הודעות זמניות" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("disappearing"); }} />
+                <MenuItem label="ערכת הנושא של הצ'אט" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("theme"); }} />
                 <MenuDivider />
                 
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1016,6 +1155,98 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         </View>
       ) : null}
 
+      {showAttachmentMenu ? (
+        <View pointerEvents="box-none" style={styles.overlayRoot}>
+          <Pressable onPress={() => setShowAttachmentMenu(false)} style={styles.backdrop} />
+          <View style={styles.attachmentMenuCard}>
+            
+            <View style={styles.attachmentRow}>
+              {/* Top Row Right to Left */}
+              <View style={styles.attachmentItem}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="image" size={24} color="#0066FF" />
+                </View>
+                <Text style={styles.attachmentLabel}>גלריה</Text>
+              </View>
+
+              <View style={styles.attachmentItem}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="camera" size={24} color="#E53935" />
+                </View>
+                <Text style={styles.attachmentLabel}>מצלמה</Text>
+              </View>
+
+              <View style={styles.attachmentItem}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="map-marker" size={24} color="#00C853" />
+                </View>
+                <Text style={styles.attachmentLabel}>מיקום</Text>
+              </View>
+
+              <View style={styles.attachmentItem}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="account" size={24} color="#0091EA" />
+                </View>
+                <Text style={styles.attachmentLabel}>איש קשר</Text>
+              </View>
+            </View>
+
+            <View style={styles.attachmentRow}>
+              {/* Bottom Row Right to Left */}
+              <View style={styles.attachmentItem}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="file-document" size={24} color="#651FFF" />
+                </View>
+                <Text style={styles.attachmentLabel}>קבצים</Text>
+              </View>
+
+              <Pressable style={styles.attachmentItem} onPress={async () => {
+                  setShowAttachmentMenu(false);
+                  setActiveSubScreen("createPoll");
+              }}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="poll" size={24} color="#FFB300" />
+                </View>
+                <Text style={styles.attachmentLabel}>סקר</Text>
+              </Pressable>
+
+              <View style={styles.attachmentItem}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="calendar" size={24} color="#D81B60" />
+                </View>
+                <Text style={styles.attachmentLabel}>אירוע</Text>
+              </View>
+
+              <Pressable style={styles.attachmentItem} onPress={async () => {
+                  setShowAttachmentMenu(false);
+                  if (!hasScreenshotPerm && myRequests[chat.id]?.status !== "pending") {
+                    let targetMemberIds = groupMembers.map((m) => m.id);
+                    if (!chat.is_group) {
+                       targetMemberIds = Object.keys(profiles).filter(id => id !== profile?.id);
+                    }
+                    const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
+                    if (reqResult?.id) {
+                       await sendMessage({ chatId: chat.id, body: `[SCREENSHOT_REQUEST]:${reqResult.id}`, messageKind: "standard" });
+                    } else {
+                       Alert.alert("שגיאה", "לא הצלחנו לשלוח את בקשת צילום המסך: " + (reqResult?.error || "Unknown"));
+                    }
+                  } else if (hasScreenshotPerm) {
+                    Alert.alert("מידע", "כבר יש לך אישור פעיל לצילום מסך.");
+                  } else {
+                    Alert.alert("מידע", "כבר שלחת בקשה והיא ממתינה לאישור.");
+                  }
+              }}>
+                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                  <MaterialCommunityIcons name="camera-outline" size={24} color="#00A884" />
+                </View>
+                <Text style={styles.attachmentLabel}>בקשת צילום</Text>
+              </Pressable>
+            </View>
+
+          </View>
+        </View>
+      ) : null}
+
       {viewInfoMessage ? (
         <View style={styles.fullscreenOverlay}>
           <View style={styles.infoTitleRow}>
@@ -1195,6 +1426,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       alignItems: "center",
       justifyContent: "center",
     },
+    headerButtonSmall: {
+      width: 32,
+      height: 32,
+      borderRadius: theme.radius.pill,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     avatar: {
       width: 40,
       height: 40,
@@ -1352,7 +1590,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     menuItemText: {
       color: theme.colors.text,
       fontSize: 16,
-      fontWeight: "500",
+      fontWeight: "700",
       textAlign: "left",
     },
     menuItemSecondary: {
@@ -1542,11 +1780,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     reactionUserAction: {
       color: theme.colors.textMuted,
       fontSize: 13,
-      textAlign: "right",
     },
     reactionEmoji: {
-      fontSize: 16,
-      marginRight: 8,
+      fontSize: 22,
     },
     emojiPickerSheet: {
       marginTop: "auto",
@@ -1719,9 +1955,48 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       color: theme.colors.accent,
       padding: theme.spacing.sm,
     },
+    attachmentMenuCard: {
+      position: "absolute",
+      bottom: 70,
+      left: 12,
+      right: 12,
+      backgroundColor: "rgba(25, 30, 36, 0.98)",
+      borderRadius: 16,
+      paddingVertical: 18,
+      paddingHorizontal: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.3,
+      shadowRadius: 20,
+      elevation: 20,
+    },
+    attachmentRow: {
+      flexDirection: "row-reverse",
+      justifyContent: "space-around",
+      alignItems: "flex-start",
+      marginBottom: 20,
+    },
+    attachmentItem: {
+      width: 70,
+      alignItems: "center",
+      gap: 8,
+    },
+    attachmentIconCircle: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(255,255,255,0.02)",
+    },
+    attachmentLabel: {
+      color: "#bbb",
+      fontSize: 13,
+      textAlign: "center",
+      fontWeight: "500",
+    },
     toastContainer: {
       position: "absolute",
-      bottom: 100,
+      bottom: Platform.OS === "ios" ? 100 : 80,
       left: 0,
       right: 0,
       alignItems: "center",
@@ -1750,4 +2025,41 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       fontWeight: "600",
     },
   });
+
+// ── Screenshot Permission Banner ────────────────────────────────────────────
+function ScreenshotBanner({ type, secondsLeft }: { type: "none" | "approved"; secondsLeft: number }) {
+  if (type !== "approved") return null;
+
+  const mins = Math.floor(secondsLeft / 60);
+  const secs = secondsLeft % 60;
+  const countdown = `${mins}:${secs.toString().padStart(2, "0")}`;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#0D5C30",
+        borderBottomWidth: 1,
+        borderBottomColor: "#1B9D55",
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+        gap: 10,
+      }}
+    >
+      <MaterialCommunityIcons name="camera-outline" size={17} color="#fff" />
+      <Text
+        style={{
+          flex: 1,
+          color: "#fff",
+          fontSize: 13,
+          fontWeight: "600",
+          textAlign: "right",
+        }}
+      >
+        צילום מסך מורשה · עוד {countdown}
+      </Text>
+    </View>
+  );
+}
 

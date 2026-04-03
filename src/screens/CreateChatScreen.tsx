@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
@@ -11,25 +10,28 @@ import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
 type Props = {
   onBack: () => void;
   onOpenChat: (chat: Chat) => void;
+  initialSelectedUsers?: Profile[];
 };
 
-export function CreateChatScreen({ onBack, onOpenChat }: Props) {
+export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { searchUsers, createChat } = useChats();
+  const { searchUsers, createChat, contactNicknames } = useChats();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Profile[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
-  const [groupTitle, setGroupTitle] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [selectedUsers, setSelectedUsers] = useState<Profile[]>(initialSelectedUsers || []);
   const [loadingResults, setLoadingResults] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Group name modal
+  const [showGroupNameModal, setShowGroupNameModal] = useState(false);
+  const [groupTitle, setGroupTitle] = useState("");
 
   useEffect(() => {
     const timeout = setTimeout(() => {
       void loadUsers(query);
     }, 140);
-
     return () => clearTimeout(timeout);
   }, [query]);
 
@@ -40,35 +42,7 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
     setLoadingResults(false);
   }
 
-  const selectedIds = useMemo(() => new Set(selectedUsers.map((user) => user.id)), [selectedUsers]);
-
-  async function handleCreate() {
-    if (!selectedUsers.length) {
-      setError("יש לבחור משתמש אחד לפחות.");
-      return;
-    }
-
-    if (selectedUsers.length > 1 && !groupTitle.trim()) {
-      setError("יש להוסיף שם קבוצה לפני שממשיכים.");
-      return;
-    }
-
-    setCreating(true);
-    setError(null);
-
-    const result = await createChat(
-      selectedUsers.length > 1 ? groupTitle.trim() : selectedUsers[0].username,
-      selectedUsers.map((user) => user.username),
-    );
-
-    setCreating(false);
-    if (result.error || !result.chat) {
-      setError(result.error ?? "לא ניתן היה ליצור קבוצה.");
-      return;
-    }
-
-    onOpenChat(result.chat);
-  }
+  const selectedIds = useMemo(() => new Set(selectedUsers.map((u) => u.id)), [selectedUsers]);
 
   function toggleUser(user: Profile) {
     setError(null);
@@ -79,92 +53,172 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
     );
   }
 
+  async function handleFabPress() {
+    if (!selectedUsers.length) return;
+    if (selectedUsers.length === 1) {
+      // Direct private chat
+      setCreating(true);
+      const result = await createChat(selectedUsers[0].username, [selectedUsers[0].username]);
+      setCreating(false);
+      if (result.chat) onOpenChat(result.chat);
+    } else {
+      // Need group name
+      setShowGroupNameModal(true);
+    }
+  }
+
+  async function handleCreateGroup() {
+    if (!groupTitle.trim()) {
+      setError("יש להוסיף שם קבוצה.");
+      return;
+    }
+    setCreating(true);
+    setError(null);
+    const result = await createChat(
+      groupTitle.trim(),
+      selectedUsers.map((u) => u.username),
+    );
+    setCreating(false);
+    if (result.error || !result.chat) {
+      setError(result.error ?? "לא ניתן ליצור קבוצה.");
+      return;
+    }
+    setShowGroupNameModal(false);
+    onOpenChat(result.chat);
+  }
+
   return (
     <Screen>
+      {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
-        </Pressable>
-        <View style={styles.headerCopy}>
-          <Text style={styles.headerTitle}>צ'אט חדש</Text>
-          <Text style={styles.headerSubtitle}>בחר אנשים לפי שם משתמש</Text>
+        <View style={styles.searchShell}>
+          <Pressable onPress={onBack} style={styles.backBtn}>
+            <Feather name="arrow-right" size={24} color={theme.colors.headerIcon} />
+          </Pressable>
+          <TextInput
+            style={[styles.searchInput, webEmbeddedInputReset]}
+            placeholder="אפשר לחפש שם או שם משתמש..."
+            placeholderTextColor={theme.colors.textMuted}
+            value={query}
+            onChangeText={setQuery}
+            autoFocus
+          />
         </View>
+        <Pressable style={styles.gridBtn}>
+          <MaterialCommunityIcons name="dots-grid" size={24} color={theme.colors.headerIcon} />
+        </Pressable>
       </View>
 
-      <View style={styles.searchBar}>
-        <Feather color={theme.colors.textMuted} name="search" size={18} />
-        <TextInput
-          onChangeText={setQuery}
-          placeholder="חיפוש לפי שם או שם משתמש"
-          placeholderTextColor={theme.colors.textMuted}
-          style={[styles.searchInput, webEmbeddedInputReset]}
-          value={query}
-        />
-      </View>
-
-      {selectedUsers.length ? (
-        <ScrollView contentContainerStyle={styles.chipRow} horizontal showsHorizontalScrollIndicator={false}>
-          {selectedUsers.map((user) => (
-            <Pressable key={user.id} onPress={() => toggleUser(user)} style={[styles.selectedChip, webNoOutline]}>
-              <Text style={styles.selectedChipText}>@{user.username}</Text>
-              <Feather color={theme.colors.accent} name="x" size={14} />
-            </Pressable>
-          ))}
-        </ScrollView>
-      ) : null}
-
-      <View style={styles.listShell}>
-        <Text style={styles.sectionTitle}>{loadingResults ? "מחפש משתמשים..." : "משתמשים"}</Text>
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-          {results.length ? (
-            results.map((user, index) => {
-              const active = selectedIds.has(user.id);
+      {/* Selected Users Chips */}
+      {selectedUsers.length > 0 && (
+        <View style={styles.selectedContainer}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            inverted={true}
+            data={selectedUsers}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => {
+              const nickname = contactNicknames[item.id]?.first_name;
+              const displayName = nickname || item.username;
               return (
-                <Pressable key={user.id} onPress={() => toggleUser(user)} style={[styles.userRow, webNoOutline]}>
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{user.username.slice(0, 1).toUpperCase()}</Text>
+                <Pressable style={[styles.selectedChip, webNoOutline]} onPress={() => toggleUser(item)}>
+                  <View style={styles.selectedAvatarContainer}>
+                    <View style={styles.selectedAvatar}>
+                      <Text style={styles.selectedAvatarText}>
+                        {(nickname || item.username).slice(0, 1).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.removeIconBadge}>
+                      <Feather name="x" size={12} color={theme.colors.textMuted} />
+                    </View>
                   </View>
-                  <View style={[styles.userCopy, index !== results.length - 1 && styles.userCopyBorder]}>
-                    <Text style={styles.username}>@{user.username}</Text>
-                    <Text style={styles.name}>{user.full_name || user.email}</Text>
-                  </View>
-                  <View style={[styles.check, active && styles.checkActive]}>
-                    <Feather color={active ? theme.colors.textOnAccent : theme.colors.textMuted} name={active ? "check" : "plus"} size={16} />
-                  </View>
+                  <Text style={styles.selectedChipName} numberOfLines={1}>
+                    {displayName}
+                  </Text>
                 </Pressable>
               );
-            })
-          ) : (
+            }}
+          />
+          <View style={styles.thickSeparator} />
+        </View>
+      )}
+
+      {/* Section label */}
+      <Text style={styles.sectionLabel}>
+        {loadingResults ? "מחפש משתמשים..." : results.length > 0 ? "משתמשים" : "לא נמצאו משתמשים"}
+      </Text>
+
+      {/* Users List */}
+      <FlatList
+        data={results}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => {
+          const selected = selectedIds.has(item.id);
+          const nickname = contactNicknames[item.id]?.first_name;
+          return (
+            <Pressable style={[styles.resultRow, webNoOutline]} onPress={() => toggleUser(item)}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {(nickname || item.username).slice(0, 1).toUpperCase()}
+                </Text>
+              </View>
+              <View style={styles.resultCopy}>
+                <Text style={styles.resultName}>{nickname || item.username}</Text>
+                <Text style={styles.resultSub}>
+                  {nickname ? `@${item.username}` : item.full_name || `@${item.username}`}
+                </Text>
+              </View>
+              <View style={[styles.radio, selected && styles.radioSelected]}>
+                {selected && <Feather name="check" size={14} color="#fff" />}
+              </View>
+            </Pressable>
+          );
+        }}
+        ListEmptyComponent={
+          !loadingResults ? (
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons color={theme.colors.textMuted} name="account-search-outline" size={36} />
+              <MaterialCommunityIcons color={theme.colors.textMuted} name="account-search-outline" size={48} />
               <Text style={styles.emptyTitle}>לא נמצאו משתמשים</Text>
               <Text style={styles.emptySubtitle}>נסו שם משתמש אחר לחפש אותו.</Text>
             </View>
-          )}
-        </ScrollView>
-      </View>
+          ) : null
+        }
+      />
 
-      <View style={styles.bottomPanel}>
-        {selectedUsers.length > 1 ? (
-          <View style={styles.groupFieldWrap}>
-            <Text style={styles.groupLabel}>שם הקבוצה</Text>
+      {/* FAB */}
+      {selectedUsers.length > 0 && (
+        <Pressable style={styles.fabBtn} onPress={() => void handleFabPress()} disabled={creating}>
+          <Feather name="arrow-left" size={24} color="#fff" />
+        </Pressable>
+      )}
+
+      {/* Group Name Modal */}
+      <Modal visible={showGroupNameModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>שם הקבוצה</Text>
             <TextInput
-              autoCapitalize="sentences"
-              onChangeText={setGroupTitle}
-              placeholder="צוות סופ״ש"
+              style={[styles.modalInput, webEmbeddedInputReset]}
+              placeholder="לדוגמה: צוות סופ״ש"
               placeholderTextColor={theme.colors.textMuted}
-              style={[styles.groupInput, webNoOutline]}
               value={groupTitle}
+              onChangeText={setGroupTitle}
+              autoFocus
+              textAlign="right"
             />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setShowGroupNameModal(false)} style={styles.modalCancelBtn}>
+                <Text style={styles.modalCancelText}>ביטול</Text>
+              </Pressable>
+              <Pressable onPress={() => void handleCreateGroup()} style={styles.modalConfirmBtn} disabled={creating}>
+                <Text style={styles.modalConfirmText}>{creating ? "יוצר..." : "יצירה"}</Text>
+              </Pressable>
+            </View>
           </View>
-        ) : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        <PrimaryButton
-          disabled={!selectedUsers.length || creating}
-          label={creating ? "יוצר..." : selectedUsers.length > 1 ? "יצירת קבוצה" : "המשך"}
-          onPress={() => void handleCreate()}
-        />
-      </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -172,185 +226,226 @@ export function CreateChatScreen({ onBack, onOpenChat }: Props) {
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
       backgroundColor: theme.colors.header,
-      flexDirection: "row",
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: theme.spacing.sm,
+      justifyContent: "space-between",
+    },
+    backBtn: {
+      padding: theme.spacing.xs,
+    },
+    gridBtn: {
+      padding: theme.spacing.xs,
+      marginLeft: 4,
+    },
+    searchShell: {
+      flex: 1,
+      flexDirection: "row-reverse",
       alignItems: "center",
       gap: 12,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.md,
-    },
-    backButton: {
-      width: 36,
-      height: 36,
-      borderRadius: theme.radius.pill,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    headerCopy: {
-      flex: 1,
-    },
-    headerTitle: {
-      color: theme.colors.textOnAccent,
-      fontSize: 20,
-      fontWeight: "800",
-    },
-    headerSubtitle: {
-      color: "rgba(255,255,255,0.82)",
-      fontSize: 13,
-      marginTop: 2,
-    },
-    searchBar: {
-      marginHorizontal: theme.spacing.md,
-      marginTop: theme.spacing.sm,
-      marginBottom: theme.spacing.xs,
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: 14,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
     },
     searchInput: {
       flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      paddingVertical: 12,
+      color: theme.colors.headerText,
+      fontSize: 18,
+      textAlign: "right",
     },
-    chipRow: {
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.xs,
-      gap: theme.spacing.xs,
+    selectedContainer: {
+      backgroundColor: theme.colors.background,
+      paddingTop: theme.spacing.lg,
     },
     selectedChip: {
-      flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      backgroundColor: theme.colors.accentSoft,
-      borderRadius: theme.radius.pill,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      marginHorizontal: 10,
+      width: 60,
     },
-    selectedChipText: {
+    selectedAvatarContainer: {
+      position: "relative",
+      marginBottom: 6,
+    },
+    selectedAvatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: theme.colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    selectedAvatarText: {
+      fontSize: 22,
+      fontWeight: "700",
       color: theme.colors.accent,
-      fontWeight: "700",
     },
-    listShell: {
-      flex: 1,
+    removeIconBadge: {
+      position: "absolute",
+      bottom: -2,
+      left: -2,
       backgroundColor: theme.colors.surface,
-      marginTop: theme.spacing.xs,
-    },
-    sectionTitle: {
-      color: theme.colors.textMuted,
-      fontSize: 12,
-      fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.7,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 10,
-    },
-    list: {
-      flex: 1,
-    },
-    userRow: {
-      flexDirection: "row",
+      borderRadius: 10,
+      width: 20,
+      height: 20,
       alignItems: "center",
-      paddingLeft: theme.spacing.md,
-      paddingRight: theme.spacing.md,
-      backgroundColor: theme.colors.surface,
+      justifyContent: "center",
+      borderWidth: 1.5,
+      borderColor: theme.colors.background,
+    },
+    selectedChipName: {
+      fontSize: 13,
+      color: theme.colors.text,
+      textAlign: "center",
+    },
+    thickSeparator: {
+      height: 1,
+      marginTop: theme.spacing.lg,
+      backgroundColor: theme.colors.separator,
+    },
+    sectionLabel: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      paddingHorizontal: theme.spacing.lg,
+      paddingTop: theme.spacing.md,
+      paddingBottom: theme.spacing.sm,
+      textAlign: "right",
+      fontWeight: "600",
+    },
+    resultRow: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: 12,
+      gap: theme.spacing.md,
     },
     avatar: {
       width: 48,
       height: 48,
-      borderRadius: theme.radius.pill,
+      borderRadius: 24,
       backgroundColor: theme.colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
-      marginRight: 12,
     },
     avatarText: {
-      color: theme.colors.accent,
-      fontSize: 18,
-      fontWeight: "800",
-    },
-    userCopy: {
-      flex: 1,
-      paddingVertical: 14,
-    },
-    userCopyBorder: {
-      borderBottomColor: theme.colors.separator,
-      borderBottomWidth: 1,
-    },
-    username: {
-      color: theme.colors.text,
-      fontSize: 16,
+      fontSize: 20,
       fontWeight: "700",
+      color: theme.colors.accent,
     },
-    name: {
+    resultCopy: {
+      flex: 1,
+      justifyContent: "center",
+    },
+    resultName: {
+      fontSize: 17,
+      fontWeight: "500",
+      color: theme.colors.text,
+      textAlign: "right",
+    },
+    resultSub: {
+      fontSize: 14,
       color: theme.colors.textMuted,
-      fontSize: 13,
-      marginTop: 3,
+      marginTop: 2,
+      textAlign: "right",
     },
-    check: {
-      width: 30,
-      height: 30,
-      borderRadius: theme.radius.pill,
-      borderColor: theme.colors.border,
-      borderWidth: 1,
+    radio: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      borderWidth: 2,
+      borderColor: theme.colors.textMuted,
       alignItems: "center",
       justifyContent: "center",
-      marginLeft: 12,
     },
-    checkActive: {
-      backgroundColor: theme.colors.accentStrong,
-      borderColor: theme.colors.accentStrong,
+    radioSelected: {
+      backgroundColor: theme.colors.accent,
+      borderColor: theme.colors.accent,
     },
     emptyState: {
       alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: theme.spacing.xl,
-      paddingTop: 80,
-      gap: theme.spacing.xs,
+      paddingTop: 60,
+      gap: 12,
     },
     emptyTitle: {
-      color: theme.colors.text,
       fontSize: 18,
-      fontWeight: "800",
+      fontWeight: "700",
+      color: theme.colors.text,
     },
     emptySubtitle: {
+      fontSize: 14,
       color: theme.colors.textMuted,
-      textAlign: "center",
-      lineHeight: 21,
     },
-    bottomPanel: {
-      backgroundColor: theme.colors.background,
-      borderTopColor: theme.colors.separator,
-      borderTopWidth: 1,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.md,
-      gap: theme.spacing.sm,
+    fabBtn: {
+      position: "absolute",
+      bottom: 24,
+      left: 24,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: theme.colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      elevation: 6,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4.5,
     },
-    groupFieldWrap: {
-      gap: 6,
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 32,
     },
-    groupLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-      fontWeight: "600",
-    },
-    groupInput: {
+    modalCard: {
       backgroundColor: theme.colors.surface,
-      borderColor: theme.colors.border,
-      borderWidth: 1,
       borderRadius: theme.radius.md,
+      padding: 24,
+      width: "100%",
+      maxWidth: 420,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: "700",
       color: theme.colors.text,
-      fontSize: 15,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 12,
+      textAlign: "right",
+      marginBottom: 16,
+    },
+    modalInput: {
+      fontSize: 17,
+      color: theme.colors.text,
+      borderBottomWidth: 2,
+      borderBottomColor: theme.colors.accent,
+      paddingVertical: 8,
+      marginBottom: 12,
     },
     error: {
-      color: theme.colors.danger,
+      color: theme.colors.danger ?? "#ef4444",
+      fontSize: 13,
+      textAlign: "right",
+      marginBottom: 8,
+    },
+    modalActions: {
+      flexDirection: "row",
+      justifyContent: "flex-start",
+      gap: 16,
+      marginTop: 8,
+    },
+    modalCancelBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+    },
+    modalCancelText: {
+      fontSize: 15,
+      color: theme.colors.textMuted,
       fontWeight: "600",
+    },
+    modalConfirmBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+    },
+    modalConfirmText: {
+      fontSize: 15,
+      color: theme.colors.accent,
+      fontWeight: "700",
     },
   });

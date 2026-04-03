@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { Alert } from "react-native";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import {
@@ -20,6 +21,13 @@ import {
   Profile,
   ReactionSummary,
 } from "@/lib/types";
+
+export type ContactNicknameData = {
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  sync_enabled?: boolean;
+};
 
 type MessageComposerInput = {
   chatId: string;
@@ -65,13 +73,18 @@ type ChatContextValue = {
   createChat: (title: string, memberUsernames: string[]) => Promise<{ chat: Chat | null; error: string | null }>;
   toggleReaction: (messageId: string, emoji: string) => Promise<void>;
   openViewOnceMessage: (message: Message) => Promise<void>;
-  deleteMessages: (messageIds: string[]) => Promise<void>;
+  deleteMessages: (messageIds: string[], forEveryone: boolean) => Promise<void>;
   updateChatDescription: (chatId: string, description: string) => Promise<void>;
+  updateChatTitle: (chatId: string, title: string) => Promise<void>;
   deleteChats: (chatIds: string[]) => Promise<void>;
+  contactNicknames: Record<string, ContactNicknameData>;
+  setContactNickname: (userId: string, data: ContactNicknameData) => Promise<void>;
+  searchMessagesGlobal: (query: string) => Promise<{ chat_id: string; message: Message }[]>;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 const LOCAL_CHAT_STATE_KEY_PREFIX = "private-chat-local-state";
+const LOCAL_NICKNAMES_KEY_PREFIX = "private-chat-nicknames";
 
 function buildMuteSetting(duration: MuteDurationOption): ChatMuteSetting {
   if (duration === "always") {
@@ -92,6 +105,7 @@ function getDefaultChatPreferences(): ChatLocalPreferences {
     pinned_at: null,
     locked: false,
     cleared_at: null,
+    deleted_from_home_at: null,
   };
 }
 
@@ -101,12 +115,14 @@ function normalizeChatPreferences(value: Partial<ChatLocalPreferences> | null | 
     pinned_at: typeof value?.pinned_at === "string" ? value.pinned_at : null,
     locked: Boolean(value?.locked),
     cleared_at: typeof value?.cleared_at === "string" ? value.cleared_at : null,
+    deleted_from_home_at: typeof value?.deleted_from_home_at === "string" ? value.deleted_from_home_at : null,
   };
 }
 
 export function ChatProvider({ children }: PropsWithChildren) {
   const { profile } = useAuth();
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [rawChats, setRawChats] = useState<Chat[]>([]);
+  const [privateChatPartners, setPrivateChatPartners] = useState<Record<string, string>>({});
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [messagesByChat, setMessagesByChat] = useState<Record<string, Message[]>>({});
   const [reactionsByMessage, setReactionsByMessage] = useState<Record<string, ReactionSummary>>({});
@@ -114,6 +130,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [muteSettings, setMuteSettings] = useState<Record<string, ChatMuteSetting>>({});
   const [chatPreferences, setChatPreferences] = useState<Record<string, ChatLocalPreferences>>({});
+  const [deletedForMeIds, setDeletedForMeIds] = useState<string[]>([]);
+  const deletedForMeIdsRef = useRef<string[]>([]);
+  const [contactNicknames, setContactNicknames] = useState<Record<string, ContactNicknameData>>({});
   const [loading, setLoading] = useState(true);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
   const loadedChatIdsRef = useRef<string[]>([]);
@@ -121,13 +140,16 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!profile?.id) {
-      setChats([]);
+      setRawChats([]);
+      setPrivateChatPartners({});
       setMessagesByChat({});
       setReactionsByMessage({});
       setOpenedViewOnceIds({});
       setUnreadCounts({});
       setMuteSettings({});
       setChatPreferences({});
+      setDeletedForMeIds([]);
+      deletedForMeIdsRef.current = [];
       loadedChatIdsRef.current = [];
       setLocalPreferencesReady(false);
       setLoading(false);
@@ -188,6 +210,51 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [profile?.id]);
 
   useEffect(() => {
+    if (!profile?.id) {
+      setContactNicknames({});
+      return;
+    }
+
+    let active = true;
+    const storageKey = `${LOCAL_NICKNAMES_KEY_PREFIX}:${profile.id}`;
+
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(storageKey);
+        if (active && raw) {
+          setContactNicknames(JSON.parse(raw));
+        }
+      } catch {}
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    const storageKey = `${LOCAL_NICKNAMES_KEY_PREFIX}:${profile.id}`;
+    void AsyncStorage.setItem(storageKey, JSON.stringify(contactNicknames));
+  }, [contactNicknames, profile?.id]);
+
+  useEffect(() => {
+    if (!profile?.id) {
+      setDeletedForMeIds([]);
+      deletedForMeIdsRef.current = [];
+      return;
+    }
+    const storageKey = `${LOCAL_CHAT_STATE_KEY_PREFIX}:deleted_for_me:${profile.id}`;
+    void AsyncStorage.getItem(storageKey).then(raw => {
+      if (raw) {
+         const parsed = JSON.parse(raw);
+         setDeletedForMeIds(parsed);
+         deletedForMeIdsRef.current = parsed;
+      }
+    });
+  }, [profile?.id]);
+
+  useEffect(() => {
     if (!profile?.id || !localPreferencesReady) {
       return;
     }
@@ -209,6 +276,26 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return next;
     });
   }
+
+  const chats = useMemo(() => {
+    return rawChats.map((chat) => {
+      if (chat.is_group) return chat;
+      
+      const otherId = privateChatPartners[chat.id];
+      if (!otherId) return chat;
+
+      const nick = contactNicknames[otherId];
+      if (nick) {
+        const name = `${nick.first_name} ${nick.last_name}`.trim();
+        if (name) return { ...chat, title: name };
+      }
+
+      const p = profiles[otherId];
+      if (p) return { ...chat, title: p.username };
+
+      return chat;
+    });
+  }, [rawChats, privateChatPartners, contactNicknames, profiles]);
 
   async function refreshChats() {
     if (!profile?.id) {
@@ -263,6 +350,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
         .filter((entry): entry is [string, string] => Boolean(entry[1])),
     );
 
+    const partners: Record<string, string> = {};
+    for (const row of (membershipRows ?? [])) {
+      if (row.user_id !== profile.id) {
+        partners[row.chat_id] = row.user_id;
+      }
+    }
+    setPrivateChatPartners(partners);
+
     if (otherProfiles?.length) {
       setProfiles((current) => {
         const merged = { ...current };
@@ -307,7 +402,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       last_message_at: row.last_message_at,
     })) as Chat[];
 
-    setChats(nextChats);
+    setRawChats(nextChats);
     // Merge: take the lower value so a locally-zeroed chat (just marked seen) isn't
     // overwritten by a stale count from a DB read that landed before the upsert propagated.
     setUnreadCounts((current) => {
@@ -354,9 +449,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
       : { data: [] };
 
     loadedChatIdsRef.current = [...new Set([...loadedChatIdsRef.current, chatId])];
+    // We filter synchronously against deletedForMeIdsRef to ensure they don't pop up from stale closure
     setMessagesByChat((current) => ({
       ...current,
-      [chatId]: (messages as Message[]) ?? [],
+      [chatId]: ((messages as Message[]) ?? []).filter(m => !deletedForMeIdsRef.current.includes(m.id)),
     }));
 
     if (profileRows) {
@@ -545,6 +641,32 @@ export function ChatProvider({ children }: PropsWithChildren) {
     return nextProfiles;
   }
 
+  async function searchMessagesGlobal(query: string) {
+    if (!profile?.id || !query.trim()) {
+      return [];
+    }
+
+    const trimmedQuery = query.trim().replace(/[%_,]/g, "");
+    if (!trimmedQuery) return [];
+
+    const { data, error } = await supabase
+      .from("messages")
+      .select("*")
+      .ilike("body_ciphertext", `%${trimmedQuery}%`)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error || !data) {
+      return [];
+    }
+
+    // Filter to only messages that belong to chats the user is in 
+    // (the RLS policy should handle this, but just to be safe, filter by our known rawChats)
+    const validChatIds = new Set(rawChats.map(c => c.id));
+    return (data as Message[]).filter(m => validChatIds.has(m.chat_id)).map(m => ({ chat_id: m.chat_id, message: m }));
+  }
+
   function subscribe(userId: string) {
     if (channelRef.current) {
       void supabase.removeChannel(channelRef.current);
@@ -559,6 +681,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
         }
 
         setMessagesByChat((current) => {
+          if (deletedForMeIdsRef.current.includes(next.id)) return current;
           const existing = current[next.chat_id] ?? [];
           const withoutCurrent = existing.filter((message) => message.id !== next.id);
           return {
@@ -673,6 +796,24 @@ export function ChatProvider({ children }: PropsWithChildren) {
     const currentUsersForEmoji = reactionsByMessage[messageId]?.[emoji] ?? [];
     const alreadyReactedWithThisEmoji = currentUsersForEmoji.includes(profile.id);
 
+    // ── OPTIMISTIC UPDATE: update local state immediately so UI is instant ──
+    setReactionsByMessage((current) => {
+      const messageReactions = { ...(current[messageId] ?? {}) };
+
+      // Remove all current emoji reactions for this user
+      for (const key of Object.keys(messageReactions)) {
+        messageReactions[key] = messageReactions[key].filter((uid) => uid !== profile.id);
+      }
+
+      // Add the new reaction if not toggling off
+      if (!alreadyReactedWithThisEmoji) {
+        messageReactions[emoji] = [...(messageReactions[emoji] ?? []), profile.id];
+      }
+
+      return { ...current, [messageId]: messageReactions };
+    });
+
+    // ── DB SYNC in background ─────────────────────────────────────────────
     // Delete any existing reactions this user has on this message
     await supabase
       .from("message_reactions")
@@ -710,17 +851,35 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }));
   }
 
-  async function deleteMessages(messageIds: string[]) {
+  async function deleteMessages(messageIds: string[], forEveryone: boolean) {
     if (!profile?.id || !messageIds.length) {
       return;
     }
 
-    const { error } = await supabase
-      .from("messages")
-      .update({ deleted_at: new Date().toISOString() })
-      .in("id", messageIds);
+    if (forEveryone) {
+      const { error } = await supabase
+        .from("messages")
+        .update({ deleted_at: new Date().toISOString() })
+        .in("id", messageIds);
 
-    if (!error) {
+      if (!error) {
+        setMessagesByChat((current) => {
+          const next = { ...current };
+          for (const chatId in next) {
+            next[chatId] = next[chatId].filter((m) => !messageIds.includes(m.id));
+          }
+          return next;
+        });
+      } else {
+        Alert.alert("שגיאה במחיקה", "נא להריץ את קובץ SQL כי המסד חוסם: " + error.message);
+      }
+    } else {
+      setDeletedForMeIds((current) => {
+        const next = [...new Set([...current, ...messageIds])];
+        deletedForMeIdsRef.current = next;
+        void AsyncStorage.setItem(`${LOCAL_CHAT_STATE_KEY_PREFIX}:deleted_for_me:${profile.id}`, JSON.stringify(next));
+        return next;
+      });
       setMessagesByChat((current) => {
         const next = { ...current };
         for (const chatId in next) {
@@ -734,27 +893,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
   async function deleteChats(chatIdsToProcess: string[]) {
     if (!profile?.id || !chatIdsToProcess.length) return;
 
-    for (const chatId of chatIdsToProcess) {
-      const chat = chats.find((c) => c.id === chatId);
-      if (!chat) continue;
-
-      if (chat.is_group) {
-        // Leave the group
-        await supabase
-          .from("chat_members")
-          .delete()
-          .eq("chat_id", chatId)
-          .eq("user_id", profile.id);
-      } else {
-        // Delete the private chat fully (cascades to members and messages)
-        await supabase
-          .from("chats")
-          .delete()
-          .eq("id", chatId);
-      }
-    }
-
-    await refreshChats();
+    // The user requested that deleting a chat (group or private) doesn't delete the content,
+    // but just removes it from the user's Chats list, similar to clearing, but preserving the 
+    // internal history when re-opened.
+    const deletedAt = new Date().toISOString();
+    updateChatPreferences(chatIdsToProcess, (current) => ({
+      ...current,
+      deleted_from_home_at: deletedAt,
+    }));
   }
 
   async function updateChatDescription(chatId: string, description: string) {
@@ -765,10 +911,27 @@ export function ChatProvider({ children }: PropsWithChildren) {
     const { error } = await supabase.from("chats").update({ description }).eq("id", chatId);
 
     if (!error) {
-      setChats((current) =>
+      setRawChats((current) =>
         current.map((chat) => (chat.id === chatId ? { ...chat, description } : chat))
       );
     }
+  }
+
+  async function updateChatTitle(chatId: string, title: string) {
+    if (!profile?.id) return;
+    const { error } = await supabase.from("chats").update({ title }).eq("id", chatId);
+    if (!error) {
+      setRawChats((current) =>
+        current.map((chat) => (chat.id === chatId ? { ...chat, title } : chat))
+      );
+    }
+  }
+
+  async function setContactNickname(userId: string, data: ContactNicknameData) {
+    setContactNicknames((current) => ({
+      ...current,
+      [userId]: data,
+    }));
   }
 
   const value = useMemo(
@@ -801,9 +964,13 @@ export function ChatProvider({ children }: PropsWithChildren) {
       openViewOnceMessage,
       deleteMessages,
       updateChatDescription,
+      updateChatTitle,
       deleteChats,
+      contactNicknames,
+      setContactNickname,
+      searchMessagesGlobal,
     }),
-    [chatPreferences, chats, loading, messagesByChat, muteSettings, openedViewOnceIds, profiles, reactionsByMessage, unreadCounts],
+    [chatPreferences, contactNicknames, chats, loading, messagesByChat, muteSettings, openedViewOnceIds, profiles, reactionsByMessage, unreadCounts],
   );
 
   return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;

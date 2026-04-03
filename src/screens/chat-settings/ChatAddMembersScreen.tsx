@@ -17,7 +17,7 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { profile } = useAuth();
-  const { loadChatMembers, searchUsers } = useChats();
+  const { loadChatMembers, searchUsers, contactNicknames } = useChats();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<Profile[]>([]);
@@ -66,11 +66,10 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
     <Screen>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={onBack} style={styles.backBtn}>
-          <Feather name="arrow-right" size={24} color={theme.colors.headerIcon} />
-        </Pressable>
         <View style={styles.searchShell}>
-          <Feather name="search" size={16} color={theme.colors.textMuted} />
+          <Pressable onPress={onBack} style={styles.backBtn}>
+            <Feather name="arrow-right" size={24} color={theme.colors.headerIcon} />
+          </Pressable>
           <TextInput
             style={styles.searchInput}
             placeholder="אפשר לחפש שם או מספר..."
@@ -80,7 +79,44 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
             autoFocus
           />
         </View>
+        <Pressable style={styles.gridBtn}>
+          <MaterialCommunityIcons name="dots-grid" size={24} color={theme.colors.headerIcon} />
+        </Pressable>
       </View>
+
+      {/* Selected Users Chips */}
+      {selectedIds.size > 0 && (
+        <View style={styles.selectedContainer}>
+          <FlatList
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            inverted={true} // RTL scroll
+            data={[...selectedIds].map(id => results.find(r => r.id === id)).filter(Boolean)}
+            keyExtractor={item => item!.id}
+            renderItem={({ item }) => {
+              if (!item) return null;
+              const nickname = contactNicknames[item.id]?.first_name;
+              const displayName = nickname || item.username;
+              return (
+                <Pressable style={styles.selectedChip} onPress={() => toggleSelect(item.id)}>
+                  <View style={styles.selectedAvatarContainer}>
+                    <View style={styles.selectedAvatar}>
+                      <Text style={styles.selectedAvatarText}>{(nickname || item.username).slice(0, 1).toUpperCase()}</Text>
+                    </View>
+                    <View style={styles.removeIconBadge}>
+                      <Feather name="x" size={12} color={theme.colors.textMuted} />
+                    </View>
+                  </View>
+                  <Text style={styles.selectedChipName} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                </Pressable>
+              );
+            }}
+          />
+          <View style={styles.thickSeparator} />
+        </View>
+      )}
 
       {/* Admin-only note */}
       <Text style={styles.adminNote}>
@@ -111,28 +147,28 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => {
           const selected = selectedIds.has(item.id);
+          const nickname = contactNicknames[item.id]?.first_name;
           return (
             <Pressable style={styles.resultRow} onPress={() => toggleSelect(item.id)}>
-              <View style={[styles.radio, selected && styles.radioSelected]}>
-                {selected && <Feather name="check" size={14} color="#fff" />}
-              </View>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{item.username.slice(0, 1).toUpperCase()}</Text>
+                <Text style={styles.avatarText}>{(nickname || item.username).slice(0, 1).toUpperCase()}</Text>
               </View>
               <View style={styles.resultCopy}>
-                <Text style={styles.resultName}>{item.full_name || item.username}</Text>
-                {item.full_name && <Text style={styles.resultSub}>{item.username}</Text>}
+                <Text style={styles.resultName}>{nickname || item.username}</Text>
+                <Text style={styles.resultSub}>{nickname ? `@${item.username}` : (item.full_name || `@${item.username}`)}</Text>
+              </View>
+              <View style={[styles.radio, selected && styles.radioSelected]}>
+                {selected && <Feather name="check" size={14} color="#fff" />}
               </View>
             </Pressable>
           );
         }}
       />
 
+      {/* Floating Action Button (FAB) */}
       {selectedIds.size > 0 && (
-        <Pressable style={styles.addBtn} onPress={handleAdd} disabled={saving}>
-          <Text style={styles.addBtnText}>
-            {saving ? "מוסיף..." : `הוסף ${selectedIds.size} חבר${selectedIds.size > 1 ? "ים" : ""}`}
-          </Text>
+        <Pressable style={styles.fabBtn} onPress={handleAdd} disabled={saving}>
+          <Feather name="arrow-left" size={24} color="#fff" />
         </Pressable>
       )}
     </Screen>
@@ -142,26 +178,80 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     header: {
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
       backgroundColor: theme.colors.header,
-      paddingHorizontal: theme.spacing.md,
+      paddingHorizontal: theme.spacing.sm,
       paddingVertical: theme.spacing.sm,
-      gap: theme.spacing.md,
+      justifyContent: "space-between",
     },
     backBtn: {
       padding: theme.spacing.xs,
     },
+    gridBtn: {
+      padding: theme.spacing.xs,
+      marginLeft: 4,
+    },
     searchShell: {
       flex: 1,
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
-      gap: 8,
+      gap: 12,
     },
     searchInput: {
       flex: 1,
       color: theme.colors.headerText,
-      fontSize: 16,
+      fontSize: 18,
+      textAlign: "right",
+    },
+    selectedContainer: {
+      backgroundColor: theme.colors.background,
+      paddingTop: theme.spacing.lg,
+    },
+    selectedChip: {
+      alignItems: "center",
+      marginHorizontal: 10,
+      width: 60,
+    },
+    selectedAvatarContainer: {
+      position: "relative",
+      marginBottom: 6,
+    },
+    selectedAvatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      backgroundColor: theme.colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    selectedAvatarText: {
+      fontSize: 22,
+      fontWeight: "700",
+      color: theme.colors.accent,
+    },
+    removeIconBadge: {
+      position: "absolute",
+      bottom: -2,
+      left: -2,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 10,
+      width: 20,
+      height: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1.5,
+      borderColor: theme.colors.background,
+    },
+    selectedChipName: {
+      fontSize: 13,
+      color: theme.colors.text,
+      textAlign: "center",
+    },
+    thickSeparator: {
+      height: 1,
+      marginTop: theme.spacing.lg,
+      backgroundColor: theme.colors.separator,
     },
     adminNote: {
       fontSize: 13,
@@ -173,13 +263,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.accent,
     },
     quickRow: {
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: 14,
       gap: theme.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
     },
     quickIcon: {
       width: 44,
@@ -193,6 +281,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 16,
       color: theme.colors.text,
       fontWeight: "600",
+      textAlign: "right",
     },
     sectionLabel: {
       fontSize: 13,
@@ -200,15 +289,15 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.md,
       paddingBottom: theme.spacing.sm,
+      textAlign: "right",
+      fontWeight: "600",
     },
     resultRow: {
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: 12,
       gap: theme.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.separator,
     },
     radio: {
       width: 24,
@@ -238,27 +327,34 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     resultCopy: {
       flex: 1,
+      justifyContent: "center",
     },
     resultName: {
-      fontSize: 16,
-      fontWeight: "600",
+      fontSize: 17,
+      fontWeight: "500",
       color: theme.colors.text,
+      textAlign: "right",
     },
     resultSub: {
-      fontSize: 13,
+      fontSize: 14,
       color: theme.colors.textMuted,
       marginTop: 2,
+      textAlign: "right",
     },
-    addBtn: {
+    fabBtn: {
+      position: "absolute",
+      bottom: 24,
+      left: 24,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
       backgroundColor: theme.colors.accent,
-      margin: theme.spacing.lg,
-      borderRadius: theme.radius.pill,
-      paddingVertical: 14,
       alignItems: "center",
-    },
-    addBtnText: {
-      color: "#fff",
-      fontSize: 16,
-      fontWeight: "700",
+      justifyContent: "center",
+      elevation: 6,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4.5,
     },
   });

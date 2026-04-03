@@ -17,7 +17,7 @@ const MAX = 100;
 export function ChatRenameModal({ chat, visible, onClose, onRenamed }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
-  const { chats } = useChats();
+  const { chats, updateChatTitle } = useChats();
   const liveChat = chats.find((c) => c.id === chat.id) || chat;
   const [name, setName] = useState(liveChat.title);
   const inputRef = useRef<TextInput>(null);
@@ -32,7 +32,7 @@ export function ChatRenameModal({ chat, visible, onClose, onRenamed }: Props) {
   const handleSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
-    await supabase.from("chats").update({ title: trimmed }).eq("id", chat.id);
+    await updateChatTitle(chat.id, trimmed);
     onRenamed?.(trimmed);
     onClose();
   };

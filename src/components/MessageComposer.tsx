@@ -22,9 +22,10 @@ type Props = {
   emojiEvent?: { emoji: string; ts: number } | null;
   onInputFocus?: () => void;
   focusTrigger?: number;
+  onAttachmentPress?: () => void;
 };
 
-export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger }: Props) {
+export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
   const [body, setBody] = useState("");
@@ -48,17 +49,7 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
 
   const expireSeconds = kind === "temporary" ? 60 : null;
 
-  const placeholder = useMemo(() => {
-    if (kind === "temporary") {
-      return "הקלידו הודעה נעלמת";
-    }
-
-    if (kind === "view_once") {
-      return "הקלידו הודעה חד-פעמית";
-    }
-
-    return "הקלידו הודעה";
-  }, [kind]);
+  const placeholder = "הקלידו הודעה";
 
   function handleSend() {
     if (!body.trim()) {
@@ -105,28 +96,49 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
         ) : null}
 
         <View style={styles.composerRow}>
+          {/* Input field - FIRST in JSX = rightmost visually in RTL */}
           <View style={styles.inputContainer}>
+            {/* Emoji toggle - FIRST inside = rightmost visually */}
             <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
               <MaterialCommunityIcons color={theme.colors.textMuted} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
             </Pressable>
             <View style={styles.inputShell}>
-            <TextInput
-              onChangeText={setBody}
-              onSubmitEditing={handleSubmit}
-              placeholder={placeholder}
-              placeholderTextColor={theme.colors.textMuted}
-              ref={inputRef}
-              onFocus={onInputFocus}
-              returnKeyType="send"
-              blurOnSubmit={false}
-              style={[styles.input, webEmbeddedInputReset]}
-              value={body}
-            />
+              <TextInput
+                onChangeText={setBody}
+                onSubmitEditing={handleSubmit}
+                placeholder={placeholder}
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                ref={inputRef}
+                onFocus={onInputFocus}
+                returnKeyType="default"
+                blurOnSubmit={false}
+                multiline
+                style={[styles.input, webEmbeddedInputReset]}
+                value={body}
+              />
             </View>
+            {/* Camera & Paperclip - LAST inside = leftmost visually in RTL */}
+            <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
+              <Feather color={theme.colors.textMuted} name="paperclip" size={20} />
+            </Pressable>
+            <Pressable onPress={() => {}} style={[styles.innerSideButton, webNoOutline]}>
+              <Feather color={theme.colors.textMuted} name="camera" size={20} />
+            </Pressable>
           </View>
-          <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
-            <Feather color={theme.colors.textOnAccent} name="send" size={18} />
-          </Pressable>
+
+          {/* Send button when typing */}
+          {body.trim().length > 0 && (
+            <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
+              <Feather color={theme.colors.textOnAccent} name="send" size={18} />
+            </Pressable>
+          )}
+
+          {/* Mic FAB - LAST in JSX = leftmost visually in RTL */}
+          {body.trim().length === 0 && (
+            <Pressable onPress={() => {}} style={[styles.micFab, webNoOutline]}>
+              <MaterialCommunityIcons color="#fff" name="microphone" size={22} />
+            </Pressable>
+          )}
         </View>
       </View>
     </View>
@@ -145,7 +157,7 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
   }) {
     return (
       <Pressable onPress={onPress} style={[styles.modeChip, active && styles.modeChipActive, webNoOutline]}>
-        <MaterialCommunityIcons color={active ? theme.colors.accent : theme.colors.textMuted} name={icon} size={15} />
+        <MaterialCommunityIcons color={active ? "#fff" : "rgba(255,255,255,0.7)"} name={icon} size={15} />
         <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
       </Pressable>
     );
@@ -205,24 +217,24 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      backgroundColor: theme.colors.surface,
+      backgroundColor: "rgba(30, 30, 30, 0.92)",
       borderRadius: 18,
-      borderColor: theme.colors.border,
+      borderColor: "rgba(255,255,255,0.12)",
       borderWidth: 1,
       paddingHorizontal: 16,
       paddingVertical: 8,
     },
     modeChipActive: {
-      backgroundColor: theme.colors.accentSoft,
-      borderColor: theme.colors.accentSoft,
+      backgroundColor: "rgba(0, 168, 132, 0.88)",
+      borderColor: "rgba(0, 168, 132, 0.5)",
     },
     modeLabel: {
-      color: theme.colors.textMuted,
+      color: "rgba(255,255,255,0.85)",
       fontSize: 12,
       fontWeight: "700",
     },
     modeLabelActive: {
-      color: theme.colors.accent,
+      color: "#fff",
     },
     emojiRow: {
       flexDirection: "row",
@@ -246,7 +258,21 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     composerRow: {
       flexDirection: "row",
       alignItems: "flex-end",
-      gap: theme.spacing.xs,
+      gap: 6,
+    },
+    micFab: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: theme.colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    outerSideButton: {
+      width: 36,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
     },
     inputContainer: {
       flex: 1,
@@ -261,6 +287,12 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       alignItems: "center",
       justifyContent: "center",
     },
+    innerSideButton: {
+      width: 38,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     inputShell: {
       flex: 1,
       paddingLeft: 4,
@@ -271,8 +303,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     input: {
       color: theme.colors.text,
       fontSize: 16,
-      height: 22,
-      paddingVertical: 0,
+      minHeight: 22,
+      maxHeight: 120,
+      paddingVertical: Platform.OS === "ios" ? 8 : 4,
     },
     sendButton: {
       width: 46,

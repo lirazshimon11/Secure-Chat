@@ -43,6 +43,7 @@ export type ChatLocalPreferences = {
   pinned_at: string | null;
   locked: boolean;
   cleared_at: string | null;
+  deleted_from_home_at: string | null;
 };
 
 export type ReactionSummary = Record<string, string[]>;

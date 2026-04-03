@@ -8,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider } from "@/context/AuthContext";
 import { ChatProvider } from "@/context/ChatContext";
+import { ScreenshotProvider } from "@/context/ScreenshotContext";
 import { AppShell } from "@/AppShell";
 
 export default function App() {
@@ -18,8 +19,10 @@ export default function App() {
       <SafeAreaProvider>
         <AuthProvider>
           <ChatProvider>
-            <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-            <AppShell />
+            <ScreenshotProvider>
+              <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+              <AppShell />
+            </ScreenshotProvider>
           </ChatProvider>
         </AuthProvider>
       </SafeAreaProvider>

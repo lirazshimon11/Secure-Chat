@@ -1,20 +1,31 @@
-import { useMemo } from "react";
-import { StyleSheet, Text, View, Pressable, ScrollView } from "react-native";
+import { useMemo, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useAppTheme } from "@/lib/theme";
+
+type TimerOption = "24h" | "7d" | "90d" | "off";
 
 type Props = {
   onBack: () => void;
 };
 
+const TIMER_OPTIONS: { id: TimerOption; label: string }[] = [
+  { id: "24h", label: "24 שעות" },
+  { id: "7d", label: "7 ימים" },
+  { id: "90d", label: "90 ימים" },
+  { id: "off", label: "כבוי" },
+];
+
 export function ChatDisappearingMessagesScreen({ onBack }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const [selected, setSelected] = useState<TimerOption>("off");
 
   return (
     <Screen>
       <View style={styles.container}>
+        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.headerTitle}>הודעות זמניות</Text>
           <Pressable onPress={onBack} style={styles.backButton}>
@@ -22,46 +33,53 @@ export function ChatDisappearingMessagesScreen({ onBack }: Props) {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Illustration */}
           <View style={styles.illustration}>
-              <MaterialCommunityIcons name="timer-outline" size={80} color={theme.colors.accent} />
+            <View style={styles.illustrationCircle}>
+              <MaterialCommunityIcons name="timer-sand" size={54} color={theme.colors.accent} />
+            </View>
           </View>
 
-          <Text style={styles.mainTitle}>
-            להתחיל להתכתב בהודעות זמניות
-          </Text>
-          
-          <Text style={styles.description}>
-            השימוש בהודעות זמניות יגביר את הפרטיות שלך ויאפשר שיפור באחסון המכשיר.
+          {/* Description text */}
+          <Text style={styles.descriptionText}>
+            הגדרת הודעות זמניות בצ'אט הזה להגברת הפרטיות וכולות האחסון. הודעות חדשות ייעלמו מכאן, מהצ'אט הזה לאחר פרק הזמן שנבחר, למעט הודעות שיבחרו לשמירה. מנהלי הקבוצה הם שקובעים מי יכול לשנות את ההגדרה הזו.{" "}
+            <Text style={styles.learnMoreLink}>למידע נוסף</Text>
           </Text>
 
-          <View style={styles.bulletList}>
-             <Bullet icon="timer-sand" text="הודעות חדשות ייעלמו אצל כולם לאחר פרק הזמן שנבחר." theme={theme} />
-             <Bullet icon="bookmark-outline" text="כולם יכולים לשמור הודעות או לבטל את השמירה של הודעות בצ'אט. מנהלי הקבוצה יכולים להגביל את האפשרות הזו." theme={theme} />
-             <Bullet icon="hand-front-right-outline" text="קיימות דרכים אחרות לשמור הודעות." theme={theme} />
+          {/* Timer section label */}
+          <Text style={styles.timerLabel}>טיימר להודעות זמניות</Text>
+
+          {/* Timer radio options */}
+          <View style={styles.optionsList}>
+            {TIMER_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.id}
+                style={styles.optionRow}
+                onPress={() => setSelected(opt.id)}
+              >
+                <Text style={styles.optionLabel}>{opt.label}</Text>
+                <View style={[styles.radioOuter, selected === opt.id && styles.radioOuterActive]}>
+                  {selected === opt.id && <View style={styles.radioInner} />}
+                </View>
+              </Pressable>
+            ))}
           </View>
-          
-          <View style={styles.actions}>
-             <Pressable style={styles.buttonPrimary} onPress={onBack}>
-                <Text style={styles.buttonPrimaryText}>אישור</Text>
-             </Pressable>
-             <Pressable style={styles.buttonSecondary} onPress={onBack}>
-                <Text style={styles.buttonSecondaryText}>למידע נוסף</Text>
-             </Pressable>
-          </View>
+
+          {/* Default timer row */}
+          <View style={styles.thickSeparator} />
+          <Pressable style={styles.defaultTimerRow}>
+            <View style={styles.defaultTimerIcon}>
+              <MaterialCommunityIcons name="timer-cog-outline" size={26} color={theme.colors.textMuted} />
+            </View>
+            <View style={styles.defaultTimerCopy}>
+              <Text style={styles.defaultTimerTitle}>טיימר ברירת מחדל להודעות זמניות</Text>
+              <Text style={styles.defaultTimerSub}>אפשר להתחיל צ'אטים חדשים עם הודעות זמניות</Text>
+            </View>
+          </Pressable>
         </ScrollView>
       </View>
     </Screen>
-  );
-}
-
-function Bullet({ icon, text, theme }: { icon: any; text: string; theme: any }) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
-  return (
-    <View style={styles.bulletItem}>
-      <Text style={styles.bulletText}>{text}</Text>
-      <MaterialCommunityIcons name={icon} size={24} color={theme.colors.textMuted} style={styles.bulletIcon} />
-    </View>
   );
 }
 
@@ -94,75 +112,105 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 20,
       fontWeight: "800",
       flex: 1,
-
     },
     content: {
-      padding: theme.spacing.xl,
+      paddingBottom: 40,
     },
     illustration: {
       alignItems: "center",
-      marginVertical: theme.spacing.xl,
+      paddingTop: 36,
+      paddingBottom: 24,
     },
-    mainTitle: {
-      fontSize: 22,
-      fontWeight: "700",
-      color: theme.colors.text,
-      textAlign: "center",
-      marginBottom: theme.spacing.lg,
-    },
-    description: {
-      fontSize: 15,
-      color: theme.colors.text,
-
-      marginBottom: theme.spacing.xl,
-      lineHeight: 22,
-    },
-    bulletList: {
-      gap: theme.spacing.xl,
-      marginBottom: theme.spacing.xl,
-    },
-    bulletItem: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
-      alignItems: "flex-start",
-      gap: theme.spacing.md,
-    },
-    bulletIcon: {
-      marginLeft: 12,
-    },
-    bulletText: {
-      flex: 1,
-      fontSize: 15,
-      color: theme.colors.text,
-
-      lineHeight: 22,
-    },
-    actions: {
-      gap: theme.spacing.md,
-      marginTop: theme.spacing.xl,
-    },
-    buttonPrimary: {
-      backgroundColor: theme.colors.accent,
-      paddingVertical: 14,
-      borderRadius: theme.radius.pill,
+    illustrationCircle: {
+      width: 110,
+      height: 110,
+      borderRadius: 55,
+      backgroundColor: `${theme.colors.accent}22`,
       alignItems: "center",
+      justifyContent: "center",
     },
-    buttonPrimaryText: {
-      color: "white",
-      fontSize: 16,
-      fontWeight: "700",
+    descriptionText: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      textAlign: "right",
+      lineHeight: 22,
+      paddingHorizontal: theme.spacing.lg,
+      marginBottom: theme.spacing.xl,
     },
-    buttonSecondary: {
-      backgroundColor: "transparent",
-      paddingVertical: 14,
-      borderRadius: theme.radius.pill,
-      borderWidth: 1,
-      borderColor: theme.colors.separator,
-      alignItems: "center",
-    },
-    buttonSecondaryText: {
+    learnMoreLink: {
       color: theme.colors.accent,
+    },
+    timerLabel: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      fontWeight: "600",
+      paddingHorizontal: theme.spacing.lg,
+      marginBottom: 6,
+    },
+    optionsList: {
+      backgroundColor: theme.colors.surface,
+    },
+    optionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: 18,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.separator,
+    },
+    optionLabel: {
+      fontSize: 17,
+      color: theme.colors.text,
+      fontWeight: "600",
+    },
+    radioOuter: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      borderColor: theme.colors.textMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    radioOuterActive: {
+      borderColor: theme.colors.accent,
+    },
+    radioInner: {
+      width: 11,
+      height: 11,
+      borderRadius: 6,
+      backgroundColor: theme.colors.accent,
+    },
+    thickSeparator: {
+      height: 8,
+      backgroundColor: theme.colors.separator,
+      marginBottom: 2,
+    },
+    defaultTimerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: 18,
+      gap: theme.spacing.md,
+    },
+    defaultTimerIcon: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    defaultTimerCopy: {
+      flex: 1,
+    },
+    defaultTimerTitle: {
       fontSize: 16,
-      fontWeight: "700",
+      color: theme.colors.text,
+      fontWeight: "600",
+    },
+    defaultTimerSub: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      marginTop: 2,
     },
   });

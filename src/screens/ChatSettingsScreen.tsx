@@ -17,6 +17,8 @@ import { ChatMediaScreen } from "./chat-settings/ChatMediaScreen";
 import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
 import { ChatPermissionsScreen } from "./chat-settings/ChatPermissionsScreen";
 import { ChatRenameModal } from "./chat-settings/ChatRenameModal";
+import { ChatThemeScreen } from "./chat-settings/ChatThemeScreen";
+import { ChatEditContactScreen } from "./chat-settings/ChatEditContactScreen";
 
 type Props = {
   chat: Chat;
@@ -26,7 +28,7 @@ type Props = {
 export function ChatSettingsScreen({ chat, onBack }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { loadChatMembers, messagesByChat, chats } = useChats();
+  const { loadChatMembers, messagesByChat, chats, contactNicknames } = useChats();
   const [members, setMembers] = useState<Profile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -47,7 +49,7 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
 
   // Sub-screen orchestration
   const [activeScreen, setActiveScreen] = useState<
-    "storage" | "notifications" | "disappearing" | "advanced" | "media" | "addMembers" | "permissions" | null
+    "storage" | "notifications" | "disappearing" | "advanced" | "media" | "addMembers" | "permissions" | "theme" | "editContact" | null
   >(null);
   const [showDescription, setShowDescription] = useState(false);
   const [showVisibility, setShowVisibility] = useState(false);
@@ -77,6 +79,8 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
   if (activeScreen === "media") return <ChatMediaScreen chat={chat} onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "permissions") return <ChatPermissionsScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "theme") return <ChatThemeScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "editContact") return <ChatEditContactScreen chat={chat} onBack={() => setActiveScreen(null)} />;
 
   return (
     <Screen>
@@ -159,6 +163,7 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
           <SettingRow icon="timer-sand" title="הודעות זמניות" subtitle="כבה" onPress={() => setActiveScreen("disappearing")} theme={theme} />
           <SettingRow icon="cellphone-lock" title="נעילת הצ'אט" subtitle="נעילה והסתרה של הצ'אט הזה במכשיר" actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("נעילת צ'אט", "ניתן לנעול צ'אטים ממסך הבית (לחיצה ארוכה).")); }} />
           <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="כבה" onPress={() => setActiveScreen("advanced")} theme={theme} />
+          <SettingRow icon="palette-outline" title="ערכת הנושא של הצאט" subtitle="ברירת מחדל" onPress={() => setActiveScreen("theme")} theme={theme} />
         </View>
 
         <View style={styles.thickSeparator} />
@@ -191,17 +196,21 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
             </View>
           </View>
 
-          {filteredMembers.map((member) => (
-            <View key={member.id} style={styles.memberRow}>
-              <View style={styles.memberAvatar}>
-                <Text style={styles.memberAvatarText}>{member.username.slice(0, 1).toUpperCase()}</Text>
+          {filteredMembers.map((member) => {
+            const nickname = contactNicknames[member.id]?.first_name;
+            const displayName = nickname || member.full_name || member.username;
+            return (
+              <View key={member.id} style={styles.memberRow}>
+                <View style={styles.memberAvatar}>
+                  <Text style={styles.memberAvatarText}>{(nickname || member.username).slice(0, 1).toUpperCase()}</Text>
+                </View>
+                <View style={styles.memberCopy}>
+                  <Text style={styles.memberName}>{displayName}</Text>
+                  <Text style={styles.memberSubtitle}>~ {member.username}</Text>
+                </View>
               </View>
-              <View style={styles.memberCopy}>
-                <Text style={styles.memberName}>{member.full_name || member.username}</Text>
-                <Text style={styles.memberSubtitle}>~ {member.username}</Text>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
       </ScrollView>
@@ -224,7 +233,7 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
             ) : (
               <>
                 <MenuItem label="שיתוף" onPress={() => { setShowOverflowMenu(false); import('react-native').then(m => m.Alert.alert("שיתוף", "בקרוב")); }} />
-                <MenuItem label="עריכה" onPress={() => { setShowOverflowMenu(false); import('react-native').then(m => m.Alert.alert("עריכה", "בקרוב")); }} />
+                <MenuItem label="עריכה" onPress={() => { setShowOverflowMenu(false); setActiveScreen("editContact"); }} />
                 <MenuItem label="אימות קוד אבטחה" onPress={() => { setShowOverflowMenu(false); import('react-native').then(m => m.Alert.alert("קוד אבטחה", "בקרוב")); }} />
               </>
             )}
@@ -245,7 +254,7 @@ function MenuItem({ label, onPress, danger }: { label: string; onPress: () => vo
   // Use base sizes similar to screen but padding adapted for dropdowns
   return (
     <Pressable onPress={onPress} style={{ paddingHorizontal: 16, paddingVertical: 14, width: "100%" }}>
-      <Text style={{ color: danger ? theme.colors.danger : theme.colors.text, fontSize: 16, textAlign: "left" }}>
+      <Text style={{ color: danger ? theme.colors.danger : theme.colors.text, fontSize: 16, fontWeight: "700", textAlign: "left" }}>
         {label}
       </Text>
     </Pressable>

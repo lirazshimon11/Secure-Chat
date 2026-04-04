@@ -1,7 +1,7 @@
 import React from "react";
 import { Text, View, TouchableHighlight } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { DisplayChat } from "./ChatsUtils";
+import { DisplayChat, parsePollPreview } from "./ChatsUtils";
 
 type ChatRowProps = {
   item: DisplayChat;
@@ -54,9 +54,34 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
               ) : null}
             </View>
           </View>
-          <Text numberOfLines={1} style={[styles.chatPreview, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
-            {item.preview}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}>
+            {(() => {
+              const { isPoll, question } = parsePollPreview(item.preview);
+              if (isPoll) {
+                return (
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                    <MaterialCommunityIcons 
+                      name="poll" 
+                      size={18} 
+                      color={theme.colors.textMuted} 
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text 
+                      numberOfLines={1} 
+                      style={[styles.chatPreview, { marginTop: 0, flex: 1 }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}
+                    >
+                      {question}
+                    </Text>
+                  </View>
+                );
+              }
+              return (
+                <Text numberOfLines={1} style={[styles.chatPreview, { flex: 1 }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
+                  {item.preview}
+                </Text>
+              );
+            })()}
+          </View>
         </View>
       </View>
     </TouchableHighlight>

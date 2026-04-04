@@ -63,6 +63,9 @@ const lightColors = {
   sheetHandle: "rgba(0,0,0,0.1)",
   searchBackground: "rgba(0,0,0,0.05)",
   selectionModeBackground: "rgba(0, 168, 132, 0.12)",
+  unreadBand: "rgba(0, 0, 0, 0.06)",
+  unreadPill: "#ffffff",
+  unreadText: "#54656f",
 };
 
 const darkColors = {
@@ -111,6 +114,9 @@ const darkColors = {
   sheetHandle: "rgba(255,255,255,0.1)",
   searchBackground: "rgba(255,255,255,0.05)",
   selectionModeBackground: "rgba(0, 168, 132, 0.28)",
+  unreadBand: "rgba(0, 0, 0, 0.3)",
+  unreadPill: "#182229",
+  unreadText: "#ffffff",
 };
 
 export type AppTheme = typeof lightTheme;

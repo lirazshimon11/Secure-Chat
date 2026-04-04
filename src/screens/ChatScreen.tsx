@@ -46,7 +46,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const colorScheme = useColorScheme();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
   const { profile } = useAuth();
-  
+  const [initialUnreadCount, setInitialUnreadCount] = useState<number>(0);
+  const [initialUnreadStartIndex, setInitialUnreadStartIndex] = useState<number>(-1);
+
   const { 
     loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles, chats, 
     contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings, 
@@ -87,8 +89,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     if (!chat || !visibleMessages) return groups;
 
     let lastDateLabel = "";
-    const currentUnread = (unreadCounts && chat && unreadCounts[chat.id]) || 0;
-    const unreadStartIndex = Math.max(0, ((visibleMessages && visibleMessages.length) || 0) - currentUnread);
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     const messagesToGroup = visibleMessages.filter((msg) => {
@@ -98,13 +98,16 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     });
 
     messagesToGroup.forEach((msg, idx) => {
-      if (currentUnread > 0 && idx === unreadStartIndex && !normalizedQuery) groups.push({ type: "unread", unreadCount: currentUnread });
+      // Use initial values for unread divider to ensure it stays in place during the session
+      if (initialUnreadCount > 0 && idx === initialUnreadStartIndex && !normalizedQuery) {
+        groups.push({ type: "unread", unreadCount: initialUnreadCount });
+      }
       const label = formatRelativeDate(new Date(msg.created_at));
       if (label !== lastDateLabel) { groups.push({ type: "date", dateLabel: label }); lastDateLabel = label; }
       groups.push({ type: "message", message: msg });
     });
     return groups;
-  }, [messageMap, searchQuery, visibleMessages, unreadCounts, chat?.id]);
+  }, [messageMap, searchQuery, visibleMessages, initialUnreadCount, initialUnreadStartIndex]);
 
   const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
   const groupSubtitle = useMemo(() => {
@@ -253,6 +256,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   useEffect(() => {
     if (!visibleMessages?.length || initialScrollDone.current) return;
     const currentUnread = (unreadCounts && chat && unreadCounts[chat.id]) || 0;
+    
+    // Initialize unread divider positions once per chat entry
+    if (!initialScrollDone.current) {
+        setInitialUnreadCount(currentUnread);
+        setInitialUnreadStartIndex(Math.max(0, visibleMessages.length - currentUnread));
+    }
+
     if (scrollToMessageId) {
       setTimeout(() => scrollToMessageWithRetry(scrollToMessageId, true), 300);
       initialScrollDone.current = true;
@@ -340,7 +350,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 <Pressable style={{ flexGrow: 1 }} onPress={() => { if (showReactionsForId) setShowReactionsForId(null); }}>
                   {groupedMessages.map((item, idx) => {
                     if (item.type === "date") return <View key={`date-${idx}`} style={styles.dateSeparator}><View style={styles.datePill}><Text style={styles.datePillText}>{item.dateLabel}</Text></View></View>;
-                    if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "הודעה אחת שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
+                    if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
                     const msg = item.message;
                     return (
                       <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = e.nativeEvent.layout.y} style={highlightedMessageId === msg.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}>

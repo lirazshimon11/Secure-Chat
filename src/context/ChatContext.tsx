@@ -43,37 +43,62 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const loadedChatIdsRef = useRef<string[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
 
-  // ── Sync with Auth State ───────────────────────────────────────────────
+  // ── Local Storage & Initial Data Loading ──────────────────────────────
   useEffect(() => {
     if (!profile?.id) {
       setRawChats([]); setPrivateChatPartners({}); setMessagesByChat({}); setReactionsByMessage({}); setOpenedViewOnceIds({}); setUnreadCounts({}); setMuteSettings({}); setChatPreferences({}); setDeletedForMeIds([]); deletedForMeIdsRef.current = []; loadedChatIdsRef.current = []; setLocalPreferencesReady(false); setLoading(false); return;
     }
-    void refreshChats(); subscribe(profile.id);
-    return () => { if (channelRef.current) void supabase.removeChannel(channelRef.current); };
-  }, [profile?.id]);
 
-  // ── Local Storage Management ───────────────────────────────────────────
-  useEffect(() => {
-    if (!profile?.id) { setChatPreferences({}); setLocalPreferencesReady(false); return; }
-    let active = true; const key = `${LOCAL_CHAT_STATE_KEY_PREFIX}:${profile.id}`;
+    let active = true;
     void (async () => {
+      const prefKey = `${LOCAL_CHAT_STATE_KEY_PREFIX}:${profile.id}`;
+      const delKey = `${LOCAL_CHAT_STATE_KEY_PREFIX}:deleted_for_me:${profile.id}`;
+      const nickKey = `${LOCAL_NICKNAMES_KEY_PREFIX}:${profile.id}`;
+
       try {
-        const raw = await AsyncStorage.getItem(key);
+        const [rawPrefs, rawDel, rawNicks] = await Promise.all([
+          AsyncStorage.getItem(prefKey),
+          AsyncStorage.getItem(delKey),
+          AsyncStorage.getItem(nickKey)
+        ]);
         if (!active) return;
-        if (!raw) { setChatPreferences({}); setLocalPreferencesReady(true); return; }
-        const parsed = JSON.parse(raw); const norm = Object.fromEntries(Object.entries(parsed ?? {}).map(([id, v]) => [id, normalizeChatPreferences(v as any)]));
-        setChatPreferences(norm);
-      } catch { if (active) setChatPreferences({}); } finally { if (active) setLocalPreferencesReady(true); }
+
+        if (rawPrefs) {
+          const parsed = JSON.parse(rawPrefs);
+          const norm = Object.fromEntries(Object.entries(parsed ?? {}).map(([id, v]) => [id, normalizeChatPreferences(v as any)]));
+          setChatPreferences(norm);
+        }
+        if (rawDel) {
+          const parsed = JSON.parse(rawDel);
+          if (Array.isArray(parsed)) {
+            setDeletedForMeIds(parsed);
+            deletedForMeIdsRef.current = parsed;
+          }
+        }
+        if (rawNicks) {
+          setContactNicknames(JSON.parse(rawNicks));
+        }
+      } catch (err) {
+        console.error("Local storage load error:", err);
+      } finally {
+        if (active) {
+          setLocalPreferencesReady(true);
+          void refreshChats();
+        }
+      }
     })();
-    return () => { active = false; };
+
+    subscribe(profile.id);
+    return () => { 
+      active = false;
+      if (channelRef.current) void supabase.removeChannel(channelRef.current); 
+    };
   }, [profile?.id]);
 
   useEffect(() => {
-    if (!profile?.id) { setContactNicknames({}); return; }
-    void AsyncStorage.getItem(`${LOCAL_NICKNAMES_KEY_PREFIX}:${profile.id}`).then(raw => raw && setContactNicknames(JSON.parse(raw)));
-  }, [profile?.id]);
-
-  useEffect(() => { if (profile?.id) void AsyncStorage.setItem(`${LOCAL_NICKNAMES_KEY_PREFIX}:${profile.id}`, JSON.stringify(contactNicknames)); }, [contactNicknames, profile?.id]);
+    if (!profile?.id || !localPreferencesReady) return;
+    void AsyncStorage.setItem(`${LOCAL_NICKNAMES_KEY_PREFIX}:${profile.id}`, JSON.stringify(contactNicknames));
+  }, [contactNicknames, localPreferencesReady, profile?.id]);
 
   useEffect(() => {
     if (!profile?.id || !localPreferencesReady) return;
@@ -109,8 +134,30 @@ export function ChatProvider({ children }: PropsWithChildren) {
         if (!lastRead || getUtcTime(r.created_at) > getUtcTime(lastRead)) unCounts[r.chat_id] = (unCounts[r.chat_id] ?? 0) + 1;
     }
 
-    setRawChats(rows!.map(r => {
+    const nextRawChats = rows!.map(r => {
       const isRemoved = r.role === "removed";
+      let preview = isRemoved ? "את/ה הוסרת/ה מהקבוצה" : r.last_message_preview;
+      let lastAt = isRemoved ? r.removed_at || r.last_message_at : r.last_message_at;
+
+      // Smart override: if we have local messages already loaded, they honor local deletions and optimistic updates.
+      const local = messagesByChat[r.chat_id];
+      if (local && local.length > 0) {
+        const lastLocal = local[local.length - 1];
+        const serverTs = lastAt ? new Date(lastAt).getTime() : 0;
+        const localTs = new Date(lastLocal.created_at).getTime();
+        
+        // Only use server preview if it refers to a message NEWER than our latest local one.
+        // This handles the case where we deleted the server's last message locally.
+        if (serverTs <= localTs) {
+          preview = lastLocal.body_preview || lastLocal.body_ciphertext;
+          lastAt = lastLocal.created_at;
+        }
+      } else if (local) {
+        // We have messages loaded for this chat and they are all filtered/empty.
+        // If the server preview is still pointing at something, it must be something we've filtered.
+        preview = "אין הודעות עדיין";
+      }
+
       return { 
         id: r.chat_id, 
         title: r.is_group ? r.chat_title : directTitles[r.chat_id] ?? r.chat_title, 
@@ -118,10 +165,12 @@ export function ChatProvider({ children }: PropsWithChildren) {
         description: r.description ?? null, 
         created_by: r.created_by, 
         created_at: r.created_at, 
-        last_message_preview: isRemoved ? "את/ה הוסרת/ה מהקבוצה" : r.last_message_preview, 
-        last_message_at: isRemoved ? r.removed_at || r.last_message_at : r.last_message_at 
+        last_message_preview: preview, 
+        last_message_at: lastAt 
       };
-    }) as any);
+    });
+
+    setRawChats(nextRawChats as any);
     setUnreadCounts(cur => { const next = { ...unCounts }; Object.keys(cur).forEach(id => { if (cur[id] === 0) next[id] = 0; }); return next; });
     setLoading(false);
   };
@@ -168,8 +217,8 @@ export function ChatProvider({ children }: PropsWithChildren) {
           return { ...cur, [n.chat_id]: next }; 
         });
         
-        // Don't refresh chats if we're just receiving a message, it causes too much UI jitter
-        // The last_message_preview in rawChats will be updated manually later if needed.
+        // Manual preview update to avoid jitter while being responsive
+        setRawChats(cur => cur.map(c => c.id === n.chat_id ? { ...c, last_message_preview: n.body_preview || n.body_ciphertext, last_message_at: n.created_at } : c));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
       .on("postgres_changes", { event: "*", schema: "public", table: "message_views" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
@@ -255,7 +304,25 @@ export function ChatProvider({ children }: PropsWithChildren) {
       const next = [...new Set([...deletedForMeIds, ...ids])];
       setDeletedForMeIds(next); deletedForMeIdsRef.current = next;
       void AsyncStorage.setItem(key, JSON.stringify(next));
-      setMessagesByChat(cur => { const res = { ...cur }; Object.keys(res).forEach(cid => { res[cid] = (res[cid] ?? []).filter(m => !next.includes(m.id)); }); return res; });
+      
+      setMessagesByChat(prevMsgs => {
+        const nextMsgs = { ...prevMsgs };
+        Object.keys(nextMsgs).forEach(cid => { nextMsgs[cid] = (nextMsgs[cid] ?? []).filter(m => !next.includes(m.id)); });
+
+        // Synchronize rawChats with the updated messages
+        setRawChats(cur => cur.map(c => {
+          const msgs = nextMsgs[c.id];
+          if (msgs && msgs.length > 0) {
+            const last = msgs[msgs.length - 1];
+            return { ...c, last_message_preview: last.body_preview || last.body_ciphertext, last_message_at: last.created_at };
+          } else if (msgs) {
+            return { ...c, last_message_preview: "אין הודעות עדיין", last_message_at: c.created_at };
+          }
+          return c;
+        }));
+
+        return nextMsgs;
+      });
     }
   };
 
@@ -333,7 +400,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
       void refreshChats();
     },
     setContactNickname: async (id: string, data: ContactNicknameData) => setContactNicknames(cur => ({ ...cur, [id]: data })),
-    searchMessagesGlobal: async (q: string) => { const tq = q.trim().replace(/[%_,]/g, ""); if (!profile?.id || !tq) return []; const { data } = await ChatService.searchGlobalMessages(tq); if (!data) return []; const valid = new Set(rawChats.map(c => c.id)); return ((data as Message[]) ?? []).filter(m => valid.has(m.chat_id)).map(m => ({ chat_id: m.chat_id, message: m })); },
+    searchMessagesGlobal: async (q: string) => { 
+      const tq = q.trim().replace(/[%_,]/g, ""); 
+      if (!profile?.id || !tq) return []; 
+      const { data } = await ChatService.searchGlobalMessages(tq); 
+      if (!data) return []; 
+      const valid = new Set(rawChats.map(c => c.id)); 
+      return ((data as Message[]) ?? []).filter(m => valid.has(m.chat_id) && !deletedForMeIdsRef.current.includes(m.id)).map(m => ({ chat_id: m.chat_id, message: m })); 
+    },
     setChatMemberRole: async (chatId: string, userId: string, role: string) => { await ChatService.updateChatMemberRole(chatId, userId, role); },
     removeChatMember: async (chatId: string, targetMember: Profile, _chatTitle: string) => {
       if (!profile?.id) return;

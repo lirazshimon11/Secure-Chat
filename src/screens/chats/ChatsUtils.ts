@@ -48,3 +48,15 @@ export function sortDisplayChats(a: DisplayChat, b: DisplayChat) {
   const bLastMessageAt = b.chat.last_message_at ? new Date(b.chat.last_message_at).getTime() : 0;
   return bLastMessageAt - aLastMessageAt;
 }
+
+export function parsePollPreview(preview?: string): { isPoll: boolean; question: string } {
+  if (!preview || !preview.startsWith("[POLL]:")) {
+    return { isPoll: false, question: "" };
+  }
+  try {
+    const pollData = JSON.parse(preview.substring(7));
+    return { isPoll: true, question: pollData.question || "סקר" };
+  } catch (e) {
+    return { isPoll: true, question: "סקר" };
+  }
+}

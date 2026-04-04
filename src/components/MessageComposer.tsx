@@ -74,15 +74,15 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
       <View style={styles.wrapper}>
         {replyPreview ? (
           <View style={styles.replyBanner}>
-            <View style={styles.replyAccent} />
             <View style={styles.replyText}>
-              <Text style={styles.replyLabel}>תשובה להודעה</Text>
-              <Text numberOfLines={1} style={styles.replyPreview}>
+              <Text numberOfLines={1} style={styles.replyLabel}>תשובה להודעה</Text>
+              <Text numberOfLines={2} style={styles.replyPreview}>
                 {replyPreview}
               </Text>
             </View>
+            <View style={styles.replyAccent} />
             <Pressable onPress={onCancelReply} style={styles.closeButton}>
-              <Feather color={theme.colors.textMuted} name="x" size={18} />
+              <Feather color={theme.colors.textMuted} name="x" size={16} />
             </Pressable>
           </View>
         ) : null}
@@ -107,7 +107,7 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
                 onChangeText={setBody}
                 onSubmitEditing={handleSubmit}
                 placeholder={placeholder}
-                placeholderTextColor="rgba(255,255,255,0.45)"
+                placeholderTextColor={theme.colors.textMuted + "80"} // add transparency to muted text color
                 ref={inputRef}
                 onFocus={onInputFocus}
                 returnKeyType="default"
@@ -121,7 +121,7 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
             <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
               <Feather color={theme.colors.textMuted} name="paperclip" size={20} />
             </Pressable>
-            <Pressable onPress={() => {}} style={[styles.innerSideButton, webNoOutline]}>
+            <Pressable onPress={() => { }} style={[styles.innerSideButton, webNoOutline]}>
               <Feather color={theme.colors.textMuted} name="camera" size={20} />
             </Pressable>
           </View>
@@ -135,8 +135,8 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
 
           {/* Mic FAB - LAST in JSX = leftmost visually in RTL */}
           {body.trim().length === 0 && (
-            <Pressable onPress={() => {}} style={[styles.micFab, webNoOutline]}>
-              <MaterialCommunityIcons color="#fff" name="microphone" size={22} />
+            <Pressable onPress={() => { }} style={[styles.micFab, webNoOutline]}>
+              <MaterialCommunityIcons color={theme.colors.textOnAccent} name="microphone" size={22} />
             </Pressable>
           )}
         </View>
@@ -157,7 +157,7 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
   }) {
     return (
       <Pressable onPress={onPress} style={[styles.modeChip, active && styles.modeChipActive, webNoOutline]}>
-        <MaterialCommunityIcons color={active ? "#fff" : "rgba(255,255,255,0.7)"} name={icon} size={15} />
+        <MaterialCommunityIcons color={active ? theme.colors.textOnAccent : theme.colors.textMuted} name={icon} size={15} />
         <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
       </Pressable>
     );
@@ -178,32 +178,41 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderTopWidth: 0,
     },
     replyBanner: {
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.md,
-      flexDirection: "row",
+      backgroundColor: theme.colors.bubbleBackground,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      borderBottomLeftRadius: 4,
+      borderBottomRightRadius: 4,
+      flexDirection: "row-reverse",
       alignItems: "center",
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      marginBottom: -4,
+      borderWidth: 1,
+      borderColor: theme.colors.bubbleBorder,
     },
     replyAccent: {
       width: 4,
       alignSelf: "stretch",
-      backgroundColor: theme.colors.accent,
-      borderRadius: theme.radius.pill,
+      backgroundColor: "#00A884",
+      borderRadius: 2,
+      marginLeft: 12,
     },
     replyText: {
       flex: 1,
-      gap: 2,
+      gap: 1,
+      alignItems: "flex-end",
     },
     replyLabel: {
-      color: theme.colors.accent,
+      color: "#00A884",
       fontSize: 12,
-      fontWeight: "700",
+      fontWeight: "800",
     },
     replyPreview: {
-      color: theme.colors.text,
+      color: theme.colors.textMuted,
       fontSize: 13,
+      textAlign: "right",
+      lineHeight: 18,
     },
     closeButton: {
       padding: 4,
@@ -217,9 +226,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      backgroundColor: "rgba(30, 30, 30, 0.92)",
+      backgroundColor: theme.colors.bubbleBackground,
       borderRadius: 18,
-      borderColor: "rgba(255,255,255,0.12)",
+      borderColor: theme.colors.bubbleBorder,
       borderWidth: 1,
       paddingHorizontal: 16,
       paddingVertical: 8,
@@ -229,12 +238,12 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderColor: "rgba(0, 168, 132, 0.5)",
     },
     modeLabel: {
-      color: "rgba(255,255,255,0.85)",
+      color: theme.colors.textMuted,
       fontSize: 12,
       fontWeight: "700",
     },
     modeLabelActive: {
-      color: "#fff",
+      color: theme.colors.textOnAccent,
     },
     emojiRow: {
       flexDirection: "row",

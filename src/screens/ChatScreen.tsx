@@ -56,6 +56,26 @@ function describeMute(setting?: ChatMuteSetting) {
   return setting?.mute_until ? `עד ${new Date(setting.mute_until).toLocaleString("he-IL")}` : "מושתק";
 }
 
+function formatChatTime(date: Date) {
+  return date.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatRelativeDate(date: Date) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const yesterday = today - 86400000;
+  const dTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+
+  if (dTime === today) return "היום";
+  if (dTime === yesterday) return "אתמול";
+  
+  if (now.getTime() - date.getTime() < 7 * 86400000) {
+    return date.toLocaleDateString("he-IL", { weekday: "long" });
+  }
+
+  return date.toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" });
+}
+
 const lightBg = require("../../public/images/default_white_background.png");
 const darkBg = require("../../public/images/default_dark_background.png");
 
@@ -84,6 +104,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     unreadCounts,
     messagesByChat,
     profiles,
+    contactNicknames,
     reactionsByMessage,
     openedViewOnceIds,
     muteSettings,
@@ -282,8 +303,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const isSelectionMode = selectedIds.length > 0;
 
   const groupedMessages = useMemo(() => {
-    const groups: { type: "date" | "message"; dateLabel?: string; message?: Message }[] = [];
+    const groups: { type: "date" | "message" | "unread"; dateLabel?: string; message?: Message; unreadCount?: number }[] = [];
     let lastDateLabel = "";
+
+    const currentUnread = unreadCounts[chat.id] || 0;
+    const unreadStartIndex = Math.max(0, visibleMessages.length - currentUnread);
 
     const normalizedQuery = searchQuery.trim().toLowerCase();
     const messagesToGroup = visibleMessages.filter((msg) => {
@@ -294,19 +318,27 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       );
     });
 
-    messagesToGroup.forEach((msg) => {
+    messagesToGroup.forEach((msg, idx) => {
+      // 1. Check for Unread Divider
+      if (currentUnread > 0 && idx === unreadStartIndex && !normalizedQuery) {
+        groups.push({ type: "unread", unreadCount: currentUnread });
+      }
+
+      // 2. Check for Date Separator
       const date = new Date(msg.created_at);
-      const label = date.toLocaleDateString("he-IL", { day: "numeric", month: "long", year: "numeric" });
+      const label = formatRelativeDate(date);
 
       if (label !== lastDateLabel) {
         groups.push({ type: "date", dateLabel: label });
         lastDateLabel = label;
       }
+
+      // 3. Add Message
       groups.push({ type: "message", message: msg });
     });
 
     return groups;
-  }, [messageMap, searchQuery, visibleMessages]);
+  }, [messageMap, searchQuery, visibleMessages, unreadCounts, chat.id]);
 
   function scrollToBottom(animated = true) {
     requestAnimationFrame(() => {
@@ -739,6 +771,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 );
               }
 
+              if (item.type === "unread") {
+                return (
+                  <View key={`unread-${idx}`} style={styles.unreadSeparator}>
+                    <View style={styles.unreadPill}>
+                      <Text style={styles.unreadPillText}>
+                        {item.unreadCount === 1 ? "הודעה אחת שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+
               const message = item.message!;
               const replyPreview = message.reply_to_id ? messageMap[message.reply_to_id]?.body_preview : null;
               const viewOnceState =
@@ -756,7 +800,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   onLayout={(e) => {
                     messageLayoutsRef.current[message.id] = e.nativeEvent.layout.y;
                   }}
-                  style={highlightedMessageId === message.id ? { backgroundColor: "rgba(0,168,132,0.28)" } : undefined}
+                  style={highlightedMessageId === message.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}
                 >
                   <MessageBubble
                     author={profiles[message.sender_id]}
@@ -1163,28 +1207,28 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <View style={styles.attachmentRow}>
               {/* Top Row Right to Left */}
               <View style={styles.attachmentItem}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="image" size={24} color="#0066FF" />
                 </View>
                 <Text style={styles.attachmentLabel}>גלריה</Text>
               </View>
 
               <View style={styles.attachmentItem}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="camera" size={24} color="#E53935" />
                 </View>
                 <Text style={styles.attachmentLabel}>מצלמה</Text>
               </View>
 
               <View style={styles.attachmentItem}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="map-marker" size={24} color="#00C853" />
                 </View>
                 <Text style={styles.attachmentLabel}>מיקום</Text>
               </View>
 
               <View style={styles.attachmentItem}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="account" size={24} color="#0091EA" />
                 </View>
                 <Text style={styles.attachmentLabel}>איש קשר</Text>
@@ -1194,7 +1238,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <View style={styles.attachmentRow}>
               {/* Bottom Row Right to Left */}
               <View style={styles.attachmentItem}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="file-document" size={24} color="#651FFF" />
                 </View>
                 <Text style={styles.attachmentLabel}>קבצים</Text>
@@ -1204,14 +1248,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   setShowAttachmentMenu(false);
                   setActiveSubScreen("createPoll");
               }}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="poll" size={24} color="#FFB300" />
                 </View>
                 <Text style={styles.attachmentLabel}>סקר</Text>
               </Pressable>
 
               <View style={styles.attachmentItem}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="calendar" size={24} color="#D81B60" />
                 </View>
                 <Text style={styles.attachmentLabel}>אירוע</Text>
@@ -1236,7 +1280,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     Alert.alert("מידע", "כבר שלחת בקשה והיא ממתינה לאישור.");
                   }
               }}>
-                <View style={[styles.attachmentIconCircle, { borderColor: "rgba(255,255,255,0.1)", borderWidth: 1 }]} >
+                <View style={[styles.attachmentIconCircle, { borderColor: theme.colors.bubbleBorder, borderWidth: 1 }]} >
                   <MaterialCommunityIcons name="camera-outline" size={24} color="#00A884" />
                 </View>
                 <Text style={styles.attachmentLabel}>בקשת צילום</Text>
@@ -1312,32 +1356,51 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         </View>
       ) : null}
 
-      {showReactionsSheetForId ? (
-        <View pointerEvents="box-none" style={styles.overlayRoot}>
-          <Pressable onPress={() => setShowReactionsSheetForId(null)} style={styles.backdrop} />
-          <View style={styles.reactionsSheet}>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.reactionsSheetHeader}>תגובת אמוג'י אחת (1)</Text>
-            <View style={styles.reactionTabs}>
-              <View style={styles.reactionTabActive}>
-                <Text style={styles.reactionTabText}>1 😜</Text>
-              </View>
-            </View>
-            <View style={styles.reactionUserList}>
-              <View style={styles.reactionUserRow}>
-                <View style={[styles.avatar, { width: 44, height: 44 }]}>
-                  <MaterialCommunityIcons name="account" color={theme.colors.headerIcon} size={28} />
-                </View>
-                <View style={styles.reactionUserInfo}>
-                  <Text style={styles.reactionUserName}>התגובה שלך</Text>
-                  <Text style={styles.reactionUserAction}>יש להקיש כדי להסיר</Text>
-                </View>
-                <Text style={styles.reactionEmoji}>😜</Text>
-              </View>
+      {showReactionsSheetForId && reactionsByMessage[showReactionsSheetForId] ? (() => {
+        const reactions = reactionsByMessage[showReactionsSheetForId];
+        const entries = Object.entries(reactions).filter(([e, u]) => u.length > 0 && !e.startsWith("poll:"));
+        const total = entries.reduce((sum, [_, u]) => sum + u.length, 0);
+
+        return (
+          <View pointerEvents="box-none" style={styles.overlayRoot}>
+            <Pressable onPress={() => setShowReactionsSheetForId(null)} style={styles.backdrop} />
+            <View style={styles.reactionsSheet}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.reactionsSheetHeader}>{total === 1 ? "תגובה אחת" : `${total} תגובות`}</Text>
+              
+              <ScrollView contentContainerStyle={styles.reactionUserList}>
+                {entries.map(([emoji, users]) => users.map((uid) => {
+                  const uProfile = profiles[uid];
+                  const isMe = uid === profile?.id;
+                  const name = isMe ? "את/ה" : contactNicknames[uid]?.first_name || uProfile?.username || "משתמש";
+                  
+                  return (
+                    <Pressable 
+                      key={`${uid}-${emoji}`} 
+                      style={styles.reactionUserRow}
+                      onPress={() => {
+                        if (isMe) {
+                          toggleReaction(showReactionsSheetForId, emoji);
+                          setShowReactionsSheetForId(null);
+                        }
+                      }}
+                    >
+                      <View style={[styles.avatar, { width: 44, height: 44, backgroundColor: isMe ? "#00A884" : "#63472b" }]}>
+                        <Text style={styles.avatarText}>{name[0].toUpperCase()}</Text>
+                      </View>
+                      <View style={styles.reactionUserInfo}>
+                        <Text style={styles.reactionUserName}>{name}</Text>
+                        {isMe && <Text style={styles.reactionUserAction}>הקשה להסרה</Text>}
+                      </View>
+                      <Text style={styles.reactionEmoji}>{emoji}</Text>
+                    </Pressable>
+                  );
+                }))}
+              </ScrollView>
             </View>
           </View>
-        </View>
-      ) : null}
+        );
+      })() : null}
 
       {showEmojiPickerForId ? (
         <View pointerEvents="box-none" style={styles.overlayRoot}>
@@ -1409,7 +1472,7 @@ function SheetButton({ label, onPress, danger }: { label: string; onPress: () =>
 const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: number; bottom: number; left: number; right: number }) =>
   StyleSheet.create({
     rowSelected: {
-      backgroundColor: "rgba(0,168,132,0.18)",
+      backgroundColor: theme.colors.selectionModeBackground,
     },
     header: {
       backgroundColor: theme.colors.header,
@@ -1517,16 +1580,35 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       paddingHorizontal: 16,
       paddingVertical: 6,
       borderRadius: 12,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
       shadowRadius: 1,
       elevation: 1,
+      shadowColor: "#000",
     },
     datePillText: {
       color: theme.colors.datePillText,
       fontSize: 12.5,
       fontWeight: "400",
+    },
+    unreadSeparator: {
+      alignItems: "center",
+      justifyContent: "center",
+      marginVertical: 12,
+      width: "100%",
+    },
+    unreadPill: {
+      backgroundColor: theme.colors.bubbleBackground,
+      paddingHorizontal: 16,
+      paddingVertical: 5,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.bubbleBorder,
+    },
+    unreadPillText: {
+      color: theme.colors.accent,
+      fontSize: 12,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
     },
     emptyState: {
       marginTop: "auto",
@@ -1731,7 +1813,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     sheetHandle: {
       width: 40,
       height: 4,
-      backgroundColor: "rgba(255,255,255,0.1)",
+      backgroundColor: theme.colors.sheetHandle,
       borderRadius: 2,
       alignSelf: "center",
       marginTop: 12,
@@ -1748,7 +1830,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       paddingHorizontal: 24,
       marginBottom: 16,
       borderBottomWidth: 1,
-      borderColor: "rgba(255,255,255,0.05)",
+      borderColor: theme.colors.separator,
     },
     reactionTabActive: {
       paddingBottom: 12,
@@ -1796,7 +1878,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
     emojiPickerSearch: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: "rgba(255,255,255,0.05)",
+      backgroundColor: theme.colors.searchBackground,
       margin: 20,
       borderRadius: 30,
       paddingHorizontal: 16,
@@ -1960,7 +2042,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       bottom: 70,
       left: 12,
       right: 12,
-      backgroundColor: "rgba(25, 30, 36, 0.98)",
+      backgroundColor: theme.colors.menuBackground,
       borderRadius: 16,
       paddingVertical: 18,
       paddingHorizontal: 8,
@@ -1986,10 +2068,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
       borderRadius: 27,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "rgba(255,255,255,0.02)",
+      backgroundColor: theme.colors.menuIconBackground,
     },
     attachmentLabel: {
-      color: "#bbb",
+      color: theme.colors.menuTextSecondary,
       fontSize: 13,
       textAlign: "center",
       fontWeight: "500",
@@ -2028,6 +2110,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { top: numb
 
 // ── Screenshot Permission Banner ────────────────────────────────────────────
 function ScreenshotBanner({ type, secondsLeft }: { type: "none" | "approved"; secondsLeft: number }) {
+  const theme = useAppTheme();
   if (type !== "approved") return null;
 
   const mins = Math.floor(secondsLeft / 60);
@@ -2039,19 +2122,19 @@ function ScreenshotBanner({ type, secondsLeft }: { type: "none" | "approved"; se
       style={{
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#0D5C30",
+        backgroundColor: theme.colors.accentStrong,
         borderBottomWidth: 1,
-        borderBottomColor: "#1B9D55",
+        borderBottomColor: theme.colors.border,
         paddingHorizontal: 14,
         paddingVertical: 9,
         gap: 10,
       }}
     >
-      <MaterialCommunityIcons name="camera-outline" size={17} color="#fff" />
+      <MaterialCommunityIcons name="camera-outline" size={17} color={theme.colors.textOnAccent} />
       <Text
         style={{
           flex: 1,
-          color: "#fff",
+          color: theme.colors.textOnAccent,
           fontSize: 13,
           fontWeight: "600",
           textAlign: "right",

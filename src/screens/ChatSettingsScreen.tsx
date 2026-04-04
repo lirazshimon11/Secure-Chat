@@ -365,7 +365,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       width: 54,
       height: 54,
       borderRadius: theme.radius.md,
-      backgroundColor: "rgba(37, 211, 102, 0.1)", // WhatsApp standard green tint
+      backgroundColor: theme.colors.accentSoft, // WhatsApp standard green tint
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 8,

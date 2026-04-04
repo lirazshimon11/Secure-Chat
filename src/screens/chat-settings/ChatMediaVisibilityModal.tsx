@@ -52,7 +52,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
     overlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.4)",
+      backgroundColor: theme.colors.overlay,
       justifyContent: "center",
       alignItems: "center",
       padding: theme.spacing.lg,

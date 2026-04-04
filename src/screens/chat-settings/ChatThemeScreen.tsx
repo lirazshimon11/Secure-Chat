@@ -57,17 +57,17 @@ export function ChatThemeScreen({ chat, onBack }: Props) {
                 onPress={() => setSelectedTheme(t.id)}
               >
                 <View style={[styles.previewBg, { backgroundColor: t.bg }]}>
-                  <View style={[styles.previewBubbleLeft, { backgroundColor: "rgba(255,255,255,0.15)" }]} />
+                  <View style={[styles.previewBubbleLeft, { backgroundColor: theme.colors.selectionModeBackground }]} />
                   <View style={[styles.previewBubbleRight, { backgroundColor: t.bubble }]} />
                   {(t as any).isPhoto && (
                     <View style={styles.photoOverlay}>
-                      <MaterialCommunityIcons name="image-outline" size={18} color="rgba(255,255,255,0.7)" />
+                      <MaterialCommunityIcons name="image-outline" size={18} color={theme.colors.textOnAccent} />
                     </View>
                   )}
                 </View>
                 {selectedTheme === t.id && (
                   <View style={[styles.selectedCheck, { backgroundColor: t.accent }]}>
-                    <Feather name="check" size={12} color="#fff" />
+                    <Feather name="check" size={12} color={theme.colors.textOnAccent} />
                   </View>
                 )}
               </Pressable>
@@ -83,12 +83,12 @@ export function ChatThemeScreen({ chat, onBack }: Props) {
                 onPress={() => setSelectedTheme(t.id)}
               >
                 <View style={[styles.previewBg, { backgroundColor: t.bg }]}>
-                  <View style={[styles.previewBubbleLeft, { backgroundColor: "rgba(255,255,255,0.15)" }]} />
+                  <View style={[styles.previewBubbleLeft, { backgroundColor: theme.colors.selectionModeBackground }]} />
                   <View style={[styles.previewBubbleRight, { backgroundColor: t.bubble }]} />
                 </View>
                 {selectedTheme === t.id && (
                   <View style={[styles.selectedCheck, { backgroundColor: t.accent }]}>
-                    <Feather name="check" size={12} color="#fff" />
+                    <Feather name="check" size={12} color={theme.colors.textOnAccent} />
                   </View>
                 )}
               </Pressable>
@@ -218,7 +218,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       ...StyleSheet.absoluteFillObject,
       alignItems: "center",
       justifyContent: "center",
-      backgroundColor: "rgba(0,0,0,0.25)",
+      backgroundColor: theme.colors.overlay,
     },
     selectedCheck: {
       position: "absolute",

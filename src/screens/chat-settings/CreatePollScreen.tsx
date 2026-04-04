@@ -35,7 +35,7 @@ export function CreatePollScreen({ chat, onBack }: { chat: Chat; onBack: () => v
       <SafeAreaView edges={["top"]} style={styles.header}>
         <View style={styles.headerInner}>
           <Pressable onPress={onBack} style={styles.backButton}>
-            <Feather color="#fff" name="arrow-right" size={24} />
+            <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
           </Pressable>
           <Text style={styles.headerTitle}>יצירת סקר</Text>
         </View>
@@ -52,7 +52,7 @@ export function CreatePollScreen({ chat, onBack }: { chat: Chat; onBack: () => v
             <TextInput
               style={[styles.input, webEmbeddedInputReset]}
               placeholder="מה השאלה?"
-              placeholderTextColor="#666"
+              placeholderTextColor={theme.colors.textMuted}
               value={question}
               onChangeText={setQuestion}
               textAlign="right"
@@ -65,7 +65,7 @@ export function CreatePollScreen({ chat, onBack }: { chat: Chat; onBack: () => v
             <TextInput
               style={[styles.input, webEmbeddedInputReset]}
               placeholder="+ הוספה"
-              placeholderTextColor="#666"
+              placeholderTextColor={theme.colors.textMuted}
               value={options[0]}
               onChangeText={(t) => setOptions([t, options[1]])}
               textAlign="right"
@@ -75,7 +75,7 @@ export function CreatePollScreen({ chat, onBack }: { chat: Chat; onBack: () => v
             <TextInput
               style={[styles.input, webEmbeddedInputReset]}
               placeholder="+ הוספה"
-              placeholderTextColor="#666"
+              placeholderTextColor={theme.colors.textMuted}
               value={options[1]}
               onChangeText={(t) => setOptions([options[0], t])}
               textAlign="right"
@@ -96,7 +96,7 @@ export function CreatePollScreen({ chat, onBack }: { chat: Chat; onBack: () => v
 
       <SafeAreaView edges={["bottom"]} style={styles.footer}>
         <Pressable style={styles.fab} onPress={handleSend}>
-          <MaterialCommunityIcons name="send" size={24} color="#000" style={{ transform: [{ scaleX: -1 }] }} />
+          <MaterialCommunityIcons name="send" size={24} color={theme.colors.textOnAccent} style={{ transform: [{ scaleX: -1 }] }} />
         </Pressable>
       </SafeAreaView>
     </View>
@@ -107,10 +107,10 @@ const createStyles = (theme: any) =>
   StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: "#0B141A", // deep dark theme color from whatsapp Create Poll
+      backgroundColor: theme.colors.background,
     },
     header: {
-      backgroundColor: "#0B141A",
+      backgroundColor: theme.colors.header,
     },
     headerInner: {
       flexDirection: "row-reverse",
@@ -126,7 +126,7 @@ const createStyles = (theme: any) =>
       justifyContent: "center",
     },
     headerTitle: {
-      color: "#fff",
+      color: theme.colors.headerText,
       fontSize: 20,
       fontWeight: "500",
       flex: 1,
@@ -139,31 +139,31 @@ const createStyles = (theme: any) =>
       paddingTop: 20,
     },
     sectionLabel: {
-      color: "#00A884", // green label text
+      color: theme.colors.accentStrong, // green label text
       fontSize: 14,
       marginBottom: 8,
       textAlign: "right",
     },
     inputContainerActive: {
       borderWidth: 2,
-      borderColor: "#00A884", // green border for active/first input
+      borderColor: theme.colors.accentStrong, // green border for active/first input
       borderRadius: 8,
-      backgroundColor: "#111B21", // slightly lighter than bg
+      backgroundColor: theme.colors.surfaceAlt, // slightly lighter than bg
       marginBottom: 30,
       paddingVertical: 12,
       paddingHorizontal: 16,
     },
     inputContainer: {
       borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.2)",
+      borderColor: theme.colors.border,
       borderRadius: 8,
-      backgroundColor: "#111B21",
+      backgroundColor: theme.colors.surfaceAlt,
       marginBottom: 16,
       paddingVertical: 12,
       paddingHorizontal: 16,
     },
     input: {
-      color: "#fff",
+      color: theme.colors.text,
       fontSize: 16,
     },
     toggleRow: {
@@ -174,7 +174,7 @@ const createStyles = (theme: any) =>
       paddingVertical: 10,
     },
     toggleText: {
-      color: "#fff",
+      color: theme.colors.text,
       fontSize: 16,
       flex: 1,
       textAlign: "right",
@@ -184,18 +184,18 @@ const createStyles = (theme: any) =>
       width: 40,
       height: 24,
       borderRadius: 12,
-      backgroundColor: "#444",
+      backgroundColor: theme.colors.surfaceMuted,
       justifyContent: "center",
       paddingHorizontal: 2,
     },
     toggleTrackActive: {
-      backgroundColor: "#00A884",
+      backgroundColor: theme.colors.accentStrong,
     },
     toggleThumb: {
       width: 20,
       height: 20,
       borderRadius: 10,
-      backgroundColor: "#111B21",
+      backgroundColor: theme.colors.surface,
       alignSelf: "flex-start",
     },
     toggleThumbActive: {
@@ -210,7 +210,7 @@ const createStyles = (theme: any) =>
       width: 56,
       height: 56,
       borderRadius: 28,
-      backgroundColor: "#00A884",
+      backgroundColor: theme.colors.accentStrong,
       alignItems: "center",
       justifyContent: "center",
       shadowColor: "#000",

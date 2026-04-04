@@ -39,7 +39,7 @@ export function ForwardScreen({ messages, onCancel, onSend }: Props) {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <Pressable onPress={onCancel} style={styles.backButton}>
-            <Feather color={theme.colors.textOnAccent} name="arrow-right" size={22} />
+            <Feather color={theme.colors.headerIcon} name="arrow-right" size={22} />
           </Pressable>
           <Text style={styles.title}>
             העברת {messages.length} הודעות
@@ -114,7 +114,7 @@ function createStyles(theme: any, insets: any) {
       backgroundColor: theme.colors.background,
     },
     header: {
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.header,
       paddingTop: insets.top + (theme.isAndroid ? 10 : 0),
       paddingBottom: 16,
       paddingHorizontal: 16,
@@ -129,7 +129,7 @@ function createStyles(theme: any, insets: any) {
       padding: 4,
     },
     title: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 20,
       fontWeight: "600",
       textAlign: "right",

@@ -51,8 +51,18 @@ const lightColors = {
   homeSearch: "#f0f2f5",
   homeRow: "#ffffff",
   homeSelection: "#d9fdd3",
-  datePill: "#ffffff",
+  datePill: "rgba(255,255,255,0.92)",
   datePillText: "#54656f",
+  bubbleBackground: "rgba(255, 255, 255, 0.95)",
+  bubbleText: "#111b21",
+  bubbleBorder: "rgba(0,0,0,0.1)",
+  menuBackground: "rgba(255, 255, 255, 0.98)",
+  menuIconBackground: "rgba(0,0,0,0.05)",
+  menuText: "#111b21",
+  menuTextSecondary: "#54656f",
+  sheetHandle: "rgba(0,0,0,0.1)",
+  searchBackground: "rgba(0,0,0,0.05)",
+  selectionModeBackground: "rgba(0, 168, 132, 0.12)",
 };
 
 const darkColors = {
@@ -91,6 +101,16 @@ const darkColors = {
   homeSelection: "#123526",
   datePill: "rgba(32,44,51,0.92)",
   datePillText: "#ffffff",
+  bubbleBackground: "rgba(30, 30, 30, 0.92)",
+  bubbleText: "#e9edef",
+  bubbleBorder: "rgba(255,255,255,0.12)",
+  menuBackground: "rgba(25, 30, 36, 0.98)",
+  menuIconBackground: "rgba(255,255,255,0.02)",
+  menuText: "#e9edef",
+  menuTextSecondary: "#bbb",
+  sheetHandle: "rgba(255,255,255,0.1)",
+  searchBackground: "rgba(255,255,255,0.05)",
+  selectionModeBackground: "rgba(0, 168, 132, 0.28)",
 };
 
 export type AppTheme = typeof lightTheme;

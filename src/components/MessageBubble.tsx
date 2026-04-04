@@ -60,11 +60,16 @@ export function MessageBubble({
   const { allRequests, approveRequest, denyRequest } = useScreenshots();
   const mine = message.sender_id === currentUserId;
   const translateX = useRef(new Animated.Value(0)).current;
+  const lastTap = useRef<number>(0);
+  const swipeIconOpacity = translateX.interpolate({
+    inputRange: [0, 40],
+    outputRange: [0, 1],
+    extrapolate: 'clamp'
+  });
   const pickerRef = useRef<View>(null);
 
   useEffect(() => {
     if (showReactions && pickerRef.current && onReportPickerLayout) {
-      // Delay measurement slightly to ensure layout is complete
       setTimeout(() => {
         pickerRef.current?.measure((x, y, w, h, pageX, pageY) => {
           onReportPickerLayout({ x: pageX, y: pageY, width: w, height: h });
@@ -104,7 +109,7 @@ export function MessageBubble({
   const isPoll = message.body_ciphertext.startsWith("[POLL]:");
 
   const body = isScreenshotRequest || isPoll
-    ? "" // Rendered via custom block
+    ? ""
     : message.message_kind === "view_once" && viewOnceState === "hidden"
       ? "הקש/י לקריאה. ההודעה תיעלם לאחר הפתיחה."
       : message.message_kind === "view_once" && viewOnceState === "opened"
@@ -134,257 +139,299 @@ export function MessageBubble({
   function handlePress() {
     if (isSelectionMode) {
       onToggleSelection(message.id);
-    } else if (message.message_kind === "view_once" && viewOnceState === "hidden") {
-      onRevealViewOnce();
+      return;
+    }
+
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    if (lastTap.current && now - lastTap.current < DOUBLE_TAP_DELAY) {
+      onToggleReaction("\u{2764}"); // ❤️
+      lastTap.current = 0;
+    } else {
+      lastTap.current = now;
+      if (message.message_kind === "view_once" && viewOnceState === "hidden") {
+        onRevealViewOnce();
+      }
     }
   }
 
+  const hasReactions = reactions && Object.entries(reactions).filter(([e, u]) => u.length > 0 && !e.startsWith("poll:")).length > 0;
+
   return (
-    <Animated.View
-      {...(responder?.panHandlers ?? {})}
-      style={[
-        styles.row,
-        mine ? styles.rowMine : styles.rowTheirs,
-        isSelected && styles.rowSelected,
-        { transform: [{ translateX }] },
-      ]}
-    >
-      <Pressable
-        delayLongPress={220}
-        onLongPress={handleLongPress}
-        onPress={handlePress}
-        android_ripple={{ color: "transparent" }}
-        style={({ pressed }) => [
-          styles.fullWidthSelection,
-          { opacity: 1 }, // Prevent default iOS press feedback
-          webDefaultCursor,
+    <View style={styles.rowWrapper}>
+      {/* Swipe to reply icon indicator */}
+      {!isSelectionMode && (
+        <Animated.View
+          style={[
+            styles.swipeIconContainer,
+            { opacity: swipeIconOpacity, transform: [{ translateX: Animated.multiply(translateX, -0.5) }] }
+          ]}
+        >
+          <MaterialCommunityIcons color={theme.colors.textMuted} name="reply" size={20} />
+        </Animated.View>
+      )}
+
+      <Animated.View
+        {...(responder?.panHandlers ?? {})}
+        style={[
+          styles.row,
+          mine ? styles.rowMine : styles.rowTheirs,
+          isSelected && styles.rowSelected,
+          { transform: [{ translateX }] },
         ]}
       >
-        <View style={[
-          styles.bubble,
-          mine ? styles.bubbleMine : styles.bubbleTheirs,
-          reactions && Object.keys(reactions).length > 0 ? { marginBottom: 14 } : null
-        ]}>
-          {!mine && author ? <Text style={styles.author}>{contactNicknames[author.id]?.first_name || author.username}</Text> : null}
+        <Pressable
+          delayLongPress={220}
+          onLongPress={handleLongPress}
+          onPress={handlePress}
+          android_ripple={{ color: "transparent" }}
+          style={({ pressed }) => [
+            styles.fullWidthSelection,
+            { opacity: 1 },
+            webDefaultCursor,
+          ]}
+        >
+          <View style={[
+            styles.bubble,
+            mine ? styles.bubbleMine : styles.bubbleTheirs,
+            hasReactions ? { marginBottom: 14 } : null
+          ]}>
+            {!mine && author ? <Text style={styles.author}>{contactNicknames[author.id]?.first_name || author.username}</Text> : null}
 
-          {replyPreview ? (
-            <View style={styles.replyBlock}>
-              <Text style={styles.replyLabel}>תגובה</Text>
-              <Text numberOfLines={2} style={styles.replyBlockText}>
-                {replyPreview}
-              </Text>
-            </View>
-          ) : null}
-
-          {isScreenshotRequest ? (() => {
-            const reqId = message.body_ciphertext.split(":")[1];
-            const scReq = allRequests[reqId];
-            if (!scReq) return <Text style={styles.body}>טוען בקשה...</Text>;
-            
-            const isApproved = scReq.status === "approved";
-            const isDenied = scReq.status === "denied";
-            const requesterName = scReq.requesterUsername || "המשתמש";
-            const isMine = scReq.requester_id === currentUserId;
-
-            return (
-              <View style={styles.pollCard}>
-                <Text style={styles.pollTitle}>
-                  {`האם אתה מאשר ל${requesterName} לבצע צילום מסך?`}
+            {replyPreview ? (
+              <View style={styles.replyBlock}>
+                <Text style={styles.replyLabel}>תגובה</Text>
+                <Text numberOfLines={2} style={styles.replyBlockText}>
+                  {replyPreview}
                 </Text>
-                <View style={styles.pollSubtitleWrapper}>
-                  <MaterialCommunityIcons name="camera-outline" size={16} color={theme.colors.textMuted} />
-                  <Text style={styles.pollSubtitle}>דרוש אישור ממשתתף אחד או יותר</Text>
-                </View>
-
-                {/* Option 1: מאשר */}
-                <Pressable
-                  style={styles.pollOptionRow}
-                  onPress={() => !isApproved && !isDenied && !isMine && approveRequest(reqId)}
-                >
-                  <View style={styles.pollOptionInner}>
-                    <View style={styles.pollOptionTextWrapper}>
-                      <View style={[styles.pollRadioCircle, isApproved && styles.pollRadioCircleChecked]}>
-                        {isApproved && <MaterialCommunityIcons name="check" size={14} color="#fff" />}
-                      </View>
-                      <Text style={styles.pollOptionText}>מאשר</Text>
-                    </View>
-                    <Text style={styles.pollVoteCount}>{isApproved ? "1" : "0"}</Text>
-                  </View>
-                </Pressable>
-
-                {/* Option 2: מסרב */}
-                <Pressable
-                  style={styles.pollOptionRow}
-                  onPress={() => !isApproved && !isDenied && !isMine && denyRequest(reqId)}
-                >
-                  <View style={styles.pollOptionInner}>
-                    <View style={styles.pollOptionTextWrapper}>
-                      <View style={[styles.pollRadioCircle, isDenied && styles.pollRadioCircleChecked]}>
-                        {isDenied && <MaterialCommunityIcons name="check" size={14} color="#fff" />}
-                      </View>
-                      <Text style={styles.pollOptionText}>מסרב</Text>
-                    </View>
-                    <Text style={styles.pollVoteCount}>{isDenied ? "1" : "0"}</Text>
-                  </View>
-                </Pressable>
-
-                <View style={styles.pollFooter}>
-                  <Text style={styles.pollFooterText}>
-                    {isApproved ? "✅ הבקשה אושרה" : isDenied ? "❌ הבקשה נדחתה" : "ממתין לתגובה..."}
-                  </Text>
-                </View>
               </View>
-            );
-          })() : isPoll ? (() => {
-             let pollData: any;
-             try {
-               pollData = JSON.parse(message.body_ciphertext.substring(7));
-             } catch (e) {
-               return <Text style={styles.body}>שגיאה בטעינת סקר</Text>;
-             }
+            ) : null}
 
-             // Compute votes using reactions hack
-             const optsCount = pollData.options.length;
-             let totalVotes = 0;
-             const votesPerOption = Array(optsCount).fill(0);
-             const userVoted = Array(optsCount).fill(false);
+            {isScreenshotRequest ? (() => {
+              const reqId = message.body_ciphertext.split(":")[1];
+              const scReq = allRequests[reqId];
+              if (!scReq) return <Text style={styles.body}>טוען בקשה...</Text>;
 
-             if (reactions) {
-               for (let i = 0; i < optsCount; i++) {
-                 const voterIds = reactions[`poll:${i}`] || [];
-                 votesPerOption[i] = voterIds.length;
-                 totalVotes += voterIds.length;
-                 if (voterIds.includes(currentUserId)) {
+              const isApproved = scReq.status === "approved";
+              const isDenied = scReq.status === "denied";
+              const requesterName = scReq.requesterUsername || "המשתמש";
+              const isMine = scReq.requester_id === currentUserId;
+
+              return (
+                <View style={styles.pollCard}>
+                  <Text style={styles.pollTitle}>
+                    {`האם אתה מאשר ל-${requesterName} לבצע צילום מסך?`}
+                  </Text>
+                  <View style={styles.pollSubtitleWrapper}>
+                    <MaterialCommunityIcons name="camera-outline" size={16} color={theme.colors.textMuted} />
+                    <Text style={styles.pollSubtitle}>דרוש אישור ממשתתף אחד או יותר</Text>
+                  </View>
+
+                  <Pressable
+                    style={styles.pollOptionRow}
+                    onPress={() => !isApproved && !isDenied && !isMine && approveRequest(reqId)}
+                  >
+                    <View style={styles.pollOptionInner}>
+                      <View style={styles.pollOptionTextWrapper}>
+                        <View style={[styles.pollRadioCircle, isApproved && styles.pollRadioCircleChecked]}>
+                          {isApproved && <MaterialCommunityIcons name="check" size={14} color={theme.colors.textOnAccent} />}
+                        </View>
+                        <Text style={styles.pollOptionText}>מאשר</Text>
+                      </View>
+                      <Text style={styles.pollVoteCount}>{isApproved ? "1" : "0"}</Text>
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.pollOptionRow}
+                    onPress={() => !isApproved && !isDenied && !isMine && denyRequest(reqId)}
+                  >
+                    <View style={styles.pollOptionInner}>
+                      <View style={styles.pollOptionTextWrapper}>
+                        <View style={[styles.pollRadioCircle, isDenied && styles.pollRadioCircleChecked]}>
+                          {isDenied && <MaterialCommunityIcons name="check" size={14} color={theme.colors.textOnAccent} />}
+                        </View>
+                        <Text style={styles.pollOptionText}>מסרב</Text>
+                      </View>
+                      <Text style={styles.pollVoteCount}>{isDenied ? "1" : "0"}</Text>
+                    </View>
+                  </Pressable>
+
+                  <View style={styles.pollFooter}>
+                    <Text style={styles.pollFooterText}>
+                      {isApproved ? "✅ הבקשה אושרה" : isDenied ? "❌ הבקשה נדחתה" : "ממתין לתגובה..."}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })() : isPoll ? (() => {
+              let pollData: any;
+              try {
+                pollData = JSON.parse(message.body_ciphertext.substring(7));
+              } catch (e) {
+                return <Text style={styles.body}>שגיאה בטעינת סקר</Text>;
+              }
+
+              const optsCount = pollData.options.length;
+              let totalVotes = 0;
+              const votesPerOption = Array(optsCount).fill(0);
+              const userVoted = Array(optsCount).fill(false);
+
+              if (reactions) {
+                for (let i = 0; i < optsCount; i++) {
+                  const voterIds = reactions[`poll:${i}`] || [];
+                  votesPerOption[i] = voterIds.length;
+                  totalVotes += voterIds.length;
+                  if (voterIds.includes(currentUserId)) {
                     userVoted[i] = true;
-                 }
-               }
-             }
+                  }
+                }
+              }
 
-             return (
-               <View style={styles.pollCard}>
-                 <Text style={styles.pollTitle}>{pollData.question}</Text>
-                 <View style={styles.pollSubtitleWrapper}>
+              return (
+                <View style={styles.pollCard}>
+                  <Text style={styles.pollTitle}>{pollData.question}</Text>
+                  <View style={styles.pollSubtitleWrapper}>
                     <MaterialCommunityIcons name="check-all" size={16} color={theme.colors.textMuted} />
                     <Text style={styles.pollSubtitle}>{pollData.multipleAnswers ? "צריך לבחור אפשרות אחת או יותר" : "יש לבחור אפשרות אחת"}</Text>
-                 </View>
-                 {pollData.options.map((opt: string, i: number) => {
+                  </View>
+                  {pollData.options.map((opt: string, i: number) => {
                     const optionVotes = votesPerOption[i];
-                    const widthPercent = totalVotes > 0 ? (optionVotes / totalVotes) * 100 : 0;
                     const isChecked = userVoted[i];
                     return (
                       <Pressable key={i} style={styles.pollOptionRow} onPress={() => onToggleReaction(`poll:${i}`)}>
                         <View style={styles.pollOptionInner}>
-                           <View style={styles.pollOptionTextWrapper}>
-                             <View style={[styles.pollRadioCircle, isChecked && styles.pollRadioCircleChecked]}>
-                               {isChecked && <MaterialCommunityIcons name="check" size={16} color="#fff" />}
-                             </View>
-                             <Text style={styles.pollOptionText}>{opt}</Text>
-                           </View>
-                           <Text style={styles.pollVoteCount}>{optionVotes}</Text>
+                          <View style={styles.pollOptionTextWrapper}>
+                            <View style={[styles.pollRadioCircle, isChecked && styles.pollRadioCircleChecked]}>
+                              {isChecked && <MaterialCommunityIcons name="check" size={16} color={theme.colors.textOnAccent} />}
+                            </View>
+                            <Text style={styles.pollOptionText}>{opt}</Text>
+                          </View>
+                          <Text style={styles.pollVoteCount}>{optionVotes}</Text>
                         </View>
                       </Pressable>
                     );
-                 })}
-                 <Pressable style={styles.pollFooter} onPress={() => onOpenPollVotes?.(message.id)}>
+                  })}
+                  <Pressable style={styles.pollFooter} onPress={() => onOpenPollVotes?.(message.id)}>
                     <Text style={styles.pollFooterText}>הצגת ההצבעות</Text>
-                 </Pressable>
-               </View>
-             );
-          })() : (
-            <Text style={styles.body}>{`${body} `}</Text>
-          )}
+                  </Pressable>
+                </View>
+              );
+            })() : (
+              <Text style={styles.body}>{message.body_ciphertext + " "}</Text>
+            )}
 
-          <View style={styles.metaRow}>
-            {/* RTL spacer: fills right side, pushes content to physical left */}
-            <View style={{ flex: 1 }} />
-            {metaLabel ? (
-              <View style={styles.kindChip}>
-                <Text style={styles.kindChipText}>{metaLabel}</Text>
+            <View style={styles.metaRow}>
+              <View style={{ flex: 1 }} />
+              {metaLabel ? (
+                <View style={styles.kindChip}>
+                  <Text style={styles.kindChipText}>{metaLabel}</Text>
+                </View>
+              ) : null}
+              <View style={styles.timeRow}>
+                {message.message_kind === "view_once" ? (
+                  <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />
+                ) : null}
+                {message.message_kind === "temporary" ? (
+                  <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />
+                ) : null}
+                {isSaved ? (
+                  <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />
+                ) : null}
+                <Text style={styles.meta}>{timeLabel}</Text>
+              </View>
+            </View>
+
+            {showReactions ? (
+              <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
+                <View style={styles.pickerInner}>
+                  {quickReactions.map((emoji) => (
+                    <Pressable
+                      key={emoji}
+                      onPress={() => {
+                        onToggleReaction(emoji);
+                        onShowReactions(null);
+                        if (isSelected) {
+                          onToggleSelection(message.id);
+                        }
+                      }}
+                      style={({ pressed }) => [styles.quickEmoji, pressed && styles.quickEmojiPressed]}
+                    >
+                      <Text style={styles.quickEmojiText}>{emoji}</Text>
+                    </Pressable>
+                  ))}
+                  <Pressable
+                    style={styles.quickEmoji}
+                    onPress={() => {
+                      onPlusExtra(message.id);
+                      onShowReactions(null);
+                    }}
+                  >
+                    <MaterialCommunityIcons color={theme.colors.textMuted} name="plus" size={20} />
+                  </Pressable>
+                </View>
               </View>
             ) : null}
-            <View style={styles.timeRow}>
-              {message.message_kind === "view_once" ? (
-                <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />
-              ) : null}
-              {message.message_kind === "temporary" ? (
-                <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />
-              ) : null}
-              {isSaved ? (
-                <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />
-              ) : null}
-              <Text style={styles.meta}>{timeLabel}</Text>
-            </View>
-          </View>
 
-          {showReactions ? (
-            <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
-              <View style={styles.pickerInner}>
-                {quickReactions.map((emoji) => (
-                  <Pressable
-                    key={emoji}
-                    onPress={() => {
-                      onToggleReaction(emoji);
-                      onShowReactions(null);
-                      if (isSelected) {
-                        onToggleSelection(message.id);
-                      }
-                    }}
-                    style={({ pressed }) => [styles.quickEmoji, pressed && styles.quickEmojiPressed]}
-                  >
-                    <Text style={styles.quickEmojiText}>{emoji}</Text>
-                  </Pressable>
-                ))}
+            {reactions && (() => {
+              const entries = Object.entries(reactions).filter(([emoji, users]) => users.length > 0 && !emoji.startsWith("poll:"));
+              if (entries.length === 0) return null;
+
+              const total = entries.reduce((sum, [_, users]) => sum + users.length, 0);
+              const topEmojis = entries.slice(0, 3).map(([e]) => e);
+
+              return (
                 <Pressable
-                  style={styles.quickEmoji}
-                  onPress={() => {
-                    onPlusExtra(message.id);
-                    onShowReactions(null);
-                  }}
+                  onPress={() => onShowReactionsSheet(message.id)}
+                  style={[styles.reactionPill, mine ? styles.reactionPillMine : styles.reactionPillTheirs]}
                 >
-                  <MaterialCommunityIcons color={theme.colors.textMuted} name="plus" size={20} />
+                  <View style={styles.reactionPillEmojis}>
+                    {topEmojis.map((e, idx) => (
+                      <Text key={e} style={[styles.reactionPillEmoji, idx > 0 && { marginLeft: -4 }]}>{e}</Text>
+                    ))}
+                  </View>
+                  {total > 1 && <Text style={styles.reactionPillCount}>{total}</Text>}
                 </Pressable>
-              </View>
-            </View>
-          ) : null}
-
-          {reactions && (() => {
-            const entries = Object.entries(reactions).filter(([emoji, users]) => users.length > 0 && !emoji.startsWith("poll:"));
-            if (entries.length === 0) return null;
-
-            const total = entries.reduce((sum, [_, users]) => sum + users.length, 0);
-            const topEmojis = entries.slice(0, 3).map(([e]) => e);
-
-            return (
-              <Pressable
-                onPress={() => onShowReactionsSheet(message.id)}
-                style={[styles.reactionPill, mine ? styles.reactionPillMine : styles.reactionPillTheirs]}
-              >
-                <View style={styles.reactionPillEmojis}>
-                  {topEmojis.map((e, idx) => (
-                    <Text key={e} style={[styles.reactionPillEmoji, idx > 0 && { marginLeft: -4 }]}>{e}</Text>
-                  ))}
-                </View>
-                {total > 1 && <Text style={styles.reactionPillCount}>{total}</Text>}
-              </Pressable>
-            );
-          })()}
-        </View>
-      </Pressable>
-    </Animated.View>
+              );
+            })()}
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
+    rowWrapper: {
+      flex: 1,
+      position: "relative",
+      flexDirection: "row",
+      alignItems: "center",
+      zIndex: 1,
+    },
+    swipeIconContainer: {
+      position: "absolute",
+      right: 15,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: "rgba(0,0,0,0.08)",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: -1,
+    },
     row: {
+      flex: 1,
+      flexDirection: "row",
       marginVertical: 1,
       paddingVertical: 2,
     },
     rowMine: {
-      // Alignment moved to selection container
+      justifyContent: "flex-end",
     },
     rowTheirs: {
-      // Alignment moved to selection container
+      justifyContent: "flex-start",
     },
     rowSelected: {
       backgroundColor: "rgba(0,168,132,0.38)",
@@ -517,7 +564,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     reactionPill: {
       position: "absolute",
       bottom: -18,
-      backgroundColor: "#202c33",
+      backgroundColor: theme.colors.bubbleBackground,
       borderRadius: 16,
       borderColor: theme.colors.background,
       borderWidth: 2,
@@ -606,28 +653,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: "transparent",
     },
     pollRadioCircleChecked: {
-      backgroundColor: "#1B9D55",
-      borderColor: "#1B9D55",
+      backgroundColor: theme.colors.accentStrong,
+      borderColor: theme.colors.accentStrong,
       borderWidth: 0,
-    },
-    pollRadioInner: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: "#1B9D55",
     },
     pollVoteCount: {
       color: theme.colors.textMuted,
       fontSize: 14,
-    },
-    pollProgressBar: {
-      position: "absolute",
-      right: 0,
-      top: 0,
-      bottom: 0,
-      backgroundColor: theme.colors.accent + "33", // hex alpha
-      borderRadius: 6,
-      zIndex: 1,
     },
     pollFooter: {
       borderTopWidth: 1,
@@ -642,4 +674,3 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontWeight: "500",
     },
   });
-

@@ -17,6 +17,7 @@ type Props = {
 };
 
 type ViewMode = "home" | "locked" | "archived";
+type FilterTab = "all" | "unread" | "favorites" | "groups";
 
 type DisplayChat = {
   chat: Chat;
@@ -90,7 +91,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const theme = useAppTheme();
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
-  const styles = createStyles(theme, insets);
+  const styles = createStyles(theme, insets, scheme);
   const {
     chats,
     muteSettings,
@@ -113,6 +114,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("home");
   const [activeTab, setActiveTab] = useState<"chats" | "communities" | "updates" | "calls">("chats");
+  const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
   const searchInputRef = useRef<TextInput | null>(null);
 
   const selectionMode = selectedChatIds.length > 0;
@@ -210,7 +212,25 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     [displayChats],
   );
 
-  const activeChats = viewMode === "locked" ? lockedChats : viewMode === "archived" ? archivedChats : regularChats;
+  const unreadTotal = useMemo(() => regularChats.filter(c => c.unreadCount > 0).length, [regularChats]);
+
+  const activeChats = useMemo(() => {
+    let base = viewMode === "locked" ? lockedChats : viewMode === "archived" ? archivedChats : regularChats;
+
+    if (viewMode === "home") {
+      if (activeFilter === "unread") {
+        return base.filter(c => (unreadCounts[c.chat.id] ?? 0) > 0);
+      }
+      if (activeFilter === "favorites") {
+        return base.filter(c => (chatPreferences[c.chat.id] ?? {}).pinned_at);
+      }
+      if (activeFilter === "groups") {
+        return base.filter(c => c.chat.is_group);
+      }
+    }
+
+    return base;
+  }, [viewMode, lockedChats, archivedChats, regularChats, activeFilter, unreadCounts, chatPreferences]);
   const allSelectedArchived = selectionMode && selectedChatIds.every((chatId) => (chatPreferences[chatId] ?? getDefaultPreferences()).archived);
   const allSelectedPinned = selectionMode && selectedChatIds.every((chatId) => Boolean((chatPreferences[chatId] ?? getDefaultPreferences()).pinned_at));
   const allSelectedLocked = selectionMode && selectedChatIds.every((chatId) => (chatPreferences[chatId] ?? getDefaultPreferences()).locked);
@@ -412,13 +432,46 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
           />
         </View>
 
+        {viewMode === "home" && !selectionMode && activeTab === "chats" && (
+          <View style={styles.filterBar}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+              <FilterChip
+                label="הכול"
+                active={activeFilter === "all"}
+                onPress={() => setActiveFilter("all")}
+              />
+              <FilterChip
+                label="לא נקראו"
+                count={unreadTotal > 0 ? unreadTotal : undefined}
+                active={activeFilter === "unread"}
+                onPress={() => setActiveFilter("unread")}
+              />
+              <FilterChip
+                label="מועדפים"
+                active={activeFilter === "favorites"}
+                onPress={() => setActiveFilter("favorites")}
+              />
+              <FilterChip
+                label="קבוצות"
+                active={activeFilter === "groups"}
+                onPress={() => setActiveFilter("groups")}
+              />
+              <Pressable style={styles.addFilterBtn}>
+                <Feather name="plus" size={18} color={theme.colors.textMuted} />
+              </Pressable>
+            </ScrollView>
+          </View>
+        )}
+
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {activeTab === "chats" && viewMode === "home" ? (
             <>
               <Pressable onPress={() => setViewMode("locked")} style={styles.sectionButton}>
                 <View style={styles.sectionLeft}>
-                  <View style={styles.sectionIconWrap}>
-                    <Feather color={theme.colors.textMuted} name="lock" size={18} />
+                  <View style={styles.sectionIconContainer}>
+                    <View style={styles.sectionIconWrap}>
+                      <Feather color={theme.colors.textMuted} name="lock" size={20} />
+                    </View>
                   </View>
                   <Text style={styles.sectionLabel}>צ'אטים נעולים</Text>
                 </View>
@@ -426,8 +479,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
 
               <Pressable onPress={() => setViewMode("archived")} style={styles.sectionButton}>
                 <View style={styles.sectionLeft}>
-                  <View style={styles.sectionIconWrap}>
-                    <MaterialCommunityIcons color={theme.colors.textMuted} name="archive-arrow-down-outline" size={18} />
+                  <View style={styles.sectionIconContainer}>
+                    <View style={styles.sectionIconWrap}>
+                      <MaterialCommunityIcons color={theme.colors.textMuted} name="archive-arrow-down-outline" size={20} />
+                    </View>
                   </View>
                   <Text style={styles.sectionLabel}>ארכיון</Text>
                 </View>
@@ -588,10 +643,13 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   );
 }
 
+
+
 function MenuItem({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
   const theme = useAppTheme();
+  const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
-  const styles = createStyles(theme, insets);
+  const styles = createStyles(theme, insets, scheme);
 
   return (
     <Pressable onPress={onPress} style={styles.menuItem}>
@@ -600,27 +658,70 @@ function MenuItem({ label, onPress, danger }: { label: string; onPress: () => vo
   );
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<typeof useSafeAreaInsets>) =>
+function FilterChip({ label, count, active, onPress }: { label: string, count?: number, active: boolean, onPress: () => void }) {
+  const theme = useAppTheme();
+  const scheme = useColorScheme();
+
+  const activeBg = scheme === "dark" ? "#00a884" : "#E7FCE3";
+  const activeText = scheme === "dark" ? "#ffffff" : "#008069";
+  const inactiveBg = scheme === "dark" ? "#202C33" : "#FFFFFF";
+  const inactiveText = scheme === "dark" ? "#8696A0" : "#667781";
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles_chip.chip,
+        active
+          ? { backgroundColor: activeBg }
+          : { backgroundColor: inactiveBg, borderWidth: scheme === "dark" ? 0 : 0.8, borderColor: "#E9EDF0" },
+      ]}
+    >
+      <Text style={[styles_chip.label, { color: active ? activeText : inactiveText }]}>
+        {label}{count !== undefined ? ` ${count}` : ""}
+      </Text>
+    </Pressable>
+  );
+}
+
+const styles_chip = StyleSheet.create({
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginHorizontal: 3,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+});
+
+
+
+const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<typeof useSafeAreaInsets>, scheme: ReturnType<typeof useColorScheme>) =>
   StyleSheet.create({
     page: {
       flex: 1,
       backgroundColor: theme.colors.homeBackground,
-      paddingTop: insets.top,
+      paddingTop: Math.max(0, insets.top - 20),
     },
     header: {
-      minHeight: 58,
+      minHeight: 46,
       backgroundColor: theme.colors.homeHeader,
       paddingHorizontal: theme.spacing.md,
-      paddingTop: theme.spacing.sm,
-      paddingBottom: theme.spacing.sm,
+      paddingTop: 0,
+      paddingBottom: 0,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
     },
     brand: {
       flex: 1,
-      color: "#008069",
-      fontSize: 24,
+      color: "#1EA860",
+      fontSize: 22,
       fontWeight: "700",
     },
     selectionTitle: {
@@ -644,15 +745,33 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<
     },
     searchShell: {
       marginHorizontal: theme.spacing.md,
-      marginTop: theme.spacing.xs,
-      marginBottom: theme.spacing.md,
-      backgroundColor: theme.colors.homeSearch,
+      marginTop: 0,
+      marginBottom: 6,
+      backgroundColor: scheme === "dark" ? theme.colors.homeSearch : "#F6F5F3",
       borderRadius: theme.radius.xl,
       minHeight: 46,
       paddingHorizontal: 16,
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+    },
+    filterBar: {
+      marginTop: 20,
+      marginBottom: 12,
+    },
+    filterScroll: {
+      paddingHorizontal: theme.spacing.md,
+      flexDirection: "row", // Standard row, items ordered left-to-right in JSX
+      alignItems: "center",
+    },
+    addFilterBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: theme.colors.homeSearch,
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: 8,
     },
     searchInput: {
       flex: 1,
@@ -668,7 +787,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: theme.spacing.md,
-      paddingVertical: 14,
+      paddingVertical: 11, // Matches chatRow vertical padding
       backgroundColor: theme.colors.homeRow,
     },
     sectionLeft: {
@@ -676,16 +795,21 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<
       alignItems: "center",
       gap: 12,
     },
+    sectionIconContainer: {
+      width: 54, // Matches avatar width
+      alignItems: "center",
+      justifyContent: "center",
+    },
     sectionIconWrap: {
-      width: 36,
-      height: 36,
-      borderRadius: theme.radius.pill,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: theme.colors.surfaceAlt,
       alignItems: "center",
       justifyContent: "center",
     },
     sectionLabel: {
-      color: theme.colors.text,
+      color: scheme === "dark" ? theme.colors.text : "#5E676A",
       fontSize: 17,
       fontWeight: "700",
     },

@@ -170,7 +170,7 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
                 </Text>
               </View>
               <View style={[styles.radio, selected && styles.radioSelected]}>
-                {selected && <Feather name="check" size={14} color="#fff" />}
+                {selected && <Feather name="check" size={14} color={theme.colors.textOnAccent} />}
               </View>
             </Pressable>
           );
@@ -189,7 +189,7 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
       {/* FAB */}
       {selectedUsers.length > 0 && (
         <Pressable style={styles.fabBtn} onPress={() => void handleFabPress()} disabled={creating}>
-          <Feather name="arrow-left" size={24} color="#fff" />
+          <Feather name="arrow-left" size={24} color={theme.colors.textOnAccent} />
         </Pressable>
       )}
 
@@ -391,7 +391,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     modalOverlay: {
       flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
+      backgroundColor: theme.colors.overlay,
       justifyContent: "center",
       alignItems: "center",
       padding: 32,

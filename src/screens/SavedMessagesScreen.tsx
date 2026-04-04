@@ -91,7 +91,7 @@ export function SavedMessagesScreen({ onBack, onNavigateToChat }: Props) {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={handleBack} style={styles.headerButton}>
-          <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
+          <Feather color={theme.colors.headerIcon} name="arrow-left" size={22} />
         </Pressable>
 
         {isSelectionMode ? (
@@ -100,7 +100,7 @@ export function SavedMessagesScreen({ onBack, onNavigateToChat }: Props) {
             <View style={styles.selectionActions}>
               <Pressable onPress={handleUnsaveSelected} style={styles.headerButton}>
                 <MaterialCommunityIcons
-                  color={theme.colors.textOnAccent}
+                  color={theme.colors.headerIcon}
                   name="star-off"
                   size={22}
                 />
@@ -110,7 +110,7 @@ export function SavedMessagesScreen({ onBack, onNavigateToChat }: Props) {
         ) : (
           <>
             <View style={styles.avatar}>
-              <MaterialCommunityIcons color={theme.colors.textOnAccent} name="bookmark-outline" size={22} />
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="bookmark-outline" size={22} />
             </View>
             <View style={styles.headerCopy}>
               <Text style={styles.title}>הודעות שמורות</Text>
@@ -211,7 +211,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: "center",
     },
     selectionCount: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 20,
       fontWeight: "700",
       marginLeft: 4,
@@ -226,7 +226,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       width: 40,
       height: 40,
       borderRadius: theme.radius.pill,
-      backgroundColor: "rgba(255,255,255,0.22)",
+      backgroundColor: theme.colors.surfaceAlt,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -234,12 +234,12 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
     },
     title: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 18,
       fontWeight: "800",
     },
     subtitle: {
-      color: "rgba(255,255,255,0.78)",
+      color: theme.colors.headerSubtitle,
       fontSize: 12,
       marginTop: 2,
     },
@@ -257,7 +257,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       alignItems: "flex-end",
     },
     bubbleRowSelected: {
-      backgroundColor: "rgba(0,168,132,0.38)",
+      backgroundColor: theme.colors.selectionModeBackground,
     },
     bubble: {
       maxWidth: "84%",

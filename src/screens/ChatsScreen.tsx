@@ -145,7 +145,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
 
         <View style={styles.searchShell}>
           <Feather color={theme.colors.textMuted} name="search" size={18} />
-          <TextInput onChangeText={setSearchQuery} placeholder={viewMode === "home" ? "חיפוש" : `חיפוש ב${viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}`} placeholderTextColor={theme.colors.textMuted} style={[styles.searchInput, webEmbeddedInputReset]} value={searchQuery} />
+          <TextInput onChangeText={setSearchQuery} placeholder="חיפוש" placeholderTextColor={theme.colors.textMuted} style={[styles.searchInput, webEmbeddedInputReset]} value={searchQuery} />
         </View>
 
         {viewMode === "home" && !selectionMode && activeTab === "chats" && (

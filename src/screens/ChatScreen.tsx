@@ -244,11 +244,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   useEffect(() => {
     initialScrollDone.current = false;
-    if (chat) {
+    if (chat?.id) {
       void loadMessages(chat.id);
       void isCurrentMember(chat.id).then(setIsMember);
     }
-  }, [chat?.id, chats]);
+  }, [chat?.id]);
 
   useEffect(() => {
     if (!visibleMessages?.length || initialScrollDone.current) return;

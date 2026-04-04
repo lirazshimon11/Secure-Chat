@@ -81,9 +81,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
   }, [chatPreferences, localPreferencesReady, profile?.id]);
 
   // ── Core Actions ────────────────────────────────────────────────────────
-  const refreshChats = async () => {
+  const refreshChats = async (silent = false) => {
     if (!profile?.id) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     const { data: rows } = await ChatService.fetchMemberDetails(profile.id);
     const cIds = (rows ?? []).map(r => r.chat_id);
     const directIds = (rows ?? []).filter(r => !r.is_group).map(r => r.chat_id);
@@ -147,8 +147,29 @@ export function ChatProvider({ children }: PropsWithChildren) {
     channelRef.current = supabase.channel(`chat-stream-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (p) => {
         const n = p.new as Message; if (!n?.chat_id) return;
-        setMessagesByChat(cur => { if (deletedForMeIdsRef.current.includes(n.id)) return cur; const existing = cur[n.chat_id] ?? []; return { ...cur, [n.chat_id]: [...existing.filter(m => m.id !== n.id), n].sort((a,b) => a.created_at.localeCompare(b.created_at)) }; });
-        void refreshChats();
+        
+        // If it's an INSERT and it's from ME, we handle it via the optimistic ID logic or just ignore
+        // because we already have the optimistic version and the 'single' return from sendMessage.
+        // Actually, to be safe and flicker-free: only handle if it's NOT from me, or if it's an UPDATE.
+        if (p.eventType === 'INSERT' && n.sender_id === userId) return;
+
+        setMessagesByChat(cur => { 
+          if (deletedForMeIdsRef.current.includes(n.id)) return cur; 
+          const existing = cur[n.chat_id] ?? [];
+          const exists = existing.find(m => m.id === n.id);
+          
+          let next;
+          if (exists) {
+            next = existing.map(m => m.id === n.id ? n : m);
+          } else {
+            next = [...existing, n].sort((a,b) => a.created_at.localeCompare(b.created_at));
+          }
+          
+          return { ...cur, [n.chat_id]: next }; 
+        });
+        
+        // Don't refresh chats if we're just receiving a message, it causes too much UI jitter
+        // The last_message_preview in rawChats will be updated manually later if needed.
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
       .on("postgres_changes", { event: "*", schema: "public", table: "message_views" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
@@ -163,13 +184,50 @@ export function ChatProvider({ children }: PropsWithChildren) {
   };
 
   const sendMessage = async (input: MessageComposerInput) => {
-     if (!profile?.id || !input.body.trim()) return "Message empty.";
-     const body = input.body.trim();
-     const preview = input.messageKind === "view_once" ? "View once message" : body;
-     const expiresAt = input.messageKind === "temporary" && input.expireSeconds ? new Date(Date.now() + input.expireSeconds * 1000).toISOString() : null;
-     const { error } = await ChatService.sendMessage(input.chatId, profile.id, body, preview, input.messageKind, input.replyToId ?? null, expiresAt);
-     return error?.message ?? null;
-  };
+      if (!profile?.id || !input.body.trim()) return "Message empty.";
+      const body = input.body.trim();
+      const preview = input.messageKind === "view_once" ? "View once message" : body;
+      const expiresAt = input.messageKind === "temporary" && input.expireSeconds ? new Date(Date.now() + input.expireSeconds * 1000).toISOString() : null;
+      
+      const msgId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+      
+      const optimisticMsg: Message = {
+        id: msgId,
+        chat_id: input.chatId,
+        sender_id: profile.id,
+        body_ciphertext: body,
+        body_preview: preview,
+        message_kind: input.messageKind as any,
+        created_at: new Date().toISOString(),
+        reply_to_id: input.replyToId ?? null,
+        expires_at: expiresAt,
+        deleted_at: null,
+      };
+
+      // 1. Update messages instantly (Primary UI)
+      setMessagesByChat(cur => ({ 
+        ...cur, 
+        [input.chatId]: [...(cur[input.chatId] || []), optimisticMsg] 
+      }));
+
+      // 2. Update chat preview in background to prevent UI jitter
+      setTimeout(() => {
+        setRawChats(cur => cur.map(c => c.id === input.chatId ? { ...c, last_message_preview: preview, last_message_at: optimisticMsg.created_at } : c));
+      }, 0);
+
+      // 3. Send to DB with the SAME ID
+      const { error } = await ChatService.sendMessage(input.chatId, profile.id, body, preview, input.messageKind, input.replyToId ?? null, expiresAt, msgId);
+      
+      if (error) {
+        setMessagesByChat(cur => ({ ...cur, [input.chatId]: (cur[input.chatId] || []).filter(m => m.id !== msgId) }));
+        return error.message;
+      }
+      return null;
+   };
 
   const toggleReaction = async (messageId: string, emoji: string) => {
     if (!profile?.id) return;

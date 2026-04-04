@@ -56,16 +56,17 @@ export const ChatService = {
       .eq("user_id", userId);
   },
 
-  async sendMessage(chatId: string, senderId: string, body: string, preview: string, kind: string, replyToId: string | null, expiresAt: string | null) {
+  async sendMessage(chatId: string, senderId: string, body: string, preview: string, kind: string, replyToId: string | null = null, expiresAt: string | null = null, id?: string) {
     return supabase.from("messages").insert({
+      id, // Client-side ID to prevent flickering
       chat_id: chatId,
       sender_id: senderId,
       body_ciphertext: body,
-      body_preview: kind === "system" ? null : preview,
+      body_preview: preview,
       message_kind: kind,
       reply_to_id: replyToId,
-      expires_at: expiresAt,
-    });
+      expires_at: expiresAt
+    }).select().single();
   },
 
   async createChat(title: string, isGroup: boolean, creatorId: string) {

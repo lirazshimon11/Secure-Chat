@@ -21,7 +21,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     brand: {
       flex: 1,
-      color: "#1EA860",
+      color: scheme === "dark" ? "#F3F4F6" : "#1EA860",
       fontSize: 22,
       fontWeight: "700",
     },

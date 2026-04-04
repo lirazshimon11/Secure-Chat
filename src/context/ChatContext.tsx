@@ -10,13 +10,14 @@ import { getUtcTime, buildMuteSetting, getDefaultChatPreferences, normalizeChatP
 import { ChatService } from "@/services/ChatService";
 
 export type ContactNicknameData = { first_name: string; last_name: string; phone?: string; sync_enabled?: boolean; };
-type MessageComposerInput = { chatId: string; body: string; messageKind: "standard" | "temporary" | "view_once"; replyToId?: string | null; expireSeconds?: number | null; };
+type MessageComposerInput = { chatId: string; body: string; messageKind: "standard" | "temporary" | "view_once" | "system"; replyToId?: string | null; expireSeconds?: number | null; };
 
 type ChatContextValue = {
   chats: Chat[]; profiles: Record<string, Profile>; messagesByChat: Record<string, Message[]>; reactionsByMessage: Record<string, ReactionSummary>; unreadCounts: Record<string, number>; muteSettings: Record<string, ChatMuteSetting>; chatPreferences: Record<string, ChatLocalPreferences>; contactNicknames: Record<string, ContactNicknameData>; openedViewOnceIds: Record<string, boolean>; loading: boolean;
   refreshChats: () => Promise<void>; loadMessages: (chatId: string) => Promise<void>; loadChatMembers: (chatId: string) => Promise<Profile[]>; markChatSeen: (chatId: string, timestamp?: string, nextUnreadCount?: number) => Promise<void>;
   setChatMute: (chatId: string, duration: MuteDurationOption) => void; clearChatMute: (chatId: string) => void; archiveChats: (chatIds: string[]) => void; unarchiveChats: (chatIds: string[]) => void; togglePinnedChats: (chatIds: string[]) => void; lockChats: (chatIds: string[]) => void; unlockChats: (chatIds: string[]) => void; clearChatsLocally: (chatIds: string[]) => void;
   searchUsers: (query: string) => Promise<Profile[]>; sendMessage: (input: MessageComposerInput) => Promise<string | null>; createChat: (title: string, memberUsernames: string[]) => Promise<{ chat: Chat | null; error: string | null }>; toggleReaction: (messageId: string, emoji: string) => Promise<void>; openViewOnceMessage: (message: Message) => Promise<void>; deleteMessages: (messageIds: string[], forEveryone: boolean) => Promise<void>; updateChatDescription: (chatId: string, description: string) => Promise<void>; updateChatTitle: (chatId: string, title: string) => Promise<void>; deleteChats: (chatIds: string[]) => Promise<void>; setContactNickname: (userId: string, data: ContactNicknameData) => Promise<void>; searchMessagesGlobal: (query: string) => Promise<{ chat_id: string; message: Message }[]>;
+  setChatMemberRole: (chatId: string, userId: string, role: string) => Promise<void>; removeChatMember: (chatId: string, profile: Profile, chatTitle: string) => Promise<void>; isCurrentMember: (chatId: string) => Promise<boolean>;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -108,7 +109,19 @@ export function ChatProvider({ children }: PropsWithChildren) {
         if (!lastRead || getUtcTime(r.created_at) > getUtcTime(lastRead)) unCounts[r.chat_id] = (unCounts[r.chat_id] ?? 0) + 1;
     }
 
-    setRawChats(rows!.map(r => ({ id: r.chat_id, title: r.is_group ? r.chat_title : directTitles[r.chat_id] ?? r.chat_title, is_group: r.is_group, description: r.description ?? null, created_by: r.created_by, created_at: r.created_at, last_message_preview: r.last_message_preview, last_message_at: r.last_message_at })) as any);
+    setRawChats(rows!.map(r => {
+      const isRemoved = r.role === "removed";
+      return { 
+        id: r.chat_id, 
+        title: r.is_group ? r.chat_title : directTitles[r.chat_id] ?? r.chat_title, 
+        is_group: r.is_group, 
+        description: r.description ?? null, 
+        created_by: r.created_by, 
+        created_at: r.created_at, 
+        last_message_preview: isRemoved ? "את/ה הוסרת/ה מהקבוצה" : r.last_message_preview, 
+        last_message_at: isRemoved ? r.removed_at || r.last_message_at : r.last_message_at 
+      };
+    }) as any);
     setUnreadCounts(cur => { const next = { ...unCounts }; Object.keys(cur).forEach(id => { if (cur[id] === 0) next[id] = 0; }); return next; });
     setLoading(false);
   };
@@ -201,7 +214,25 @@ export function ChatProvider({ children }: PropsWithChildren) {
       return c;
     }),
     profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, contactNicknames, loading, refreshChats, loadMessages, markChatSeen,
-    loadChatMembers: async (id: string) => { const { data } = await supabase.from("chat_members").select("user_id").eq("chat_id", id); if (!data) return []; const { data: profs } = await ChatService.fetchProfiles(data.map(m => m.user_id)); const next = (profs as Profile[]) ?? []; setProfiles(cur => ({ ...cur, ...Object.fromEntries(next.map(p => [p.id, p])) })); return next.sort((a,b) => a.username.localeCompare(b.username)); },
+    clearChatsLocally: (ids: string[]) => updateChatPreferences(ids, c => ({ ...c, cleared_at: new Date().toISOString() })),
+    loadChatMembers: async (chatId: string) => { 
+      const viewerId = profile?.id;
+      const { data: myRow } = viewerId ? await supabase.from("chat_members").select("role,removed_at").eq("chat_id", chatId).eq("user_id", viewerId).maybeSingle() : { data: null };
+      let query = supabase.from("chat_members").select("user_id,joined_at").eq("chat_id", chatId);
+      
+      if (myRow?.role === "removed" && myRow.removed_at) {
+        query = query.lte("joined_at", myRow.removed_at);
+      } else {
+        query = query.neq("role", "removed");
+      }
+      
+      const { data } = await query;
+      if (!data) return []; 
+      const { data: profs } = await ChatService.fetchProfiles(data.map(m => m.user_id)); 
+      const next = (profs as Profile[]) ?? []; 
+      setProfiles(cur => ({ ...cur, ...Object.fromEntries(next.map(p => [p.id, p])) })); 
+      return next.sort((a,b) => (a.full_name || a.username).localeCompare(b.full_name || b.username)); 
+    },
     setChatMute: (id: string, d: MuteDurationOption) => setMuteSettings(cur => ({ ...cur, [id]: buildMuteSetting(d) })),
     clearChatMute: (id: string) => setMuteSettings(cur => ({ ...cur, [id]: { mute_until: null, mute_always: false } })),
     archiveChats: (ids: string[]) => updateChatPreferences(ids, c => ({ ...c, archived: true })),
@@ -209,7 +240,6 @@ export function ChatProvider({ children }: PropsWithChildren) {
     togglePinnedChats: (ids: string[]) => { const pin = ids.some(id => !chatPreferences[id]?.pinned_at); updateChatPreferences(ids, c => ({ ...c, pinned_at: pin ? new Date().toISOString() : null })); },
     lockChats: (ids: string[]) => updateChatPreferences(ids, c => ({ ...c, locked: true })),
     unlockChats: (ids: string[]) => updateChatPreferences(ids, c => ({ ...c, locked: false })),
-    clearChatsLocally: (ids: string[]) => updateChatPreferences(ids, c => ({ ...c, cleared_at: new Date().toISOString() })),
     searchUsers: async (q: string) => { if (!profile?.id) return []; let req = supabase.from("profiles").select("*").neq("id", profile.id).order("username").limit(20); const tq = q.trim().replace(/[%_,]/g, ""); if (tq) req = req.or(`username.ilike.%${tq}%,full_name.ilike.%${tq}%`); const { data } = await req; if (!data) return []; setProfiles(cur => ({ ...cur, ...Object.fromEntries((data as Profile[]).map(p => [p.id, p])) })); return data as Profile[]; },
     createChat: async (title: string, memberUsernames: string[]) => {
       if (!profile?.id) return { chat: null, error: "You must be signed in." };
@@ -231,9 +261,38 @@ export function ChatProvider({ children }: PropsWithChildren) {
     },
     sendMessage, toggleReaction, openViewOnceMessage, deleteMessages, updateChatDescription: async (id: string, d: string) => { await ChatService.updateChatInfo(id, { description: d }); void refreshChats(); },
     updateChatTitle: async (id: string, t: string) => { await ChatService.updateChatInfo(id, { title: t }); void refreshChats(); },
-    deleteChats: async (ids: string[]) => { updateChatPreferences(ids, c => ({ ...c, deleted_from_home_at: new Date().toISOString() })); },
+    deleteChats: async (ids: string[]) => { 
+      if (!profile?.id) return;
+      const { data: memberRows } = await supabase.from("chat_members").select("chat_id,role").in("chat_id", ids).eq("user_id", profile.id);
+      const removedIds = (memberRows ?? []).filter(r => r.role === "removed").map(r => r.chat_id);
+      const activeIds = ids.filter(id => !removedIds.includes(id));
+      if (removedIds.length > 0) {
+        await supabase.from("chat_members").delete().in("chat_id", removedIds).eq("user_id", profile.id);
+      }
+      if (activeIds.length > 0) {
+        updateChatPreferences(activeIds, c => ({ ...c, deleted_from_home_at: new Date().toISOString() })); 
+      }
+      void refreshChats();
+    },
     setContactNickname: async (id: string, data: ContactNicknameData) => setContactNicknames(cur => ({ ...cur, [id]: data })),
-    searchMessagesGlobal: async (q: string) => { const tq = q.trim().replace(/[%_,]/g, ""); if (!profile?.id || !tq) return []; const { data } = await ChatService.searchGlobalMessages(tq); if (!data) return []; const valid = new Set(rawChats.map(c => c.id)); return ((data as Message[]) ?? []).filter(m => valid.has(m.chat_id)).map(m => ({ chat_id: m.chat_id, message: m })); }
+    searchMessagesGlobal: async (q: string) => { const tq = q.trim().replace(/[%_,]/g, ""); if (!profile?.id || !tq) return []; const { data } = await ChatService.searchGlobalMessages(tq); if (!data) return []; const valid = new Set(rawChats.map(c => c.id)); return ((data as Message[]) ?? []).filter(m => valid.has(m.chat_id)).map(m => ({ chat_id: m.chat_id, message: m })); },
+    setChatMemberRole: async (chatId: string, userId: string, role: string) => { await ChatService.updateChatMemberRole(chatId, userId, role); },
+    removeChatMember: async (chatId: string, targetMember: Profile, _chatTitle: string) => {
+      if (!profile?.id) return;
+      
+      // 1. Send ONE unified system message placeholder
+      await ChatService.sendMessage(chatId, profile.id, `[SYSTEM_USER_REMOVED]:${targetMember.id}`, "", "system", null, null);
+
+      // 2. Instead of deleting, set role to 'removed' so they keep history
+      await ChatService.updateChatMemberRole(chatId, targetMember.id, "removed");
+      
+      void refreshChats();
+    },
+    isCurrentMember: async (chatId: string) => {
+      if (!profile?.id) return false;
+      const { data } = await supabase.from("chat_members").select("chat_id").match({ chat_id: chatId, user_id: profile.id }).neq("role", "removed").maybeSingle();
+      return !!data;
+    }
   }), [rawChats, profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, contactNicknames, loading, privateChatPartners, profile?.id]);
 
   return <ChatContext.Provider value={chatValue}>{children}</ChatContext.Provider>;

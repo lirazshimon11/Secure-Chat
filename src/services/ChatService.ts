@@ -61,7 +61,7 @@ export const ChatService = {
       chat_id: chatId,
       sender_id: senderId,
       body_ciphertext: body,
-      body_preview: preview,
+      body_preview: kind === "system" ? null : preview,
       message_kind: kind,
       reply_to_id: replyToId,
       expires_at: expiresAt,
@@ -109,5 +109,13 @@ export const ChatService = {
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(50);
+  },
+  async removeChatMember(chatId: string, userId: string) {
+    return supabase.from("chat_members").delete().match({ chat_id: chatId, user_id: userId });
+  },
+  async updateChatMemberRole(chatId: string, userId: string, role: string) {
+    const update: any = { role };
+    if (role === "removed") update.removed_at = new Date().toISOString();
+    return supabase.from("chat_members").update(update).match({ chat_id: chatId, user_id: userId });
   }
 };

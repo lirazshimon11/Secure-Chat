@@ -1,4 +1,4 @@
-export type MessageKind = "standard" | "temporary" | "view_once";
+export type MessageKind = "standard" | "temporary" | "view_once" | "system";
 export type MuteDurationOption = "8_hours" | "7_days" | "always";
 
 export type Profile = {

@@ -19,6 +19,7 @@ export function AppShell() {
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateChat, setShowCreateChat] = useState<boolean | Profile[]>(false);
   const [showChatSettings, setShowChatSettings] = useState(false);
+  const [settingsChatStack, setSettingsChatStack] = useState<Chat[]>([]);
   const [showSavedMessages, setShowSavedMessages] = useState(false);
   const [forwardPayload, setForwardPayload] = useState<Message[] | null>(null);
   // When navigating from SavedMessages to a chat, optionally scroll to a message
@@ -96,10 +97,23 @@ export function AppShell() {
   }
 
   if (selectedChat && showChatSettings) {
-    return <ChatSettingsScreen chat={selectedChat} onBack={() => setShowChatSettings(false)} 
+    const currentChatForSettings = settingsChatStack.length > 0 ? settingsChatStack[settingsChatStack.length - 1] : selectedChat;
+    
+    return <ChatSettingsScreen chat={currentChatForSettings} 
+             onBack={() => {
+               if (settingsChatStack.length > 0) {
+                 setSettingsChatStack(cur => cur.slice(0, -1));
+               } else {
+                 setShowChatSettings(false);
+               }
+             }} 
              onOpenChat={(chat) => {
                setShowChatSettings(false);
+               setSettingsChatStack([]);
                setSelectedChat(chat);
+             }}
+             onOpenChatSettings={(chat) => {
+               setSettingsChatStack(cur => [...cur, chat]);
              }}
            />;
   }

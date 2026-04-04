@@ -47,12 +47,26 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
   const { profile } = useAuth();
   
-  const {
-    loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles,
-    contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings,
-    chatPreferences, setChatMute, clearChatMute, sendMessage, openViewOnceMessage,
-    toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally
+  const { 
+    loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles, chats, 
+    contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings, 
+    chatPreferences, setChatMute, clearChatMute, sendMessage, openViewOnceMessage, 
+    toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember 
   } = useChats();
+
+  const [isMember, setIsMember] = useState(false);
+
+  // Initialize membership from context data if available
+  useEffect(() => {
+    if (chat && chats) {
+      const chatInList = chats.find(c => c.id === chat.id);
+      if (chatInList) {
+        // If the chat preview indicates we are removed, setIsMember(false) immediately
+        // Note: we'll follow up with the DB check for total accuracy
+        setIsMember(chatInList.last_message_preview !== "את/ה הוסרת/ה מהקבוצה");
+      }
+    }
+  }, [chat?.id, chats]);
 
   // ── 1. Memoized Data (Moved to top of scope) ───────────────────────────
   const visibleMessages = useMemo(() => {
@@ -230,8 +244,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   useEffect(() => {
     initialScrollDone.current = false;
-    if (chat) loadMessages(chat.id);
-  }, [chat?.id]);
+    if (chat) {
+      void loadMessages(chat.id);
+      void isCurrentMember(chat.id).then(setIsMember);
+    }
+  }, [chat?.id, chats]);
 
   useEffect(() => {
     if (!visibleMessages?.length || initialScrollDone.current) return;
@@ -342,10 +359,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
               </ScrollView>
             </View>
           </View>
-          <MessageComposer onInputFocus={() => { setShowReactionsForId(null); if (showEmojiKeyboard) setShowEmojiKeyboard(false); }} onCancelReply={() => setReplyTo(null)}
-            onSend={async (body, kind, expireSeconds) => { scrollToBottom(true); const err = await sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); if (!err) { setReplyTo(null); scrollToBottom(true); } }}
-            replyPreview={replyTo?.body_preview ?? null} emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
-            onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setAndroidNativeKeyboardPadding(0); setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+          {isMember && (
+            <MessageComposer onInputFocus={() => { setShowReactionsForId(null); if (showEmojiKeyboard) setShowEmojiKeyboard(false); }} onCancelReply={() => setReplyTo(null)}
+              onSend={async (body, kind, expireSeconds) => { scrollToBottom(true); const err = await sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); if (!err) { setReplyTo(null); scrollToBottom(true); } }}
+              replyPreview={replyTo?.body_preview ?? null} emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
+              onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setAndroidNativeKeyboardPadding(0); setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+          )}
         </KeyboardAvoidingView>
         
         {showEmojiKeyboard ? (

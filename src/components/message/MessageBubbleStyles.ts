@@ -33,6 +33,9 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     rowTheirs: {
       justifyContent: "flex-start",
     },
+    rowSystem: {
+      justifyContent: "center",
+    },
     rowSelected: {
       backgroundColor: "rgba(0,168,132,0.38)",
     },
@@ -62,6 +65,21 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: theme.colors.theirs,
       borderTopLeftRadius: 4,
       alignSelf: "flex-start",
+    },
+    systemBubble: {
+      backgroundColor: theme.colors.surfaceAlt,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      maxWidth: "85%",
+      alignSelf: "center",
+      marginVertical: 4,
+    },
+    systemText: {
+      fontSize: 13,
+      color: theme.colors.textMuted,
+      textAlign: "center",
+      fontWeight: "500",
     },
     author: {
       color: "#8b5cf6",

@@ -47,7 +47,7 @@ export function MessageBubble({
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { contactNicknames } = useChats();
+  const { contactNicknames, profiles } = useChats();
   const { allRequests, approveRequest, denyRequest } = useScreenshots();
   const mine = message.sender_id === currentUserId;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -79,8 +79,23 @@ export function MessageBubble({
 
   const isScreenshotRequest = message.body_ciphertext.startsWith("[SCREENSHOT_REQUEST]:");
   const isPoll = message.body_ciphertext.startsWith("[POLL]:");
+  const isSystem = message.message_kind === "system";
 
-  const body = isScreenshotRequest || isPoll ? "" : message.message_kind === "view_once" ? (viewOnceState === "hidden" ? "הקש/י לקריאה. ההודעה תיעלם לאחר הפתיחה." : viewOnceState === "opened" ? "נפתח פעם אחת. התוכן אינו זמין יותר." : message.body_ciphertext) : message.body_ciphertext;
+  let body = isScreenshotRequest || isPoll ? "" : message.message_kind === "view_once" ? (viewOnceState === "hidden" ? "הקש/י לקריאה. ההודעה תיעלם לאחר הפתיחה." : viewOnceState === "opened" ? "נפתח פעם אחת. התוכן אינו זמין יותר." : message.body_ciphertext) : message.body_ciphertext;
+  
+  if (isSystem && body.startsWith("[SYSTEM_USER_REMOVED]:")) {
+    const targetId = body.split(":")[1];
+    const isMe = targetId === currentUserId;
+    if (isMe) {
+      body = "את/ה הוסרת/ה מהקבוצה";
+    } else {
+      const nick = contactNicknames && contactNicknames[targetId]?.first_name;
+      const prof = profiles && profiles[targetId];
+      const displayName = nick || prof?.full_name || prof?.username || "משתתף/ת";
+      body = `${displayName} הוסר/ה מהקבוצה`;
+    }
+  }
+  
   const d = new Date(message.created_at);
   const timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")} `;
   const metaLabel = message.message_kind === "temporary" ? "1 דק'" : message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : "פעם אחת") : null;
@@ -101,51 +116,57 @@ export function MessageBubble({
           <MaterialCommunityIcons color={theme.colors.textMuted} name="reply" size={20} />
         </Animated.View>
       )}
-      <Animated.View {...(responder?.panHandlers ?? {})} style={[styles.row, mine ? styles.rowMine : styles.rowTheirs, isSelected && styles.rowSelected, { transform: [{ translateX }] }]}>
+      <Animated.View {...(responder?.panHandlers ?? {})} style={[styles.row, isSystem ? styles.rowSystem : mine ? styles.rowMine : styles.rowTheirs, isSelected && styles.rowSelected, { transform: [{ translateX }] }]}>
         <Pressable delayLongPress={220} onLongPress={handleLongPress} onPress={handlePress} style={[styles.fullWidthSelection, webDefaultCursor]}>
-          <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
-            {!mine && author && <Text style={styles.author}>{contactNicknames[author.id]?.first_name || author.username}</Text>}
-            {replyPreview && <View style={styles.replyBlock}><Text style={styles.replyLabel}>תגובה</Text><Text numberOfLines={2} style={styles.replyBlockText}>{replyPreview}</Text></View>}
-            
-            {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles} approveRequest={approveRequest} denyRequest={denyRequest} /> :
-             isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
-             <Text style={styles.body}>{body + " "}</Text>}
+          <View style={[isSystem ? styles.systemBubble : styles.bubble, !isSystem && (mine ? styles.bubbleMine : styles.bubbleTheirs), hasReactions ? { marginBottom: 14 } : null]}>
+            {isSystem ? (
+               <Text style={styles.systemText}>{body}</Text>
+            ) : (
+              <>
+                {!mine && author && <Text style={styles.author}>{contactNicknames[author.id]?.first_name || author.username}</Text>}
+                {replyPreview && <View style={styles.replyBlock}><Text style={styles.replyLabel}>תגובה</Text><Text numberOfLines={2} style={styles.replyBlockText}>{replyPreview}</Text></View>}
+                
+                {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles} approveRequest={approveRequest} denyRequest={denyRequest} /> :
+                 isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
+                 <Text style={styles.body}>{body + " "}</Text>}
 
-            <View style={styles.metaRow}>
-              <View style={{ flex: 1 }} />
-              {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
-              <View style={styles.timeRow}>
-                {message.message_kind === "view_once" && <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />}
-                {message.message_kind === "temporary" && <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />}
-                {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
-                <Text style={styles.meta}>{timeLabel}</Text>
-              </View>
-            </View>
-
-            {showReactions && (
-              <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
-                <View style={styles.pickerInner}>
-                  {quickReactions.map((emoji) => (
-                    <Pressable key={emoji} onPress={() => { onToggleReaction(emoji); onShowReactions(null); if (isSelected) onToggleSelection(message.id); }} style={({ pressed }) => [styles.quickEmoji, pressed && styles.quickEmojiPressed]}>
-                      <Text style={styles.quickEmojiText}>{emoji}</Text>
-                    </Pressable>
-                  ))}
-                  <Pressable style={styles.quickEmoji} onPress={() => { onPlusExtra(message.id); onShowReactions(null); }}><MaterialCommunityIcons color={theme.colors.textMuted} name="plus" size={20} /></Pressable>
+                <View style={styles.metaRow}>
+                  <View style={{ flex: 1 }} />
+                  {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
+                  <View style={styles.timeRow}>
+                    {message.message_kind === "view_once" && <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />}
+                    {message.message_kind === "temporary" && <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />}
+                    {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
+                    <Text style={styles.meta}>{timeLabel}</Text>
+                  </View>
                 </View>
-              </View>
-            )}
 
-            {reactions && (() => {
-              const entries = Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:"));
-              if (!entries.length) return null;
-              const total = entries.reduce((sum, [_, u]) => sum + (Array.isArray(u) ? u.length : 0), 0);
-              return (
-                <Pressable onPress={() => onShowReactionsSheet(message.id)} style={[styles.reactionPill, mine ? styles.reactionPillMine : styles.reactionPillTheirs]}>
-                  <View style={styles.reactionPillEmojis}>{entries.slice(0, 3).map(([e], idx) => <Text key={e} style={[styles.reactionPillEmoji, idx > 0 && { marginLeft: -4 }]}>{e}</Text>)}</View>
-                  {total > 1 && <Text style={styles.reactionPillCount}>{total}</Text>}
-                </Pressable>
-              );
-            })()}
+                {showReactions && (
+                  <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
+                    <View style={styles.pickerInner}>
+                      {quickReactions.map((emoji) => (
+                        <Pressable key={emoji} onPress={() => { onToggleReaction(emoji); onShowReactions(null); if (isSelected) onToggleSelection(message.id); }} style={({ pressed }) => [styles.quickEmoji, pressed && styles.quickEmojiPressed]}>
+                          <Text style={styles.quickEmojiText}>{emoji}</Text>
+                        </Pressable>
+                      ))}
+                      <Pressable style={styles.quickEmoji} onPress={() => { onPlusExtra(message.id); onShowReactions(null); }}><MaterialCommunityIcons color={theme.colors.textMuted} name="plus" size={20} /></Pressable>
+                    </View>
+                  </View>
+                )}
+
+                {reactions && (() => {
+                  const entries = Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:"));
+                  if (!entries.length) return null;
+                  const total = entries.reduce((sum, [_, u]) => sum + (Array.isArray(u) ? u.length : 0), 0);
+                  return (
+                    <Pressable onPress={() => onShowReactionsSheet(message.id)} style={[styles.reactionPill, mine ? styles.reactionPillMine : styles.reactionPillTheirs]}>
+                      <View style={styles.reactionPillEmojis}>{entries.slice(0, 3).map(([e], idx) => <Text key={e} style={[styles.reactionPillEmoji, idx > 0 && { marginLeft: -4 }]}>{e}</Text>)}</View>
+                      {total > 1 && <Text style={styles.reactionPillCount}>{total}</Text>}
+                    </Pressable>
+                  );
+                })()}
+              </>
+            )}
           </View>
         </Pressable>
       </Animated.View>

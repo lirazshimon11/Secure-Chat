@@ -22,20 +22,24 @@ import { ChatRenameModal } from "./chat-settings/ChatRenameModal";
 import { ChatThemeScreen } from "./chat-settings/ChatThemeScreen";
 import { ChatEditContactScreen } from "./chat-settings/ChatEditContactScreen";
 import { ChatMemberActionModal } from "./chat-settings/ChatMemberActionModal";
+import { SimpleConfirmModal } from "./chat-settings/SimpleConfirmModal";
+import { Alert } from "react-native";
 
 type Props = {
   chat: Chat;
   onBack: () => void;
   onOpenChat?: (chat: Chat) => void;
+  onOpenChatSettings?: (chat: Chat) => void;
 };
 
-export function ChatSettingsScreen({ chat, onBack, onOpenChat }: Props) {
+export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSettings }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const { profile } = useAuth();
-  const { loadChatMembers, messagesByChat, chats, contactNicknames, createChat } = useChats();
+  const { loadChatMembers, messagesByChat, chats, contactNicknames, createChat, setChatMemberRole, removeChatMember } = useChats();
   const [members, setMembers] = useState<Profile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [confirmData, setConfirmData] = useState<{ visible: boolean; title: string; onConfirm: () => void } | null>(null);
 
   const liveChat = useMemo(() => chats.find((c) => c.id === chat.id) || chat, [chats, chat.id]);
 
@@ -72,8 +76,45 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat }: Props) {
       // Create chat if doesn't exist
       const { chat: newChat, error } = await createChat(member.username, [member.username]);
       if (newChat) onOpenChat(newChat);
-      else import('react-native').then(m => m.Alert.alert("שגיאה", error || "לא ניתן לפתוח צ'אט כרגע."));
+      else Alert.alert("שגיאה", error || "לא ניתן לפתוח צ'אט כרגע.");
     }
+  };
+
+  const handleDetailsAction = async (member: Profile) => {
+     setSelectedMember(null);
+     // 1. Find or create private chat
+     const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+     if (existing && onOpenChatSettings) {
+       onOpenChatSettings(existing);
+     } else if (onOpenChatSettings) {
+       const { chat: newChat } = await createChat(member.username, [member.username]);
+       if (newChat) onOpenChatSettings(newChat);
+     }
+  };
+
+  const handleSetAdmin = (memberId: string) => {
+    setSelectedMember(null);
+    setConfirmData({
+      visible: true,
+      title: "האם להפוך משתתף זה למנהל הקבוצה?",
+      onConfirm: async () => {
+        await setChatMemberRole(chat.id, memberId, "admin");
+        void loadChatMembers(chat.id).then(setMembers);
+      }
+    });
+  };
+
+  const handleRemoveMember = (member: Profile) => {
+    setSelectedMember(null);
+    const displayName = contactNicknames[member.id]?.first_name || member.full_name || member.username;
+    setConfirmData({
+      visible: true,
+      title: `האם להסיר את ${displayName} מהקבוצה "${chat.title}"?`,
+      onConfirm: async () => {
+        await removeChatMember(chat.id, member, chat.title);
+        void loadChatMembers(chat.id).then(setMembers);
+      }
+    });
   };
 
   useEffect(() => {
@@ -206,7 +247,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat }: Props) {
             />
           </View>
 
-          <Pressable style={styles.memberRow} onPress={() => profile && setSelectedMember(profile)} onLongPress={() => profile && setSelectedMember(profile)}>
+          <View style={styles.memberRow}>
             <View style={styles.memberAvatar}>
               <Text style={styles.memberAvatarText}>א</Text>
             </View>
@@ -219,7 +260,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat }: Props) {
                 <Text style={styles.adminBadgeText}>מנהל/ת הקבוצה</Text>
               </View>
             )}
-          </Pressable>
+          </View>
 
           {filteredMembers.map((member) => {
             const nickname = contactNicknames[member.id]?.first_name;
@@ -286,7 +327,19 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat }: Props) {
         member={selectedMember}
         nickname={selectedMember ? contactNicknames[selectedMember.id]?.first_name : undefined}
         onMessage={handleMemberAction}
+        onDetails={handleDetailsAction}
+        onSetAdmin={profile?.id === chat.created_by ? handleSetAdmin : undefined}
+        onRemove={profile?.id === chat.created_by ? handleRemoveMember : undefined}
       />
+
+      {confirmData && (
+        <SimpleConfirmModal
+          visible={confirmData.visible}
+          title={confirmData.title}
+          onClose={() => setConfirmData(null)}
+          onConfirm={confirmData.onConfirm}
+        />
+      )}
     </Screen>
   );
 }

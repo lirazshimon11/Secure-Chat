@@ -10,12 +10,15 @@ type Props = {
   member: Profile | null;
   nickname?: string;
   onMessage: (member: Profile) => void;
+  onDetails?: (member: Profile) => void;
+  onSetAdmin?: (memberId: string) => void;
+  onRemove?: (member: Profile) => void;
 };
 
 const SCREEN_HEIGHT = Dimensions.get("window").height;
 const MODAL_HEIGHT = 450;
 
-export function ChatMemberActionModal({ visible, onClose, member, nickname, onMessage }: Props) {
+export function ChatMemberActionModal({ visible, onClose, member, nickname, onMessage, onDetails, onSetAdmin, onRemove }: Props) {
   const theme = useAppTheme();
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
@@ -112,7 +115,7 @@ export function ChatMemberActionModal({ visible, onClose, member, nickname, onMe
             </View>
 
             <View style={styles.settingsList}>
-              <Pressable style={styles.settingRow}>
+              <Pressable style={styles.settingRow} onPress={() => onDetails?.(member)}>
                 <View style={styles.settingIconBox}>
                   <Feather name="info" size={20} color={theme.colors.textMuted} />
                 </View>
@@ -126,19 +129,23 @@ export function ChatMemberActionModal({ visible, onClose, member, nickname, onMe
                 <Text style={[styles.settingRowText, { color: theme.colors.text }]}>אימות קוד אבטחה</Text>
               </Pressable>
 
-              <Pressable style={styles.settingRow}>
-                <View style={styles.settingIconBox}>
-                  <Feather name="user-plus" size={20} color={theme.colors.textMuted} />
-                </View>
-                <Text style={[styles.settingRowText, { color: theme.colors.text }]}>הגדרה כמנהל/ת הקבוצה</Text>
-              </Pressable>
+              {onSetAdmin && (
+                <Pressable style={styles.settingRow} onPress={() => onSetAdmin(member.id)}>
+                  <View style={styles.settingIconBox}>
+                    <Feather name="user-plus" size={20} color={theme.colors.textMuted} />
+                  </View>
+                  <Text style={[styles.settingRowText, { color: theme.colors.text }]}>הגדרה כמנהל/ת הקבוצה</Text>
+                </Pressable>
+              )}
 
-              <Pressable style={styles.settingRow}>
-                <View style={styles.settingIconBox}>
-                  <Feather name="minus-circle" size={20} color={theme.colors.danger} />
-                </View>
-                <Text style={[styles.settingRowText, { color: theme.colors.danger }]}>הסרה מהקבוצה</Text>
-              </Pressable>
+              {onRemove && (
+                <Pressable style={styles.settingRow} onPress={() => onRemove(member)}>
+                  <View style={styles.settingIconBox}>
+                    <Feather name="minus-circle" size={20} color={theme.colors.danger} />
+                  </View>
+                  <Text style={[styles.settingRowText, { color: theme.colors.danger }]}>הסרה מהקבוצה</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </Animated.View>

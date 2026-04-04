@@ -57,7 +57,7 @@ export function ChatPollVotesScreen({ message, reactions, onBack, currentUserId 
                 )}
               </View>
 
-              {voterIds.map((uid) => {
+              {Array.isArray(voterIds) && voterIds.map((uid) => {
                 const userProfile = profiles[uid];
                 const isMe = uid === currentUserId;
                 const displayName = isMe ? "את/ה" : userProfile?.username || "משתמש אנונימי";

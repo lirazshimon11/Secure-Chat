@@ -1,13 +1,18 @@
-import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View, TouchableHighlight, useColorScheme } from "react-native";
+import { Alert, Image, Pressable, ScrollView, Text, TextInput, View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMemo, useRef, useState, useEffect } from "react";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
-import { Chat, ChatLocalPreferences, ChatMuteSetting } from "@/lib/types";
+import { Chat } from "@/lib/types";
 import { useAppTheme } from "@/lib/theme";
 import { webEmbeddedInputReset } from "@/lib/webStyles";
 import { useScreenshots } from "@/context/ScreenshotContext";
+
+// Extracted modules
+import { DisplayChat, isChatMuted, getDefaultPreferences, isHiddenByClear, formatChatTime, sortDisplayChats } from "./chats/ChatsUtils";
+import { createStyles, chipStyles } from "./chats/ChatsStyles";
+import { ChatRow } from "./chats/ChatRow";
 
 type Props = {
   onOpenChat: (chat: Chat, messageId?: string) => void;
@@ -19,95 +24,18 @@ type Props = {
 type ViewMode = "home" | "locked" | "archived";
 type FilterTab = "all" | "unread" | "favorites" | "groups";
 
-type DisplayChat = {
-  chat: Chat;
-  preferences: ChatLocalPreferences;
-  unreadCount: number;
-  muted: boolean;
-  hiddenByClear: boolean;
-  preview: string;
-  timeLabel: string;
-  type: "chat" | "message";
-  matchedMessageId?: string;
-};
-
-function isChatMuted(setting?: ChatMuteSetting) {
-  if (!setting) {
-    return false;
-  }
-
-  if (setting.mute_always) {
-    return true;
-  }
-
-  return Boolean(setting.mute_until && new Date(setting.mute_until).getTime() > Date.now());
-}
-
-function getDefaultPreferences(): ChatLocalPreferences {
-  return {
-    archived: false,
-    pinned_at: null,
-    locked: false,
-    cleared_at: null,
-    deleted_from_home_at: null,
-  };
-}
-
-function isHiddenByClear(chat: Chat, preferences: ChatLocalPreferences) {
-  if (!preferences.cleared_at) {
-    return false;
-  }
-
-  if (!chat.last_message_at) {
-    return true;
-  }
-
-  return new Date(chat.last_message_at).getTime() <= new Date(preferences.cleared_at).getTime();
-}
-
-function formatChatTime(chat: Chat, hiddenByClear: boolean) {
-  if (hiddenByClear || !chat.last_message_at) {
-    return "";
-  }
-
-  const d = new Date(chat.last_message_at);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")} `;
-}
-
-function sortDisplayChats(a: DisplayChat, b: DisplayChat) {
-  const aPinned = a.preferences.pinned_at ? new Date(a.preferences.pinned_at).getTime() : 0;
-  const bPinned = b.preferences.pinned_at ? new Date(b.preferences.pinned_at).getTime() : 0;
-
-  if (aPinned !== bPinned) {
-    return bPinned - aPinned;
-  }
-
-  const aLastMessageAt = a.chat.last_message_at ? new Date(a.chat.last_message_at).getTime() : 0;
-  const bLastMessageAt = b.chat.last_message_at ? new Date(b.chat.last_message_at).getTime() : 0;
-  return bLastMessageAt - aLastMessageAt;
-}
-
 export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, onCreateChat }: Props) {
   const theme = useAppTheme();
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
-  const styles = createStyles(theme, insets, scheme);
+  const styles = useMemo(() => createStyles(theme, insets, scheme), [theme, insets, scheme]);
+  
   const {
-    chats,
-    muteSettings,
-    unreadCounts,
-    chatPreferences,
-    archiveChats,
-    unarchiveChats,
-    togglePinnedChats,
-    lockChats,
-    unlockChats,
-    clearChatsLocally,
-    deleteChats,
-    loading,
-    searchMessagesGlobal,
+    chats, muteSettings, unreadCounts, chatPreferences, archiveChats, unarchiveChats,
+    togglePinnedChats, lockChats, unlockChats, deleteChats, loading, searchMessagesGlobal
   } = useChats();
-  const { incomingRequests, myRequests, approveRequest, denyRequest, screenshotPendingCount } = useScreenshots();
+  
+  const { screenshotPendingCount } = useScreenshots();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
   const [showGeneralMenu, setShowGeneralMenu] = useState(false);
@@ -115,17 +43,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const [viewMode, setViewMode] = useState<ViewMode>("home");
   const [activeTab, setActiveTab] = useState<"chats" | "communities" | "updates" | "calls">("chats");
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
-  const searchInputRef = useRef<TextInput | null>(null);
-
-  const selectionMode = selectedChatIds.length > 0;
-
-  const [messageSearchResults, setMessageSearchResults] = useState<{ chat_id: string, message: import("@/lib/types").Message }[]>([]);
+  const [messageSearchResults, setMessageSearchResults] = useState<any[]>([]);
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setMessageSearchResults([]);
-      return;
-    }
+    if (!searchQuery.trim()) { setMessageSearchResults([]); return; }
     const timeout = setTimeout(async () => {
       const res = await searchMessagesGlobal(searchQuery);
       setMessageSearchResults(res);
@@ -135,240 +56,60 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
 
   const displayChats = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    const regularResults: DisplayChat[] = chats
-      .map((chat) => {
-        const preferences = chatPreferences[chat.id] ?? getDefaultPreferences();
-        const hiddenByClear = isHiddenByClear(chat, preferences);
-        const unreadCount = hiddenByClear ? 0 : unreadCounts[chat.id] ?? 0;
-        const muted = isChatMuted(muteSettings[chat.id]);
-
-        return {
-          chat,
-          preferences,
-          unreadCount,
-          muted,
-          hiddenByClear,
-          preview: hiddenByClear ? "הצ'אט נוקה במכשיר זה" : chat.last_message_preview ?? "אין הודעות עדיין",
-          timeLabel: formatChatTime(chat, hiddenByClear),
-          type: "chat",
-        } satisfies DisplayChat;
-      })
-      .filter((item) => {
-        // If chat is marked as deleted locally and hasn't received new messages since then, hide it completely.
-        const deletedAt = item.preferences.deleted_from_home_at ? new Date(item.preferences.deleted_from_home_at).getTime() : 0;
-        const lastActivity = item.chat.last_message_at ? new Date(item.chat.last_message_at).getTime() : 0;
-
-        // Hide if deleted and no newer messages, unless user is actively searching
-        if (!normalizedQuery && deletedAt > 0 && deletedAt >= lastActivity) {
-          return false;
-        }
-
-        if (!normalizedQuery) {
-          return true;
-        }
-
-        return [item.chat.title, item.preview].some((value) => value.toLowerCase().includes(normalizedQuery));
-      });
+    const regularResults: DisplayChat[] = chats.map((chat) => {
+      const preferences = chatPreferences[chat.id] ?? getDefaultPreferences();
+      const hiddenByClear = isHiddenByClear(chat, preferences);
+      return {
+        chat, preferences, unreadCount: hiddenByClear ? 0 : unreadCounts[chat.id] ?? 0,
+        muted: isChatMuted(muteSettings[chat.id]), hiddenByClear,
+        preview: hiddenByClear ? "הצ'אט נוקה במכשיר זה" : chat.last_message_preview ?? "אין הודעות עדיין",
+        timeLabel: formatChatTime(chat, hiddenByClear), type: "chat",
+      } satisfies DisplayChat;
+    }).filter((item) => {
+      const deletedAt = item.preferences.deleted_from_home_at ? new Date(item.preferences.deleted_from_home_at).getTime() : 0;
+      const lastActivity = item.chat.last_message_at ? new Date(item.chat.last_message_at).getTime() : 0;
+      if (!normalizedQuery && deletedAt > 0 && deletedAt >= lastActivity) return false;
+      return !normalizedQuery || [item.chat.title, item.preview].some((v) => v.toLowerCase().includes(normalizedQuery));
+    });
 
     const combined = [...regularResults];
-
     if (normalizedQuery && messageSearchResults.length > 0) {
       for (const { chat_id, message } of messageSearchResults) {
         const chat = chats.find(c => c.id === chat_id);
         if (chat) {
           const preferences = chatPreferences[chat.id] ?? getDefaultPreferences();
           combined.push({
-            chat,
-            preferences,
-            unreadCount: 0,
-            muted: isChatMuted(muteSettings[chat.id]),
-            hiddenByClear: isHiddenByClear(chat, preferences),
-            preview: message.body_ciphertext,
+            chat, preferences, unreadCount: 0, muted: isChatMuted(muteSettings[chat.id]),
+            hiddenByClear: isHiddenByClear(chat, preferences), preview: message.body_ciphertext,
             timeLabel: formatChatTime({ ...chat, last_message_at: message.created_at } as Chat, false),
-            type: "message",
-            matchedMessageId: message.id,
+            type: "message", matchedMessageId: message.id,
           });
         }
       }
     }
-
-    return combined.sort((a, b) => {
-      if (a.type !== b.type) {
-        // show chats first, then messages
-        return a.type === "chat" ? -1 : 1;
-      }
-      return sortDisplayChats(a, b);
-    });
+    return combined.sort((a, b) => a.type !== b.type ? (a.type === "chat" ? -1 : 1) : sortDisplayChats(a, b));
   }, [chatPreferences, chats, muteSettings, searchQuery, unreadCounts, messageSearchResults]);
 
-  const lockedChats = useMemo(() => displayChats.filter((item) => item.preferences.locked), [displayChats]);
-  const archivedChats = useMemo(
-    () => displayChats.filter((item) => item.preferences.archived && !item.preferences.locked),
-    [displayChats],
-  );
-  const regularChats = useMemo(
-    () => displayChats.filter((item) => !item.preferences.locked && !item.preferences.archived),
-    [displayChats],
-  );
-
-  const unreadTotal = useMemo(() => regularChats.filter(c => c.unreadCount > 0).length, [regularChats]);
-
   const activeChats = useMemo(() => {
-    let base = viewMode === "locked" ? lockedChats : viewMode === "archived" ? archivedChats : regularChats;
-
+    let base = viewMode === "locked" ? displayChats.filter(c => c.preferences.locked) : viewMode === "archived" ? displayChats.filter(c => c.preferences.archived && !c.preferences.locked) : displayChats.filter(c => !c.preferences.locked && !c.preferences.archived);
     if (viewMode === "home") {
-      if (activeFilter === "unread") {
-        return base.filter(c => (unreadCounts[c.chat.id] ?? 0) > 0);
-      }
-      if (activeFilter === "favorites") {
-        return base.filter(c => (chatPreferences[c.chat.id] ?? {}).pinned_at);
-      }
-      if (activeFilter === "groups") {
-        return base.filter(c => c.chat.is_group);
-      }
+      if (activeFilter === "unread") return base.filter(c => (unreadCounts[c.chat.id] ?? 0) > 0);
+      if (activeFilter === "favorites") return base.filter(c => c.preferences.pinned_at);
+      if (activeFilter === "groups") return base.filter(c => c.chat.is_group);
     }
-
     return base;
-  }, [viewMode, lockedChats, archivedChats, regularChats, activeFilter, unreadCounts, chatPreferences]);
-  const allSelectedArchived = selectionMode && selectedChatIds.every((chatId) => (chatPreferences[chatId] ?? getDefaultPreferences()).archived);
-  const allSelectedPinned = selectionMode && selectedChatIds.every((chatId) => Boolean((chatPreferences[chatId] ?? getDefaultPreferences()).pinned_at));
-  const allSelectedLocked = selectionMode && selectedChatIds.every((chatId) => (chatPreferences[chatId] ?? getDefaultPreferences()).locked);
+  }, [viewMode, displayChats, activeFilter, unreadCounts]);
 
-  function clearSelection() {
-    setSelectedChatIds([]);
-    setShowSelectionMenu(false);
-  }
+  const unreadTotal = useMemo(() => displayChats.filter(c => !c.preferences.locked && !c.preferences.archived && c.unreadCount > 0).length, [displayChats]);
+  const selectionMode = selectedChatIds.length > 0;
+  const allSelectedArchived = selectionMode && selectedChatIds.every(id => (chatPreferences[id] ?? getDefaultPreferences()).archived);
+  const allSelectedPinned = selectionMode && selectedChatIds.every(id => Boolean((chatPreferences[id] ?? getDefaultPreferences()).pinned_at));
+  const allSelectedLocked = selectionMode && selectedChatIds.every(id => (chatPreferences[id] ?? getDefaultPreferences()).locked);
 
-  function toggleSelection(chatId: string) {
-    setSelectedChatIds((current) =>
-      current.includes(chatId) ? current.filter((id) => id !== chatId) : [...current, chatId],
-    );
-  }
-
-  function handleChatPress(chat: Chat, matchedMessageId?: string) {
-    if (selectionMode) {
-      toggleSelection(chat.id);
-      return;
-    }
-
-    onOpenChat(chat, matchedMessageId);
-  }
-
-  function handleArchiveToggle() {
-    if (!selectedChatIds.length) {
-      return;
-    }
-
-    if (allSelectedArchived) {
-      unarchiveChats(selectedChatIds);
-    } else {
-      archiveChats(selectedChatIds);
-    }
-
-    clearSelection();
-  }
-
-  function handlePinToggle() {
-    if (!selectedChatIds.length) {
-      return;
-    }
-
-    togglePinnedChats(selectedChatIds);
-    clearSelection();
-  }
-
-  function handleLockToggle() {
-    if (!selectedChatIds.length) {
-      return;
-    }
-
-    if (allSelectedLocked) {
-      unlockChats(selectedChatIds);
-    } else {
-      lockChats(selectedChatIds);
-    }
-
-    clearSelection();
-  }
-
-  function handleDeleteChats() {
-    if (!selectedChatIds.length) {
-      return;
-    }
-
-    Alert.alert(
-      "מחיקת צ'אט?",
-      "האם אתה אינך בטוח שברצונך למחוק את הצ'אט(ים) שנבחר(ו)? פעולה זו לא ניתנת לביטול.",
-      [
-        { text: "ביטול", style: "cancel" },
-        {
-          text: "מחיקה",
-          style: "destructive",
-          onPress: () => {
-            deleteChats(selectedChatIds);
-            clearSelection();
-          },
-        },
-      ],
-    );
-  }
-
-  function renderChatRow(item: DisplayChat) {
-    const selected = selectedChatIds.includes(item.chat.id);
-
-    return (
-      <TouchableHighlight
-        key={item.matchedMessageId ? `msg-${item.matchedMessageId}` : `chat-${item.chat.id}`}
-        underlayColor={theme.colors.homeSelection}
-        delayPressIn={75}
-        delayLongPress={220}
-        onLongPress={() => toggleSelection(item.chat.id)}
-        onPress={() => handleChatPress(item.chat, item.matchedMessageId)}
-        style={[
-          styles.chatRow,
-          selected && styles.chatRowSelected,
-        ]}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", width: "100%", gap: 12 }}>
-          <View style={styles.avatarWrap}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{item.chat.title.slice(0, 1).toUpperCase()}</Text>
-            </View>
-            {selected ? (
-              <View style={styles.selectedBadge}>
-                <MaterialCommunityIcons color={theme.colors.textOnAccent} name="check" size={13} />
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.chatMain}>
-            <View style={styles.chatTopRow}>
-              <View style={styles.titleWrap}>
-                <Text numberOfLines={1} style={styles.chatTitle}>
-                  {item.chat.title}
-                </Text>
-                {item.preferences.locked ? <Feather color={theme.colors.textMuted} name="lock" size={13} /> : null}
-                {item.preferences.pinned_at ? <MaterialCommunityIcons color={theme.colors.textMuted} name="pin" size={13} /> : null}
-                {item.muted ? <Feather color={theme.colors.textMuted} name="bell-off" size={13} /> : null}
-              </View>
-              <View style={styles.trailingWrap}>
-                {item.timeLabel ? <Text style={[styles.chatTime, item.unreadCount > 0 && styles.chatTimeUnread]}>{item.timeLabel}</Text> : null}
-                {item.unreadCount > 0 ? (
-                  <View style={styles.unreadBadge}>
-                    <Text style={styles.unreadBadgeText}>{item.unreadCount > 99 ? "99+" : item.unreadCount}</Text>
-                  </View>
-                ) : null}
-              </View>
-            </View>
-            <Text numberOfLines={1} style={[styles.chatPreview, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
-              {item.preview}
-            </Text>
-          </View>
-        </View>
-      </TouchableHighlight>
-    );
-  }
+  const handleChatPress = (chat: Chat, matchedMessageId?: string) => {
+    if (selectionMode) setSelectedChatIds(current => current.includes(chat.id) ? current.filter(id => id !== chat.id) : [...current, chat.id]);
+    else onOpenChat(chat, matchedMessageId);
+  };
 
   return (
     <Screen>
@@ -376,45 +117,27 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         <View style={styles.header}>
           {selectionMode ? (
             <>
-              <Pressable onPress={clearSelection} style={styles.iconButton}>
-                <Feather color={theme.colors.text} name="arrow-left" size={22} />
-              </Pressable>
+              <Pressable onPress={() => setSelectedChatIds([])} style={styles.iconButton}><Feather color={theme.colors.text} name="arrow-left" size={22} /></Pressable>
               <Text style={styles.selectionTitle}>{selectedChatIds.length}</Text>
               <View style={styles.selectionActions}>
-                <Pressable onPress={handleArchiveToggle} style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name={allSelectedArchived ? "archive-arrow-up-outline" : "archive-arrow-down-outline"} size={22} />
-                </Pressable>
-                <Pressable onPress={handlePinToggle} style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name={allSelectedPinned ? "pin-off-outline" : "pin-outline"} size={21} />
-                </Pressable>
-                <Pressable onPress={handleDeleteChats} style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name="trash-can-outline" size={23} />
-                </Pressable>
-                <Pressable onPress={handleLockToggle} style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name={allSelectedLocked ? "lock-open-variant-outline" : "lock-outline"} size={22} />
-                </Pressable>
-                <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={22} />
-                </Pressable>
+                <Pressable onPress={() => { allSelectedArchived ? unarchiveChats(selectedChatIds) : archiveChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name={allSelectedArchived ? "archive-arrow-up-outline" : "archive-arrow-down-outline"} size={22} /></Pressable>
+                <Pressable onPress={() => { togglePinnedChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name={allSelectedPinned ? "pin-off-outline" : "pin-outline"} size={21} /></Pressable>
+                <Pressable onPress={() => { Alert.alert("מחיקת צ'אט?", "האם למחוק?", [{text: "ביטול"}, {text: "מחיקה", style:"destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); }}]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="trash-can-outline" size={23} /></Pressable>
+                <Pressable onPress={() => { allSelectedLocked ? unlockChats(selectedChatIds) : lockChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name={allSelectedLocked ? "lock-open-variant-outline" : "lock-outline"} size={22} /></Pressable>
+                <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={22} /></Pressable>
               </View>
             </>
           ) : viewMode === "home" ? (
             <>
               <Text style={styles.brand}>SecureApp</Text>
               <View style={{ flexDirection: "row", gap: 2 }}>
-                <Pressable style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name="camera-outline" size={24} />
-                </Pressable>
-                <Pressable onPress={() => setShowGeneralMenu(true)} style={styles.iconButton}>
-                  <MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={24} />
-                </Pressable>
+                <Pressable style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="camera-outline" size={24} /></Pressable>
+                <Pressable onPress={() => setShowGeneralMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={24} /></Pressable>
               </View>
             </>
           ) : (
             <>
-              <Pressable onPress={() => setViewMode("home")} style={styles.iconButton}>
-                <Feather color={theme.colors.text} name="arrow-left" size={22} />
-              </Pressable>
+              <Pressable onPress={() => setViewMode("home")} style={styles.iconButton}><Feather color={theme.colors.text} name="arrow-left" size={22} /></Pressable>
               <Text style={styles.brand}>{viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}</Text>
             </>
           )}
@@ -422,720 +145,99 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
 
         <View style={styles.searchShell}>
           <Feather color={theme.colors.textMuted} name="search" size={18} />
-          <TextInput
-            onChangeText={setSearchQuery}
-            placeholder={viewMode === "home" ? "חיפוש" : `חיפוש ב${viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}`}
-            placeholderTextColor={theme.colors.textMuted}
-            ref={searchInputRef}
-            style={[styles.searchInput, webEmbeddedInputReset]}
-            value={searchQuery}
-          />
+          <TextInput onChangeText={setSearchQuery} placeholder={viewMode === "home" ? "חיפוש" : `חיפוש ב${viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}`} placeholderTextColor={theme.colors.textMuted} style={[styles.searchInput, webEmbeddedInputReset]} value={searchQuery} />
         </View>
 
         {viewMode === "home" && !selectionMode && activeTab === "chats" && (
           <View style={styles.filterBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-              <FilterChip
-                label="הכול"
-                active={activeFilter === "all"}
-                onPress={() => setActiveFilter("all")}
-              />
-              <FilterChip
-                label="לא נקראו"
-                count={unreadTotal > 0 ? unreadTotal : undefined}
-                active={activeFilter === "unread"}
-                onPress={() => setActiveFilter("unread")}
-              />
-              <FilterChip
-                label="מועדפים"
-                active={activeFilter === "favorites"}
-                onPress={() => setActiveFilter("favorites")}
-              />
-              <FilterChip
-                label="קבוצות"
-                active={activeFilter === "groups"}
-                onPress={() => setActiveFilter("groups")}
-              />
-              <Pressable style={styles.addFilterBtn}>
-                <Feather name="plus" size={18} color={theme.colors.textMuted} />
-              </Pressable>
+              {[ {id: "all", label: "הכול"}, {id: "unread", label: "לא נקראו", count: unreadTotal}, {id: "favorites", label: "מועדפים"}, {id: "groups", label: "קבוצות"} ].map(f => (
+                <Pressable key={f.id} onPress={() => setActiveFilter(f.id as any)} style={[chipStyles.chip, activeFilter === f.id ? { backgroundColor: scheme === "dark" ? "#00a884" : "#E7FCE3" } : { backgroundColor: scheme === "dark" ? "#202C33" : "#FFFFFF", borderWidth: scheme === "dark" ? 0 : 0.8, borderColor: "#E9EDF0" }]}>
+                  <Text style={[chipStyles.label, { color: activeFilter === f.id ? (scheme === "dark" ? "#ffffff" : "#008069") : (scheme === "dark" ? "#8696A0" : "#667781") }]}>{f.label}{f.count ? ` ${f.count}` : ""}</Text>
+                </Pressable>
+              ))}
             </ScrollView>
           </View>
         )}
 
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          {activeTab === "chats" && viewMode === "home" ? (
+          {activeTab === "chats" && viewMode === "home" && (
             <>
-              <Pressable onPress={() => setViewMode("locked")} style={styles.sectionButton}>
-                <View style={styles.sectionLeft}>
-                  <View style={styles.sectionIconContainer}>
-                    <View style={styles.sectionIconWrap}>
-                      <Feather color={theme.colors.textMuted} name="lock" size={20} />
-                    </View>
-                  </View>
-                  <Text style={styles.sectionLabel}>צ'אטים נעולים</Text>
-                </View>
-              </Pressable>
-
-              <Pressable onPress={() => setViewMode("archived")} style={styles.sectionButton}>
-                <View style={styles.sectionLeft}>
-                  <View style={styles.sectionIconContainer}>
-                    <View style={styles.sectionIconWrap}>
-                      <MaterialCommunityIcons color={theme.colors.textMuted} name="archive-arrow-down-outline" size={20} />
-                    </View>
-                  </View>
-                  <Text style={styles.sectionLabel}>ארכיון</Text>
-                </View>
-              </Pressable>
+              <SectionButton icon="lock" label="צ'אטים נעולים" onPress={() => setViewMode("locked")} theme={theme} styles={styles} />
+              <SectionButton icon="archive-arrow-down-outline" label="ארכיון" isMCI onPress={() => setViewMode("archived")} theme={theme} styles={styles} />
             </>
-          ) : null}
-
-          {activeTab === "updates" ? (
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons color={theme.colors.textMuted} name="update" size={48} />
-              <Text style={styles.emptyTitle}>אין עדכונים כרגע</Text>
-              <Text style={styles.emptySubtitle}>
-                עדכונים נוספים יופיעו כאן בעתיד.
-              </Text>
-            </View>
-          ) : activeTab !== "chats" ? (
+          )}
+          {activeTab !== "chats" ? (
             <View style={styles.emptyState}>
               <MaterialCommunityIcons color={theme.colors.textMuted} name="tools" size={38} />
               <Text style={styles.emptyTitle}>בקרוב</Text>
-              <Text style={styles.emptySubtitle}>תכונה זו תהיה זמינה בקרוב.</Text>
             </View>
+          ) : activeChats.length ? (
+            activeChats.map((item) => <ChatRow key={item.chat.id} item={item} theme={theme} styles={styles} selected={selectedChatIds.includes(item.chat.id)} onPress={() => handleChatPress(item.chat, item.matchedMessageId)} onLongPress={() => setSelectedChatIds(c => [...c, item.chat.id])} />)
           ) : (
-            <>
-              {loading ? <Text style={styles.statusText}>מסנכרן צ'אטים...</Text> : null}
-              {activeChats.length ? (
-                activeChats.map((item) => renderChatRow(item))
-              ) : !loading ? (
-                <View style={styles.emptyState}>
-                  <MaterialCommunityIcons color={theme.colors.textMuted} name="message-text-outline" size={38} />
-                  <Text style={styles.emptyTitle}>
-                    {viewMode === "locked" ? "אין צ'אטים נעולים" : viewMode === "archived" ? "הארכיון ריק" : "אין עדיין צ'אטים"}
-                  </Text>
-                  <Text style={styles.emptySubtitle}>
-                    {viewMode === "home"
-                      ? "השתמשו בתפריט לפתיחת קבוצה חדשה או הודעות שמורות."
-                      : "לחיצה ארוכה על צ'אט מהרשימה תעביר אותו לכאן."}
-                  </Text>
-                </View>
-              ) : null}
-            </>
+            <View style={styles.emptyState}><Text style={styles.emptyTitle}>{loading ? "טוען..." : "אין צ'אטים"}</Text></View>
           )}
         </ScrollView>
 
-        {viewMode === "home" && !selectionMode ? (
-          <Pressable style={styles.fab} onPress={onCreateChat}>
-            <MaterialCommunityIcons color="#ffffff" name="message-plus" size={26} />
-          </Pressable>
-        ) : null}
+        {viewMode === "home" && !selectionMode && <Pressable style={styles.fab} onPress={onCreateChat}><MaterialCommunityIcons color="#ffffff" name="message-plus" size={26} /></Pressable>}
 
-        {/* Bottom Tab Bar — JSX order is RTL-reversed so visual order = שיחות|קהילות|עדכונים|צ'אטים */}
         <View style={styles.tabBar}>
-          {/* צ'אטים — rightmost in RTL */}
-          <Pressable style={styles.tabItem} onPress={() => setActiveTab("chats")}>
-            <View style={[styles.tabIconWrap, activeTab === "chats" && styles.tabIconWrapActive]}>
-              <Image
-                source={
-                  activeTab === "chats"
-                    ? require("../../public/images/light mode/chats_icon.png")
-                    : scheme === "dark"
-                      ? require("../../public/images/dark mode/chats_icon.png")
-                      : require("../../public/images/light mode/chats_icon.png")
-                }
-                style={[styles.tabIcon, { tintColor: activeTab === "chats" ? "#ffffff" : theme.colors.textMuted }]}
-              />
-            </View>
-            <Text style={[styles.tabLabel, activeTab === "chats" && styles.tabLabelActive]}>צ'אטים</Text>
-          </Pressable>
-
-          {/* עדכונים */}
-          <Pressable style={styles.tabItem} onPress={() => setActiveTab("updates")}>
-            <View style={{ position: "relative" }}>
-              <Image
-                source={
-                  scheme === "dark"
-                    ? require("../../public/images/dark mode/updates_icon.png")
-                    : require("../../public/images/light mode/updates_icon.png")
-                }
-                style={[styles.tabIcon, { tintColor: activeTab === "updates" ? theme.colors.accentStrong : theme.colors.textMuted }]}
-              />
-              {screenshotPendingCount > 0 ? (
-                <View style={styles.tabBadge}>
-                  <Text style={styles.tabBadgeText}>{screenshotPendingCount > 9 ? "9+" : screenshotPendingCount}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Text style={[styles.tabLabel, activeTab === "updates" && styles.tabLabelActive]}>עדכונים</Text>
-          </Pressable>
-
-          {/* קהילות */}
-          <Pressable style={styles.tabItem} onPress={() => setActiveTab("communities")}>
-            <Image
-              source={
-                scheme === "dark"
-                  ? require("../../public/images/dark mode/communities_icon.png")
-                  : require("../../public/images/light mode/communities_icon.png")
-              }
-              style={[styles.tabIcon, { tintColor: activeTab === "communities" ? theme.colors.accentStrong : theme.colors.textMuted }]}
-            />
-            <Text style={[styles.tabLabel, activeTab === "communities" && styles.tabLabelActive]}>קהילות</Text>
-          </Pressable>
-
-          {/* שיחות — leftmost in RTL */}
-          <Pressable style={styles.tabItem} onPress={() => setActiveTab("calls")}>
-            <Image
-              source={
-                scheme === "dark"
-                  ? require("../../public/images/dark mode/voice_call_icon.png")
-                  : require("../../public/images/light mode/voice_call_icon.png")
-              }
-              style={[styles.tabIcon, { tintColor: activeTab === "calls" ? theme.colors.accentStrong : theme.colors.textMuted }]}
-            />
-            <Text style={[styles.tabLabel, activeTab === "calls" && styles.tabLabelActive]}>שיחות</Text>
-          </Pressable>
+          {[ {id: "chats", label: "צ'אטים", icon: require("../../public/images/light mode/chats_icon.png")}, {id: "updates", label: "עדכונים", icon: scheme === "dark" ? require("../../public/images/dark mode/updates_icon.png") : require("../../public/images/light mode/updates_icon.png"), badge: screenshotPendingCount}, {id: "communities", label: "קהילות", icon: scheme === "dark" ? require("../../public/images/dark mode/communities_icon.png") : require("../../public/images/light mode/communities_icon.png")}, {id: "calls", label: "שיחות", icon: scheme === "dark" ? require("../../public/images/dark mode/voice_call_icon.png") : require("../../public/images/light mode/voice_call_icon.png")} ].map(t => (
+            <Pressable key={t.id} style={styles.tabItem} onPress={() => setActiveTab(t.id as any)}>
+              <View style={[styles.tabIconWrap, activeTab === t.id && (t.id === "chats" ? styles.tabIconWrapActive : {})]}>
+                <Image source={t.icon} style={[styles.tabIcon, { tintColor: activeTab === t.id ? (t.id === "chats" ? "#ffffff" : theme.colors.accentStrong) : theme.colors.textMuted }]} />
+                {t.badge ? <View style={styles.tabBadge}><Text style={styles.tabBadgeText}>{t.badge > 9 ? "9+" : t.badge}</Text></View> : null}
+              </View>
+              <Text style={[styles.tabLabel, activeTab === t.id && styles.tabLabelActive]}>{t.label}</Text>
+            </Pressable>
+          ))}
         </View>
 
-        {showGeneralMenu && !selectionMode ? (
+        {showGeneralMenu && (
           <View pointerEvents="box-none" style={styles.overlayRoot}>
             <Pressable onPress={() => setShowGeneralMenu(false)} style={styles.backdrop} />
             <View style={styles.menuCard}>
-              <MenuItem
-                label="קבוצה חדשה"
-                onPress={() => {
-                  setShowGeneralMenu(false);
-                  onCreateChat();
-                }}
-              />
-              <MenuItem
-                label="הודעות שמורות"
-                onPress={() => {
-                  setShowGeneralMenu(false);
-                  onOpenSavedMessages();
-                }}
-              />
-              <MenuItem
-                label="הגדרות"
-                onPress={() => {
-                  setShowGeneralMenu(false);
-                  onOpenSettings();
-                }}
-              />
+              <MenuItem label="קבוצה חדשה" onPress={() => { setShowGeneralMenu(false); onCreateChat(); }} theme={theme} styles={styles} />
+              <MenuItem label="הודעות שמורות" onPress={() => { setShowGeneralMenu(false); onOpenSavedMessages(); }} theme={theme} styles={styles} />
+              <MenuItem label="הגדרות" onPress={() => { setShowGeneralMenu(false); onOpenSettings(); }} theme={theme} styles={styles} />
             </View>
           </View>
-        ) : null}
+        )}
 
-        {showSelectionMenu && selectionMode ? (
+        {showSelectionMenu && (
           <View pointerEvents="box-none" style={styles.overlayRoot}>
             <Pressable onPress={() => setShowSelectionMenu(false)} style={styles.backdrop} />
             <View style={styles.menuCard}>
-              <MenuItem label={allSelectedArchived ? "הוצאה מהארכיון" : "העברה לארכיון"} onPress={handleArchiveToggle} />
-              <MenuItem label={allSelectedPinned ? "ביטול הצמדה" : "הצמדה"} onPress={handlePinToggle} />
-              <MenuItem label={allSelectedLocked ? "ביטול נעילה" : "נעילת צ'אט"} onPress={handleLockToggle} />
-              <MenuItem danger label="מחיקת צ'אט" onPress={handleDeleteChats} />
+              <MenuItem label={allSelectedArchived ? "הוצאה מהארכיון" : "העברה לארכיון"} onPress={() => { allSelectedArchived ? unarchiveChats(selectedChatIds) : archiveChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); }} theme={theme} styles={styles} />
+              <MenuItem label={allSelectedPinned ? "ביטול הצמדה" : "הצמדה"} onPress={() => { togglePinnedChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); }} theme={theme} styles={styles} />
+              <MenuItem danger label="מחיקת צ'אט" onPress={() => { Alert.alert("מחיקה", "בטוח?", [{text: "ביטול"}, {text: "מחיקה", style: "destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); }}]); }} theme={theme} styles={styles} />
             </View>
           </View>
-        ) : null}
+        )}
       </View>
     </Screen>
   );
 }
 
+function SectionButton({ icon, label, onPress, isMCI, theme, styles }: { icon: any, label: string, onPress: () => void, isMCI?: boolean, theme: any, styles: any }) {
+  return (
+    <Pressable onPress={onPress} style={styles.sectionButton}>
+      <View style={styles.sectionLeft}>
+        <View style={styles.sectionIconContainer}>
+          <View style={styles.sectionIconWrap}>
+            {isMCI ? <MaterialCommunityIcons color={theme.colors.textMuted} name={icon} size={20} /> : <Feather color={theme.colors.textMuted} name={icon} size={20} />}
+          </View>
+        </View>
+        <Text style={styles.sectionLabel}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
 
-
-function MenuItem({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
-  const theme = useAppTheme();
-  const scheme = useColorScheme();
-  const insets = useSafeAreaInsets();
-  const styles = createStyles(theme, insets, scheme);
-
+function MenuItem({ label, onPress, danger, theme, styles }: { label: string, onPress: () => void, danger?: boolean, theme: any, styles: any }) {
   return (
     <Pressable onPress={onPress} style={styles.menuItem}>
       <Text style={[styles.menuItemText, danger && styles.menuItemDanger]}>{label}</Text>
     </Pressable>
   );
 }
-
-function FilterChip({ label, count, active, onPress }: { label: string, count?: number, active: boolean, onPress: () => void }) {
-  const theme = useAppTheme();
-  const scheme = useColorScheme();
-
-  const activeBg = scheme === "dark" ? "#00a884" : "#E7FCE3";
-  const activeText = scheme === "dark" ? "#ffffff" : "#008069";
-  const inactiveBg = scheme === "dark" ? "#202C33" : "#FFFFFF";
-  const inactiveText = scheme === "dark" ? "#8696A0" : "#667781";
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles_chip.chip,
-        active
-          ? { backgroundColor: activeBg }
-          : { backgroundColor: inactiveBg, borderWidth: scheme === "dark" ? 0 : 0.8, borderColor: "#E9EDF0" },
-      ]}
-    >
-      <Text style={[styles_chip.label, { color: active ? activeText : inactiveText }]}>
-        {label}{count !== undefined ? ` ${count}` : ""}
-      </Text>
-    </Pressable>
-  );
-}
-
-const styles_chip = StyleSheet.create({
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginHorizontal: 3,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-});
-
-
-
-const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: ReturnType<typeof useSafeAreaInsets>, scheme: ReturnType<typeof useColorScheme>) =>
-  StyleSheet.create({
-    page: {
-      flex: 1,
-      backgroundColor: theme.colors.homeBackground,
-      paddingTop: Math.max(0, insets.top - 20),
-    },
-    header: {
-      minHeight: 46,
-      backgroundColor: theme.colors.homeHeader,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: 0,
-      paddingBottom: 0,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    brand: {
-      flex: 1,
-      color: "#1EA860",
-      fontSize: 22,
-      fontWeight: "700",
-    },
-    selectionTitle: {
-      color: theme.colors.text,
-      fontSize: 24,
-      fontWeight: "800",
-      marginLeft: 10,
-    },
-    selectionActions: {
-      marginLeft: "auto",
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 2,
-    },
-    iconButton: {
-      width: 38,
-      height: 38,
-      borderRadius: theme.radius.pill,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    searchShell: {
-      marginHorizontal: theme.spacing.md,
-      marginTop: 0,
-      marginBottom: 6,
-      backgroundColor: scheme === "dark" ? theme.colors.homeSearch : "#F6F5F3",
-      borderRadius: theme.radius.xl,
-      minHeight: 46,
-      paddingHorizontal: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
-    filterBar: {
-      marginTop: 20,
-      marginBottom: 12,
-    },
-    filterScroll: {
-      paddingHorizontal: theme.spacing.md,
-      flexDirection: "row", // Standard row, items ordered left-to-right in JSX
-      alignItems: "center",
-    },
-    addFilterBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: theme.colors.homeSearch,
-      alignItems: "center",
-      justifyContent: "center",
-      marginLeft: 8,
-    },
-    searchInput: {
-      flex: 1,
-      color: theme.colors.text,
-      fontSize: 15,
-      paddingVertical: 10,
-    },
-    scrollContent: {
-      paddingBottom: 90,
-    },
-    sectionButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 11, // Matches chatRow vertical padding
-      backgroundColor: theme.colors.homeRow,
-    },
-    sectionLeft: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    sectionIconContainer: {
-      width: 54, // Matches avatar width
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    sectionIconWrap: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: theme.colors.surfaceAlt,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    sectionLabel: {
-      color: scheme === "dark" ? theme.colors.text : "#5E676A",
-      fontSize: 17,
-      fontWeight: "700",
-    },
-    sectionRight: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    sectionCount: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    statusText: {
-      color: theme.colors.textMuted,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 10,
-    },
-    chatRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingLeft: theme.spacing.md,
-      paddingRight: theme.spacing.md,
-      paddingVertical: 11,
-      backgroundColor: theme.colors.homeRow,
-    },
-    chatRowSelected: {
-      backgroundColor: theme.colors.homeSelection,
-    },
-    avatarWrap: {
-      position: "relative",
-    },
-    avatar: {
-      width: 54,
-      height: 54,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.surfaceMuted,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: {
-      color: theme.colors.accent,
-      fontSize: 20,
-      fontWeight: "800",
-    },
-    selectedBadge: {
-      position: "absolute",
-      right: -2,
-      bottom: -2,
-      width: 22,
-      height: 22,
-      borderRadius: theme.radius.pill,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.accentStrong,
-      borderWidth: 2,
-      borderColor: theme.colors.homeRow,
-    },
-    chatMain: {
-      flex: 1,
-      justifyContent: "center",
-    },
-    chatTopRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: theme.spacing.sm,
-    },
-    titleWrap: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    chatTitle: {
-      flexShrink: 1,
-      color: theme.colors.text,
-      fontSize: 17,
-      fontWeight: "700",
-    },
-    trailingWrap: {
-      alignItems: "flex-end",
-      gap: 6,
-    },
-    chatTime: {
-      color: theme.colors.textMuted,
-      fontSize: 12,
-    },
-    chatTimeUnread: {
-      color: theme.colors.accent,
-      fontWeight: "700",
-    },
-    unreadBadge: {
-      minWidth: 22,
-      height: 22,
-      borderRadius: theme.radius.pill,
-      backgroundColor: theme.colors.accentStrong,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 6,
-    },
-    unreadBadgeText: {
-      color: theme.colors.textOnAccent,
-      fontSize: 11,
-      fontWeight: "800",
-    },
-    chatPreview: {
-      color: theme.colors.textMuted,
-      fontSize: 14,
-      marginTop: 4,
-    },
-    chatPreviewUnread: {
-      color: theme.colors.text,
-      fontWeight: "600",
-    },
-    chatPreviewCleared: {
-      fontStyle: "italic",
-    },
-    emptyState: {
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: theme.spacing.xl,
-      paddingTop: 90,
-      gap: 8,
-    },
-    emptyTitle: {
-      color: theme.colors.text,
-      fontSize: 20,
-      fontWeight: "800",
-    },
-    emptySubtitle: {
-      color: theme.colors.textMuted,
-      textAlign: "center",
-      lineHeight: 22,
-    },
-    overlayRoot: {
-      ...StyleSheet.absoluteFillObject,
-      zIndex: 40,
-      justifyContent: "flex-start",
-      alignItems: "flex-end",
-      paddingEnd: 10,
-    },
-    backdrop: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: theme.colors.overlay,
-    },
-    menuCard: {
-      marginTop: 54 + insets.top,
-      width: 230,
-      borderRadius: theme.radius.md,
-      overflow: "hidden",
-      backgroundColor: theme.colors.surface,
-      shadowColor: "#000000",
-      shadowOpacity: 0.18,
-      shadowRadius: 10,
-      shadowOffset: { width: 0, height: 6 },
-    },
-    menuItem: {
-      paddingHorizontal: 16,
-      paddingVertical: 15,
-      width: "100%",
-      alignSelf: "stretch",
-    },
-    menuItemText: {
-      color: theme.colors.text,
-      fontSize: 15,
-      fontWeight: "700",
-      textAlign: "left",
-    },
-    menuItemDanger: {
-      color: theme.colors.danger,
-    },
-    fab: {
-      position: "absolute",
-      bottom: 95 + insets.bottom,
-      right: 20,
-      width: 56,
-      height: 56,
-      borderRadius: 16,
-      backgroundColor: theme.colors.accentStrong || "#00A884",
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-      elevation: 5,
-    },
-    tabBar: {
-      flexDirection: "row",
-      backgroundColor: theme.colors.homeHeader,
-      borderTopWidth: 0.5,
-      borderTopColor: theme.colors.border,
-      paddingBottom: insets.bottom,
-      paddingTop: 10,
-    },
-    tabItem: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingBottom: 6,
-      gap: 4,
-    },
-    tabIcon: {
-      width: 30,
-      height: 30,
-      resizeMode: "contain",
-    },
-    tabIconWrap: {
-      width: 58,
-      height: 32,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    tabIconWrapActive: {
-      backgroundColor: theme.colors.accentStrong,
-    },
-    tabLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    tabLabelActive: {
-      color: theme.colors.accentStrong,
-    },
-    tabBadge: {
-      position: "absolute",
-      top: -4,
-      right: -6,
-      minWidth: 16,
-      height: 16,
-      borderRadius: 8,
-      backgroundColor: "#E53935",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: 3,
-    },
-    tabBadgeText: {
-      color: "#fff",
-      fontSize: 10,
-      fontWeight: "800",
-    },
-    // Screenshot request cards in Updates tab
-    screenshotCard: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      backgroundColor: theme.colors.homeRow,
-      borderBottomWidth: 0.5,
-      borderBottomColor: theme.colors.border,
-    },
-    screenshotAvatar: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "#7B5000",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    screenshotAvatarText: {
-      color: "#fff",
-      fontWeight: "800",
-      fontSize: 17,
-    },
-    screenshotCardTitle: {
-      color: theme.colors.text,
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    screenshotCardGroup: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-    },
-    screenshotCardSub: {
-      color: theme.colors.textMuted,
-      fontSize: 12,
-    },
-    screenshotCardActions: {
-      flexDirection: "row",
-      gap: 10,
-      marginTop: 4,
-    },
-    screenshotBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      paddingVertical: 7,
-      paddingHorizontal: 18,
-      borderRadius: 20,
-    },
-    screenshotBtnApprove: {
-      backgroundColor: "#1B9D55",
-    },
-    screenshotBtnDeny: {
-      backgroundColor: "#C0392B",
-    },
-    screenshotBtnText: {
-      color: "#fff",
-      fontWeight: "700",
-      fontSize: 14,
-    },
-    screenshotMyCard: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      backgroundColor: "#3D2A00",
-      borderBottomWidth: 0.5,
-      borderBottomColor: "#C87F00",
-    },
-    screenshotMyTitle: {
-      color: "#FFD580",
-      fontWeight: "700",
-      fontSize: 14,
-    },
-    screenshotMyChat: {
-      color: "#FFA726",
-      fontSize: 13,
-    },
-    screenshotMySub: {
-      color: "#FFCC80",
-      fontSize: 12,
-    },
-  });
-

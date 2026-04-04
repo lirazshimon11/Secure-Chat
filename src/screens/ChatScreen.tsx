@@ -130,6 +130,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
   const [emojiRecents, setEmojiRecents] = useState<string[]>([]);
   const [composerFocusTrigger, setComposerFocusTrigger] = useState(0);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
@@ -208,14 +209,23 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }, []);
 
   useEffect(() => {
-    if (Platform.OS !== "android") return;
-    const s1 = Keyboard.addListener("keyboardDidShow", (e) => {
-      setAndroidNativeKeyboardPadding(e.endCoordinates.height);
-      setRecordedKeyboardHeight(e.endCoordinates.height);
-      setShowEmojiKeyboard(false);
-    });
-    const s2 = Keyboard.addListener("keyboardDidHide", () => setAndroidNativeKeyboardPadding(0));
-    return () => { s1.remove(); s2.remove(); };
+    if (Platform.OS !== "android") {
+      const s1 = Keyboard.addListener("keyboardWillShow", (e) => setKeyboardHeight(e.endCoordinates.height));
+      const s2 = Keyboard.addListener("keyboardWillHide", () => setKeyboardHeight(0));
+      return () => { s1.remove(); s2.remove(); };
+    } else {
+      const s1 = Keyboard.addListener("keyboardDidShow", (e) => {
+        setAndroidNativeKeyboardPadding(e.endCoordinates.height);
+        setRecordedKeyboardHeight(e.endCoordinates.height);
+        setKeyboardHeight(e.endCoordinates.height);
+        setShowEmojiKeyboard(false);
+      });
+      const s2 = Keyboard.addListener("keyboardDidHide", () => {
+        setAndroidNativeKeyboardPadding(0);
+        setKeyboardHeight(0);
+      });
+      return () => { s1.remove(); s2.remove(); };
+    }
   }, []);
 
   useEffect(() => {
@@ -352,7 +362,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           chat, profile, profiles, theme, styles, showOverflowMenu, setShowOverflowMenu, showMoreMenu, setShowMoreMenu, showMuteMenu, setShowMuteMenu, showClearDialog, setShowClearDialog, showExportDialog, setShowExportDialog, showReportDialog, setShowReportDialog, showAttachmentMenu, setShowAttachmentMenu, showSelectionOverflowMenu, setShowSelectionOverflowMenu, showDeleteModal, setShowDeleteModal,
           muteSelection, setMuteSelection, clearSelection, setClearSelection, clearStarred, setClearStarred, reportExit, setReportExit, selectedIds, setSelectedIds, messageMap, viewInfoMessage, setViewInfoMessage, showReactionsSheetForId, setShowReactionsSheetForId, reactionsByMessage, contactNicknames, showEmojiPickerForId, setShowEmojiPickerForId, toastMessage, activeSubScreen, setActiveSubScreen, onOpenChatSettings, onCreateGroupWith, setChatMute, clearChatsLocally, showToast, toggleReaction, toggleSelection: (id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id]), requestScreenshotPermission, sendMessage, hasScreenshotPerm, myRequests, groupMembers, setSearchOpen,
           muteSetting: (muteSettings && chat) ? muteSettings[chat.id] : undefined,
-          performDelete: async (everyone) => { await deleteMessages(selectedIds, everyone); setSelectedIds([]); setShowDeleteModal(false); }
+          performDelete: async (everyone) => { await deleteMessages(selectedIds, everyone); setSelectedIds([]); setShowDeleteModal(false); },
+          keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight
         }}
       />
     </View>

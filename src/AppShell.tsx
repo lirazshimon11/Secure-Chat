@@ -96,7 +96,12 @@ export function AppShell() {
   }
 
   if (selectedChat && showChatSettings) {
-    return <ChatSettingsScreen chat={selectedChat} onBack={() => setShowChatSettings(false)} />;
+    return <ChatSettingsScreen chat={selectedChat} onBack={() => setShowChatSettings(false)} 
+             onOpenChat={(chat) => {
+               setShowChatSettings(false);
+               setSelectedChat(chat);
+             }}
+           />;
   }
 
   if (selectedChat) {

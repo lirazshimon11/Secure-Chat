@@ -76,6 +76,7 @@ type OverlayProps = {
   myRequests: any;
   groupMembers: Profile[];
   setSearchOpen: (v: boolean) => void;
+  keyboardHeight?: number;
 };
 
 export const ChatOverlayManager = (props: OverlayProps) => {
@@ -107,7 +108,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
     showToast, toggleReaction, toggleSelection,
     requestScreenshotPermission, sendMessage,
     hasScreenshotPerm, myRequests, groupMembers,
-    setSearchOpen
+    setSearchOpen, keyboardHeight
   } = props;
 
   return (
@@ -349,7 +350,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
       {showAttachmentMenu ? (
         <View pointerEvents="box-none" style={styles.overlayRoot}>
           <Pressable onPress={() => setShowAttachmentMenu(false)} style={styles.backdrop} />
-          <View style={styles.attachmentMenuCard}>
+          <View style={[styles.attachmentMenuCard, keyboardHeight ? { bottom: keyboardHeight + 70 } : {}]}>
             <View style={styles.attachmentRow}>
               <AttachmentItem icon="image" label="גלריה" color="#0066FF" theme={theme} />
               <AttachmentItem icon="camera" label="מצלמה" color="#E53935" theme={theme} />

@@ -6,6 +6,8 @@ import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatMuteSetting, Profile } from "@/lib/types";
 
+import { useAuth } from "@/context/AuthContext";
+
 // Sub-screens
 import { ChatDescriptionModal } from "./chat-settings/ChatDescriptionModal";
 import { ChatMediaVisibilityModal } from "./chat-settings/ChatMediaVisibilityModal";
@@ -19,16 +21,19 @@ import { ChatPermissionsScreen } from "./chat-settings/ChatPermissionsScreen";
 import { ChatRenameModal } from "./chat-settings/ChatRenameModal";
 import { ChatThemeScreen } from "./chat-settings/ChatThemeScreen";
 import { ChatEditContactScreen } from "./chat-settings/ChatEditContactScreen";
+import { ChatMemberActionModal } from "./chat-settings/ChatMemberActionModal";
 
 type Props = {
   chat: Chat;
   onBack: () => void;
+  onOpenChat?: (chat: Chat) => void;
 };
 
-export function ChatSettingsScreen({ chat, onBack }: Props) {
+export function ChatSettingsScreen({ chat, onBack, onOpenChat }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const { loadChatMembers, messagesByChat, chats, contactNicknames } = useChats();
+  const { profile } = useAuth();
+  const { loadChatMembers, messagesByChat, chats, contactNicknames, createChat } = useChats();
   const [members, setMembers] = useState<Profile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -55,6 +60,21 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
   const [showVisibility, setShowVisibility] = useState(false);
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<Profile | null>(null);
+
+  const handleMemberAction = async (member: Profile) => {
+    // Navigate to private chat with this member
+    // Check if chat exists
+    const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+    if (existing && onOpenChat) {
+      onOpenChat(existing);
+    } else if (onOpenChat) {
+      // Create chat if doesn't exist
+      const { chat: newChat, error } = await createChat(member.username, [member.username]);
+      if (newChat) onOpenChat(newChat);
+      else import('react-native').then(m => m.Alert.alert("שגיאה", error || "לא ניתן לפתוח צ'אט כרגע."));
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -186,7 +206,7 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
             />
           </View>
 
-          <View style={styles.memberRow}>
+          <Pressable style={styles.memberRow} onPress={() => profile && setSelectedMember(profile)} onLongPress={() => profile && setSelectedMember(profile)}>
             <View style={styles.memberAvatar}>
               <Text style={styles.memberAvatarText}>א</Text>
             </View>
@@ -194,21 +214,36 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
               <Text style={styles.memberName}>את/ה</Text>
               <Text style={styles.memberSubtitlePrimary}>הוספת תג חבר</Text>
             </View>
-          </View>
+            {profile?.id === liveChat.created_by && (
+              <View style={styles.adminBadge}>
+                <Text style={styles.adminBadgeText}>מנהל/ת הקבוצה</Text>
+              </View>
+            )}
+          </Pressable>
 
           {filteredMembers.map((member) => {
             const nickname = contactNicknames[member.id]?.first_name;
             const displayName = nickname || member.full_name || member.username;
+            const isAdmin = member.id === liveChat.created_by;
+            
+            // Skip rendering "You" in the list if already rendered above
+            if (member.id === profile?.id) return null;
+
             return (
-              <View key={member.id} style={styles.memberRow}>
+              <Pressable key={member.id} style={styles.memberRow} onPress={() => setSelectedMember(member)} onLongPress={() => setSelectedMember(member)}>
                 <View style={styles.memberAvatar}>
                   <Text style={styles.memberAvatarText}>{(nickname || member.username).slice(0, 1).toUpperCase()}</Text>
                 </View>
-                <View style={styles.memberCopy}>
+                <View style={[styles.memberCopy, { paddingRight: isAdmin ? 8 : 16 }]}>
                   <Text style={styles.memberName}>{displayName}</Text>
                   <Text style={styles.memberSubtitle}>~ {member.username}</Text>
                 </View>
-              </View>
+                {isAdmin && (
+                  <View style={styles.adminBadge}>
+                    <Text style={styles.adminBadgeText}>מנהל/ת הקבוצה</Text>
+                  </View>
+                )}
+              </Pressable>
             );
           })}
         </View>
@@ -243,6 +278,15 @@ export function ChatSettingsScreen({ chat, onBack }: Props) {
 
       {/* Rename Modal */}
       <ChatRenameModal chat={chat} visible={showRenameModal} onClose={() => setShowRenameModal(false)} />
+
+      {/* Action Modal */}
+      <ChatMemberActionModal 
+        visible={!!selectedMember} 
+        onClose={() => setSelectedMember(null)} 
+        member={selectedMember}
+        nickname={selectedMember ? contactNicknames[selectedMember.id]?.first_name : undefined}
+        onMessage={handleMemberAction}
+      />
     </Screen>
   );
 }
@@ -508,5 +552,16 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 14,
       color: theme.colors.accent,
       marginTop: 2,
+    },
+    adminBadge: {
+      backgroundColor: theme.colors.accentSoft,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 4,
+    },
+    adminBadgeText: {
+      fontSize: 12,
+      color: theme.colors.accent,
+      fontWeight: "600",
     },
   });

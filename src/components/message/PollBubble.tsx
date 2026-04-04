@@ -1,4 +1,3 @@
-import React from "react";
 import { Pressable, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, ReactionSummary } from "@/lib/types";
@@ -45,16 +44,20 @@ export const PollBubble = ({
     }
   }
 
+  const totalVotes = votesPerOption.reduce((a, b) => a + b, 0);
+
   return (
     <View style={styles.pollCard}>
       <Text style={styles.pollTitle}>{pollData.question}</Text>
       <View style={styles.pollSubtitleWrapper}>
-        <MaterialCommunityIcons name="check-all" size={16} color={theme.colors.textMuted} />
         <Text style={styles.pollSubtitle}>{pollData.multipleAnswers ? "צריך לבחור אפשרות אחת או יותר" : "יש לבחור אפשרות אחת"}</Text>
+        <MaterialCommunityIcons name="check-all" size={16} color={theme.colors.textMuted} />
       </View>
       {pollData.options.map((opt: string, i: number) => {
         const optionVotes = votesPerOption[i];
         const isChecked = userVoted[i];
+        const progress = totalVotes > 0 ? (optionVotes / totalVotes) * 100 : 0;
+
         return (
           <Pressable key={i} style={styles.pollOptionRow} onPress={() => onToggleReaction(`poll:${i}`)}>
             <View style={styles.pollOptionInner}>
@@ -66,6 +69,12 @@ export const PollBubble = ({
               </View>
               <Text style={styles.pollVoteCount}>{optionVotes}</Text>
             </View>
+            
+            {totalVotes > 0 && (
+              <View style={styles.pollProgressContainer}>
+                <View style={[styles.pollProgressBar, { width: `${progress}%` }, isChecked && styles.pollProgressBarChecked]} />
+              </View>
+            )}
           </Pressable>
         );
       })}

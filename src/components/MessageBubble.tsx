@@ -19,7 +19,8 @@ type Props = {
   currentUserId: string;
   message: Message;
   author?: Profile;
-  replyPreview?: string | null;
+  replyToText?: string | null;
+  replyToName?: string | null;
   reactions?: ReactionSummary;
   viewOnceState?: ViewOnceState;
   isSelected?: boolean;
@@ -40,7 +41,7 @@ type Props = {
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
 
 export function MessageBubble({
-  currentUserId, message, author, replyPreview, reactions, viewOnceState,
+  currentUserId, message, author, replyToText, replyToName, reactions, viewOnceState,
   isSelected, isSelectionMode, onReply, onToggleReaction, onRevealViewOnce,
   onToggleSelection, onShowReactions, onShowReactionsSheet, onPlusExtra,
   showReactions, onReportPickerLayout, isSaved, onOpenPollVotes
@@ -109,6 +110,14 @@ export function MessageBubble({
     else { lastTap.current = now; if (message.message_kind === "view_once" && viewOnceState === "hidden") onRevealViewOnce(); }
   };
 
+  const accentColor = useMemo(() => {
+    if (!replyToName) return "#00A884";
+    const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63"];
+    let hash = 0;
+    for (let i = 0; i < replyToName.length; i++) hash = replyToName.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }, [replyToName]);
+
   return (
     <View style={styles.rowWrapper}>
       {!isSelectionMode && (
@@ -124,7 +133,17 @@ export function MessageBubble({
             ) : (
               <>
                 {!mine && author && <Text style={styles.author}>{contactNicknames[author.id]?.first_name || author.username}</Text>}
-                {replyPreview && <View style={styles.replyBlock}><Text style={styles.replyLabel}>תגובה</Text><Text numberOfLines={2} style={styles.replyBlockText}>{replyPreview}</Text></View>}
+                {replyToText && (
+                  <View style={styles.replyBlock}>
+                    <View style={styles.replyBlockContent}>
+                      <View style={styles.replyBlockTextContainer}>
+                         <Text numberOfLines={1} style={[styles.replyLabel, { color: accentColor }]}>{replyToName || "תגובה"}</Text>
+                         <Text numberOfLines={2} style={styles.replyBlockText}>{replyToText}</Text>
+                      </View>
+                      <View style={[styles.replyBlockAccent, { backgroundColor: accentColor }]} />
+                    </View>
+                  </View>
+                )}
                 
                 {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles} approveRequest={approveRequest} denyRequest={denyRequest} /> :
                  isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :

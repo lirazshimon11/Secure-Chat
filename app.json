@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Private Chat",
-    "slug": "private-chat-antiavi",
+    "name": "SecureApp",
+    "slug": "secure-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -11,10 +11,10 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.privatechat.antiavi"
+      "bundleIdentifier": "com.secureapp.app"
     },
     "android": {
-      "package": "com.privatechat.antiavi",
+      "package": "com.secureapp.app",
       "adaptiveIcon": {
         "foregroundImage": "./public/images/icon.png",
         "backgroundColor": "#f4efe6"

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet } from "react-native";
+import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -264,19 +264,36 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }
 
     if (scrollToMessageId) {
-      setTimeout(() => scrollToMessageWithRetry(scrollToMessageId, true), 300);
+      setTimeout(() => scrollToMessageWithRetry(scrollToMessageId, true), 100);
       initialScrollDone.current = true;
     } else if (currentUnread > 0) {
       const unreadStartIndex = Math.max(0, visibleMessages.length - currentUnread);
       const firstUnreadMsg = visibleMessages[unreadStartIndex];
-      if (firstUnreadMsg) setTimeout(() => { scrollToMessageWithRetry(firstUnreadMsg.id, false); setTimeout(checkVisibility, 600); }, 300);
-      else scrollToBottom(false);
+      if (firstUnreadMsg) {
+        setTimeout(() => { 
+          scrollToMessageWithRetry(firstUnreadMsg.id, false); 
+          setTimeout(checkVisibility, 400); 
+        }, 150);
+      } else {
+        scrollToBottom(false);
+      }
       initialScrollDone.current = true;
     } else {
-      setTimeout(() => scrollToBottom(false), 50);
+      // Go to bottom immediately
+      requestAnimationFrame(() => scrollToBottom(false));
       initialScrollDone.current = true;
     }
   }, [chat?.id, visibleMessages?.length, scrollToMessageId, unreadCounts]);
+
+  const [fadeAnim] = useState(new Animated.Value(0));
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      delay: 200, // Wait for transition animation to be mostly done
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   // ── 4. Render ──────────────────────────────────────────────────────────
   if (activeSubScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
@@ -335,8 +352,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             )}
             {chat?.is_group && screenshotBanner !== "none" && <ScreenshotBanner type={screenshotBanner} secondsLeft={Math.max(0, Math.floor((((activePermissions && chat && activePermissions[chat.id]) ?? 0) - Date.now()) / 1000))} />}
             
-            <View style={styles.thread}>
+            <Animated.View style={[styles.thread, { opacity: fadeAnim }]}>
               <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                // Initial offset to bottom to reduce jump
+                contentOffset={{ x: 0, y: 10000 }}
                 onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
                 onContentSizeChange={(w, h) => scrollMetricsRef.current.contentHeight = h}
                 onScroll={(e) => { 
@@ -360,19 +379,37 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                           revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
                         }} onToggleReaction={(e) => toggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
                         reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
-                        onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }} replyPreview={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
+                        onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }} 
+                        replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
+                        replyToName={(() => {
+                          if (!msg.reply_to_id) return null;
+                          const original = messageMap[msg.reply_to_id];
+                          if (!original) return "תגובה";
+                          const authorId = original.sender_id;
+                          return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+                        })()}
                         viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
                       </View>
                     );
                   })}
                 </Pressable>
               </ScrollView>
-            </View>
+            </Animated.View>
           </View>
           {isMember && (
             <MessageComposer onInputFocus={() => { setShowReactionsForId(null); if (showEmojiKeyboard) setShowEmojiKeyboard(false); }} onCancelReply={() => setReplyTo(null)}
-              onSend={async (body, kind, expireSeconds) => { scrollToBottom(true); const err = await sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); if (!err) { setReplyTo(null); scrollToBottom(true); } }}
-              replyPreview={replyTo?.body_preview ?? null} emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
+              onSend={(body, kind, expireSeconds) => { 
+                scrollToBottom(true); 
+                setReplyTo(null);
+                void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); 
+              }}
+              replyToText={replyTo?.body_preview ?? null} 
+              replyToName={(() => {
+                if (!replyTo) return null;
+                const authorId = replyTo.sender_id;
+                return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+              })()}
+              emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
               onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setAndroidNativeKeyboardPadding(0); setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
           )}
         </KeyboardAvoidingView>

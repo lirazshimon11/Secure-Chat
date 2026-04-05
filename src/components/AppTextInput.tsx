@@ -1,4 +1,5 @@
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { forwardRef } from "react";
+import { ReturnKeyTypeOptions, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAppTheme } from "@/lib/theme";
 import { webNoOutline } from "@/lib/webStyles";
 
@@ -10,9 +11,12 @@ type Props = {
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   multiline?: boolean;
   placeholder?: string;
+  returnKeyType?: ReturnKeyTypeOptions;
+  onSubmitEditing?: () => void;
+  blurOnSubmit?: boolean;
 };
 
-export function AppTextInput({
+export const AppTextInput = forwardRef<TextInput, Props>(({
   label,
   value,
   onChangeText,
@@ -20,7 +24,10 @@ export function AppTextInput({
   autoCapitalize = "none",
   multiline,
   placeholder,
-}: Props) {
+  returnKeyType,
+  onSubmitEditing,
+  blurOnSubmit,
+}, ref) => {
   const theme = useAppTheme();
   const styles = createStyles(theme);
 
@@ -28,18 +35,22 @@ export function AppTextInput({
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={ref}
         autoCapitalize={autoCapitalize}
         multiline={multiline}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textMuted}
         secureTextEntry={secureTextEntry}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
+        blurOnSubmit={blurOnSubmit}
         style={[styles.input, multiline && styles.multiline, webNoOutline]}
         value={value}
       />
     </View>
   );
-}
+});
 
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({

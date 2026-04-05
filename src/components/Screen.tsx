@@ -5,14 +5,20 @@ import { useAppTheme } from "@/lib/theme";
 
 type Props = PropsWithChildren<{
   scroll?: boolean;
+  keyboardAvoiding?: boolean;
 }>;
 
-export function Screen({ children, scroll }: Props) {
+export function Screen({ children, scroll, keyboardAvoiding = true }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
 
   const content = scroll ? (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      contentContainerStyle={styles.scrollContent} 
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+    >
       {children}
     </ScrollView>
   ) : (
@@ -22,9 +28,17 @@ export function Screen({ children, scroll }: Props) {
   return (
     <View style={styles.shell}>
       <SafeAreaView edges={["top", "left", "right", "bottom"]} style={styles.safeArea}>
-        <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", android: undefined })} style={styles.flex}>
-          {content}
-        </KeyboardAvoidingView>
+        {keyboardAvoiding ? (
+          <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"} 
+            keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+            style={styles.flex}
+          >
+            {content}
+          </KeyboardAvoidingView>
+        ) : (
+          <View style={styles.flex}>{content}</View>
+        )}
       </SafeAreaView>
     </View>
   );
@@ -60,5 +74,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     scrollContent: {
       flexGrow: 1,
       backgroundColor: theme.colors.background,
+      paddingBottom: 40,
     },
   });

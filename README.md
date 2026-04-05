@@ -1,4 +1,4 @@
-# Private Chat
+# SecureApp
 
 Text-only private group chat built with React Native, Expo, and Supabase realtime.
 

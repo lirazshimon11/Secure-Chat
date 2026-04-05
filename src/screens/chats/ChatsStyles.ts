@@ -10,14 +10,32 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       paddingTop: Math.max(0, insets.top - 20),
     },
     header: {
-      minHeight: 46,
+      minHeight: 64,
       backgroundColor: theme.colors.homeHeader,
-      paddingHorizontal: theme.spacing.md,
-      paddingTop: 0,
-      paddingBottom: 0,
+      position: "relative",
+    },
+    headerInner: {
+      flex: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      paddingHorizontal: theme.spacing.md,
+      paddingTop: 4,
+      paddingBottom: 10,
+    },
+    selectionHeader: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: theme.colors.homeHeader,
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: theme.spacing.md,
+      zIndex: 5,
+      paddingTop: 4,
+      paddingBottom: 10,
     },
     brand: {
       flex: 1,
@@ -315,27 +333,31 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       gap: 4,
     },
     tabIcon: {
-      width: 30,
-      height: 30,
+      width: 34, // Increased from 32
+      height: 34, // Increased from 32
       resizeMode: "contain",
     },
     tabIconWrap: {
-      width: 58,
+      width: 64,
       height: 32,
       borderRadius: 16,
       alignItems: "center",
       justifyContent: "center",
+      backgroundColor: "transparent",
+      overflow: "hidden",
     },
     tabIconWrapActive: {
-      backgroundColor: theme.colors.accentStrong,
+      backgroundColor: scheme === "dark" ? "#0F3528" : "#D9FDD3",
     },
     tabLabel: {
-      color: theme.colors.textMuted,
-      fontSize: 13,
-      fontWeight: "700",
+      color: scheme === "dark" ? "#FFFFFF" : "#202123",
+      fontSize: 14,
+      fontWeight: "600",
+      marginTop: 2,
     },
     tabLabelActive: {
-      color: theme.colors.accentStrong,
+      color: "#ffffff",
+      fontWeight: "900",
     },
     tabBadge: {
       position: "absolute",
@@ -451,6 +473,6 @@ export const chipStyles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "500",
+    fontWeight: "600",
   },
 });

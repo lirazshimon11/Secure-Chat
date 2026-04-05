@@ -112,34 +112,38 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   };
 
   return (
-    <Screen>
+    <Screen keyboardAvoiding={false}>
       <View style={styles.page}>
         <View style={styles.header}>
-          {selectionMode ? (
-            <>
-              <Pressable onPress={() => setSelectedChatIds([])} style={styles.iconButton}><Feather color={theme.colors.text} name="arrow-left" size={22} /></Pressable>
+          <View style={styles.headerInner}>
+            {viewMode === "home" ? (
+              <>
+                <Text style={styles.brand}>SecureApp</Text>
+                <View style={{ flexDirection: "row", gap: 2 }}>
+                  <Pressable style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="camera-outline" size={24} /></Pressable>
+                  <Pressable onPress={() => setShowGeneralMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={24} /></Pressable>
+                </View>
+              </>
+            ) : (
+              <>
+                <Pressable onPress={() => setViewMode("home")} style={styles.iconButton}><Feather color={theme.colors.headerIcon} name="arrow-left" size={22} /></Pressable>
+                <Text style={styles.brand}>{viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}</Text>
+              </>
+            )}
+          </View>
+
+          {selectionMode && (
+            <View style={styles.selectionHeader}>
+              <Pressable onPress={() => setSelectedChatIds([])} style={styles.iconButton}><Feather color={theme.colors.headerIcon} name="arrow-left" size={22} /></Pressable>
               <Text style={styles.selectionTitle}>{selectedChatIds.length}</Text>
               <View style={styles.selectionActions}>
-                <Pressable onPress={() => { allSelectedArchived ? unarchiveChats(selectedChatIds) : archiveChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name={allSelectedArchived ? "archive-arrow-up-outline" : "archive-arrow-down-outline"} size={22} /></Pressable>
-                <Pressable onPress={() => { togglePinnedChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name={allSelectedPinned ? "pin-off-outline" : "pin-outline"} size={21} /></Pressable>
-                <Pressable onPress={() => { Alert.alert("מחיקת צ'אט?", "האם למחוק?", [{text: "ביטול"}, {text: "מחיקה", style:"destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); }}]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="trash-can-outline" size={23} /></Pressable>
-                <Pressable onPress={() => { allSelectedLocked ? unlockChats(selectedChatIds) : lockChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name={allSelectedLocked ? "lock-open-variant-outline" : "lock-outline"} size={22} /></Pressable>
-                <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={22} /></Pressable>
+                <Pressable onPress={() => { allSelectedArchived ? unarchiveChats(selectedChatIds) : archiveChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name={allSelectedArchived ? "archive-arrow-up-outline" : "archive-arrow-down-outline"} size={22} /></Pressable>
+                <Pressable onPress={() => { togglePinnedChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name={allSelectedPinned ? "pin-off-outline" : "pin-outline"} size={21} /></Pressable>
+                <Pressable onPress={() => { Alert.alert("מחיקת צ'אט?", "האם למחוק?", [{text: "ביטול"}, {text: "מחיקה", style:"destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); }}]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can-outline" size={23} /></Pressable>
+                <Pressable onPress={() => { allSelectedLocked ? unlockChats(selectedChatIds) : lockChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name={allSelectedLocked ? "lock-open-variant-outline" : "lock-outline"} size={22} /></Pressable>
+                <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={22} /></Pressable>
               </View>
-            </>
-          ) : viewMode === "home" ? (
-            <>
-              <Text style={styles.brand}>SecureApp</Text>
-              <View style={{ flexDirection: "row", gap: 2 }}>
-                <Pressable style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="camera-outline" size={24} /></Pressable>
-                <Pressable onPress={() => setShowGeneralMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.text} name="dots-vertical" size={24} /></Pressable>
-              </View>
-            </>
-          ) : (
-            <>
-              <Pressable onPress={() => setViewMode("home")} style={styles.iconButton}><Feather color={theme.colors.text} name="arrow-left" size={22} /></Pressable>
-              <Text style={styles.brand}>{viewMode === "locked" ? "צ'אטים נעולים" : "ארכיון"}</Text>
-            </>
+            </View>
           )}
         </View>
 
@@ -148,11 +152,11 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
           <TextInput onChangeText={setSearchQuery} placeholder="חיפוש" placeholderTextColor={theme.colors.textMuted} style={[styles.searchInput, webEmbeddedInputReset]} value={searchQuery} />
         </View>
 
-        {viewMode === "home" && !selectionMode && activeTab === "chats" && (
+        {viewMode === "home" && activeTab === "chats" && (
           <View style={styles.filterBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
               {[ {id: "all", label: "הכול"}, {id: "unread", label: "לא נקראו", count: unreadTotal}, {id: "favorites", label: "מועדפים"}, {id: "groups", label: "קבוצות"} ].map(f => (
-                <Pressable key={f.id} onPress={() => setActiveFilter(f.id as any)} style={[chipStyles.chip, activeFilter === f.id ? { backgroundColor: scheme === "dark" ? "#00a884" : "#E7FCE3" } : { backgroundColor: scheme === "dark" ? "#202C33" : "#FFFFFF", borderWidth: scheme === "dark" ? 0 : 0.8, borderColor: "#E9EDF0" }]}>
+                <Pressable key={f.id} onPress={() => setActiveFilter(f.id as any)} style={[chipStyles.chip, activeFilter === f.id ? { backgroundColor: scheme === "dark" ? "#0F3528" : "#E7FCE3" } : { backgroundColor: scheme === "dark" ? "#202C33" : "#FFFFFF", borderWidth: scheme === "dark" ? 0 : 0.8, borderColor: "#E9EDF0" }]}>
                   <Text style={[chipStyles.label, { color: activeFilter === f.id ? (scheme === "dark" ? "#ffffff" : "#008069") : (scheme === "dark" ? "#8696A0" : "#667781") }]}>{f.label}{f.count ? ` ${f.count}` : ""}</Text>
                 </Pressable>
               ))}
@@ -169,7 +173,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
           )}
           {activeTab !== "chats" ? (
             <View style={styles.emptyState}>
-              <MaterialCommunityIcons color={theme.colors.textMuted} name="tools" size={38} />
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="tools" size={38} />
               <Text style={styles.emptyTitle}>בקרוב</Text>
             </View>
           ) : activeChats.length ? (
@@ -184,8 +188,8 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         <View style={styles.tabBar}>
           {[ {id: "chats", label: "צ'אטים", icon: require("../../public/images/light mode/chats_icon.png")}, {id: "updates", label: "עדכונים", icon: scheme === "dark" ? require("../../public/images/dark mode/updates_icon.png") : require("../../public/images/light mode/updates_icon.png"), badge: screenshotPendingCount}, {id: "communities", label: "קהילות", icon: scheme === "dark" ? require("../../public/images/dark mode/communities_icon.png") : require("../../public/images/light mode/communities_icon.png")}, {id: "calls", label: "שיחות", icon: scheme === "dark" ? require("../../public/images/dark mode/voice_call_icon.png") : require("../../public/images/light mode/voice_call_icon.png")} ].map(t => (
             <Pressable key={t.id} style={styles.tabItem} onPress={() => setActiveTab(t.id as any)}>
-              <View style={[styles.tabIconWrap, activeTab === t.id && (t.id === "chats" ? styles.tabIconWrapActive : {})]}>
-                <Image source={t.icon} style={[styles.tabIcon, { tintColor: activeTab === t.id ? (t.id === "chats" ? "#ffffff" : theme.colors.accentStrong) : theme.colors.textMuted }]} />
+              <View style={[styles.tabIconWrap, activeTab === t.id && styles.tabIconWrapActive]}>
+                <Image source={t.icon} style={[styles.tabIcon, { tintColor: theme.colors.headerIcon }]} />
                 {t.badge ? <View style={styles.tabBadge}><Text style={styles.tabBadgeText}>{t.badge > 9 ? "9+" : t.badge}</Text></View> : null}
               </View>
               <Text style={[styles.tabLabel, activeTab === t.id && styles.tabLabelActive]}>{t.label}</Text>
@@ -225,7 +229,7 @@ function SectionButton({ icon, label, onPress, isMCI, theme, styles }: { icon: a
       <View style={styles.sectionLeft}>
         <View style={styles.sectionIconContainer}>
           <View style={styles.sectionIconWrap}>
-            {isMCI ? <MaterialCommunityIcons color={theme.colors.textMuted} name={icon} size={20} /> : <Feather color={theme.colors.textMuted} name={icon} size={20} />}
+            {isMCI ? <MaterialCommunityIcons color={theme.colors.headerIcon} name={icon} size={20} /> : <Feather color={theme.colors.headerIcon} name={icon} size={20} />}
           </View>
         </View>
         <Text style={styles.sectionLabel}>{label}</Text>

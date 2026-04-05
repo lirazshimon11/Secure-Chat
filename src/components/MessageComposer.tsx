@@ -14,7 +14,8 @@ import { useAppTheme } from "@/lib/theme";
 import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
 
 type Props = {
-  replyPreview: string | null;
+  replyToText?: string | null;
+  replyToName?: string | null;
   onCancelReply: () => void;
   onSend: (body: string, kind: "standard" | "temporary" | "view_once", expireSeconds: number | null) => void;
   emojiKeyboardOpen?: boolean;
@@ -25,9 +26,9 @@ type Props = {
   onAttachmentPress?: () => void;
 };
 
-export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress }: Props) {
+export function MessageComposer({ replyToText, replyToName, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress }: Props) {
   const theme = useAppTheme();
-  const styles = createStyles(theme);
+  const styles = createStyles(theme, !!replyToText);
   const [body, setBody] = useState("");
   const [kind, setKind] = useState<"standard" | "temporary" | "view_once">("standard");
   const inputRef = useRef<TextInput | null>(null);
@@ -69,61 +70,98 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
     handleSend();
   }
 
+  const accentColor = useMemo(() => {
+    if (!replyToName) return "#00A884";
+    const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63"];
+    let hash = 0;
+    for (let i = 0; i < replyToName.length; i++) hash = replyToName.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }, [replyToName]);
+
   return (
     <View style={styles.safeAreaWrapper}>
       <View style={styles.wrapper}>
-        {replyPreview ? (
-          <View style={styles.replyBanner}>
-            <View style={styles.replyText}>
-              <Text numberOfLines={1} style={styles.replyLabel}>תשובה להודעה</Text>
-              <Text numberOfLines={2} style={styles.replyPreview}>
-                {replyPreview}
-              </Text>
-            </View>
-            <View style={styles.replyAccent} />
-            <Pressable onPress={onCancelReply} style={styles.closeButton}>
-              <Feather color={theme.colors.textMuted} name="x" size={16} />
-            </Pressable>
-          </View>
-        ) : null}
-
         {!emojiKeyboardOpen ? (
           <View style={styles.modeRow}>
-            <ModeChip active={kind === "standard"} icon="message-text-outline" label="הודעה" onPress={() => setKind("standard")} />
-            <ModeChip active={kind === "temporary"} icon="timer-sand" label="דקה 1" onPress={() => setKind("temporary")} />
-            <ModeChip active={kind === "view_once"} icon="eye-outline" label="צפייה חד-פעמית" onPress={() => setKind("view_once")} />
+            <ModeChip
+              active={kind === "standard"}
+              activeColor={theme.colors.mine}
+              textColor={theme.colors.text}
+              icon="message-text-outline"
+              label="הודעה"
+              onPress={() => setKind("standard")}
+            />
+            <ModeChip
+              active={kind === "temporary"}
+              activeColor="#8b5cf6" // Elegant Purple
+              textColor="#ffffff"
+              icon="timer-sand"
+              label="דקה 1"
+              onPress={() => setKind("temporary")}
+            />
+            <ModeChip
+              active={kind === "view_once"}
+              activeColor="#ff4444" // True Red
+              textColor="#ffffff"
+              icon="eye-outline"
+              label="צפייה חד-פעמית"
+              onPress={() => setKind("view_once")}
+            />
           </View>
         ) : null}
 
         <View style={styles.composerRow}>
-          {/* Input field - FIRST in JSX = rightmost visually in RTL */}
-          <View style={styles.inputContainer}>
-            {/* Emoji toggle - FIRST inside = rightmost visually */}
-            <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
-              <MaterialCommunityIcons color={theme.colors.textMuted} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
-            </Pressable>
-            <View style={styles.inputShell}>
-              <TextInput
-                onChangeText={setBody}
-                onSubmitEditing={handleSubmit}
-                placeholder={placeholder}
-                placeholderTextColor={theme.colors.textMuted + "80"} // add transparency to muted text color
-                ref={inputRef}
-                onFocus={onInputFocus}
-                returnKeyType="default"
-                blurOnSubmit={false}
-                multiline
-                style={[styles.input, webEmbeddedInputReset]}
-                value={body}
-              />
+          <View style={styles.mainStack}>
+            {replyToText ? (
+              <View style={styles.replyBanner}>
+                <View style={styles.replyContent}>
+                  {/* Accent bar on the RIGHT in RTL */}
+                  <View style={[styles.replyAccent, { backgroundColor: accentColor }]} />
+
+                  {/* Body taking full MIDDLE space */}
+                  <View style={styles.replyText}>
+                    <Text numberOfLines={1} style={[styles.replyLabel, { color: accentColor }]}>{replyToName || "תשובה להודעה"}</Text>
+                    <Text numberOfLines={1} style={styles.replyPreview}>
+                      {replyToText}
+                    </Text>
+                  </View>
+
+                  {/* Close button on the LEFT in RTL */}
+                  <Pressable onPress={onCancelReply} style={styles.closeButton}>
+                    <Feather color={theme.colors.headerIcon} name="x" size={18} />
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={styles.inputContainer}>
+              {/* Emoji toggle - FIRST inside = rightmost visually */}
+              <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
+              </Pressable>
+              <View style={styles.inputShell}>
+                <TextInput
+                  onChangeText={setBody}
+                  onSubmitEditing={handleSubmit}
+                  placeholder={placeholder}
+                  placeholderTextColor={theme.colors.textMuted + "80"}
+                  ref={inputRef}
+                  onFocus={onInputFocus}
+                  returnKeyType="default"
+                  blurOnSubmit={false}
+                  multiline
+                  style={[styles.input, webEmbeddedInputReset]}
+                  value={body}
+                />
+              </View>
+              {/* Camera & Paperclip - LAST inside = leftmost visually in RTL */}
+              <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
+                <Feather color={theme.colors.headerIcon} name="paperclip" size={20} />
+              </Pressable>
+              <Pressable onPress={() => { }} style={[styles.innerSideButton, webNoOutline]}>
+                <Feather color={theme.colors.headerIcon} name="camera" size={20} />
+              </Pressable>
             </View>
-            {/* Camera & Paperclip - LAST inside = leftmost visually in RTL */}
-            <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
-              <Feather color={theme.colors.textMuted} name="paperclip" size={20} />
-            </Pressable>
-            <Pressable onPress={() => { }} style={[styles.innerSideButton, webNoOutline]}>
-              <Feather color={theme.colors.textMuted} name="camera" size={20} />
-            </Pressable>
           </View>
 
           {/* Send button when typing */}
@@ -146,25 +184,37 @@ export function MessageComposer({ replyPreview, onCancelReply, onSend, emojiKeyb
 
   function ModeChip({
     active,
+    activeColor,
+    textColor,
     icon,
     label,
     onPress,
   }: {
     active: boolean;
+    activeColor: string;
+    textColor: string;
     icon: keyof typeof MaterialCommunityIcons.glyphMap;
     label: string;
     onPress: () => void;
   }) {
     return (
-      <Pressable onPress={onPress} style={[styles.modeChip, active && styles.modeChipActive, webNoOutline]}>
-        <MaterialCommunityIcons color={active ? theme.colors.textOnAccent : theme.colors.textMuted} name={icon} size={15} />
-        <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
+      <Pressable
+        onPress={onPress}
+        style={[
+          styles.modeChip,
+          active && { backgroundColor: activeColor, borderColor: activeColor },
+          active && styles.modeChipActive,
+          webNoOutline
+        ]}
+      >
+        <MaterialCommunityIcons color={active ? (theme.colors.background === "#0b141a" ? "#ffffff" : textColor) : theme.colors.headerIcon} name={icon} size={15} />
+        <Text style={[styles.modeLabel, active && { color: theme.colors.background === "#0b141a" ? "#ffffff" : textColor }]}>{label}</Text>
       </Pressable>
     );
   }
 }
 
-const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
+const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean = false) =>
   StyleSheet.create({
     wrapper: {
       backgroundColor: 'transparent',
@@ -177,65 +227,78 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: 'transparent',
       borderTopWidth: 0,
     },
+    mainStack: {
+      flex: 1,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 24,
+      overflow: "hidden",
+      borderWidth: 0,
+    },
     replyBanner: {
-      backgroundColor: theme.colors.bubbleBackground,
-      borderTopLeftRadius: 16,
-      borderTopRightRadius: 16,
-      borderBottomLeftRadius: 4,
-      borderBottomRightRadius: 4,
-      flexDirection: "row-reverse",
-      alignItems: "center",
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      marginBottom: -4,
-      borderWidth: 1,
-      borderColor: theme.colors.bubbleBorder,
+      backgroundColor: theme.colors.background === "#0b141a" ? "#1d272d" : "#e0e0e0",
+      paddingVertical: 8,
+      paddingHorizontal: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.background === "#0b141a" ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.05)",
+    },
+    replyContent: {
+      flexDirection: "row", // RTL: 1st is Right, LAST is Left
+      alignItems: "stretch",
+      backgroundColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+      borderRadius: 8,
+      overflow: "hidden",
     },
     replyAccent: {
       width: 4,
-      alignSelf: "stretch",
-      backgroundColor: "#00A884",
-      borderRadius: 2,
-      marginLeft: 12,
     },
     replyText: {
-      flex: 1,
-      gap: 1,
-      alignItems: "flex-end",
+      flex: 1, // Fills space between Accent (Right) and Close (Left)
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      justifyContent: "center",
+      alignItems: "flex-start", // Hebrew Right
     },
     replyLabel: {
-      color: "#00A884",
       fontSize: 12,
       fontWeight: "800",
+      marginBottom: 2,
+      textAlign: "right",
+      width: "100%",
     },
     replyPreview: {
       color: theme.colors.textMuted,
       fontSize: 13,
       textAlign: "right",
-      lineHeight: 18,
+      width: "100%",
     },
     closeButton: {
-      padding: 4,
+      paddingHorizontal: 12,
+      justifyContent: "center",
+      alignItems: "center",
     },
     modeRow: {
       flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.xs,
+      gap: 8,
+      alignSelf: "flex-start", // Hebrew Right
+      marginBottom: 10,
     },
     modeChip: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
-      backgroundColor: theme.colors.bubbleBackground,
+      gap: 5,
       borderRadius: 18,
-      borderColor: theme.colors.bubbleBorder,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      backgroundColor: theme.colors.surface,
       borderWidth: 1,
-      paddingHorizontal: 16,
-      paddingVertical: 8,
+      borderColor: theme.colors.border,
     },
     modeChipActive: {
-      backgroundColor: "rgba(0, 168, 132, 0.88)",
-      borderColor: "rgba(0, 168, 132, 0.5)",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      elevation: 3,
     },
     modeLabel: {
       color: theme.colors.textMuted,
@@ -284,11 +347,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: "center",
     },
     inputContainer: {
-      flex: 1,
       flexDirection: "row",
       alignItems: "flex-end",
-      backgroundColor: theme.colors.surface,
-      borderRadius: 24,
+      backgroundColor: "transparent",
     },
     sideButton: {
       width: 42,
@@ -315,6 +376,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       minHeight: 22,
       maxHeight: 120,
       paddingVertical: Platform.OS === "ios" ? 8 : 4,
+      textAlign: "right", // Hebrew Support
     },
     sendButton: {
       width: 46,

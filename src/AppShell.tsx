@@ -11,10 +11,14 @@ import { ForwardScreen } from "@/screens/ForwardScreen";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
 import { Chat, Message, Profile } from "@/lib/types";
+import React, { useEffect } from "react";
+import { Animated, Easing, StyleSheet, View, Dimensions } from "react-native";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export function AppShell() {
   const { session, loading } = useAuth();
-  const { chats, sendMessage } = useChats();
+  const { chats, sendMessage, loadMessages } = useChats();
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showCreateChat, setShowCreateChat] = useState<boolean | Profile[]>(false);
@@ -22,8 +26,44 @@ export function AppShell() {
   const [settingsChatStack, setSettingsChatStack] = useState<Chat[]>([]);
   const [showSavedMessages, setShowSavedMessages] = useState(false);
   const [forwardPayload, setForwardPayload] = useState<Message[] | null>(null);
-  // When navigating from SavedMessages to a chat, optionally scroll to a message
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
+
+  const [animValue] = useState(new Animated.Value(0)); // 0: Chats, 1: Chat
+  const [prevChat, setPrevChat] = useState<Chat | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // Simple "push/pop" slide logic
+  useEffect(() => {
+    if (selectedChat && !prevChat) {
+      // Open Animation
+      setIsAnimating(true);
+      animValue.setValue(0);
+      Animated.timing(animValue, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.poly(4)),
+      }).start(() => {
+        setIsAnimating(false);
+        setPrevChat(selectedChat);
+      });
+    } else if (!selectedChat && prevChat) {
+      // Back Animation
+      setIsAnimating(true);
+      animValue.setValue(1);
+      Animated.timing(animValue, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+        easing: Easing.inOut(Easing.poly(4)),
+      }).start(() => {
+        setIsAnimating(false);
+        setPrevChat(null);
+      });
+    } else if (selectedChat !== prevChat) {
+      setPrevChat(selectedChat);
+    }
+  }, [selectedChat]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -71,16 +111,13 @@ export function AppShell() {
         onCancel={() => setForwardPayload(null)}
         onSend={async (chatIds) => {
           setForwardPayload(null);
-          // Only single-chat returns you to the chat. Multi-chat drops you at ChatsScreen.
           if (chatIds.length === 1) {
             const nextChat = chats.find(c => c.id === chatIds[0]);
             if (nextChat) setSelectedChat(nextChat);
           } else {
-            setSelectedChat(null); // return to home screen
+            setSelectedChat(null);
           }
 
-          // In a real app we might want a progress indicator if there are many messages,
-          // but for now we dispatch them asynchronously.
           const sorted = [...forwardPayload].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
           for (const chatId of chatIds) {
             for (const msg of sorted) {
@@ -118,32 +155,77 @@ export function AppShell() {
            />;
   }
 
-  if (selectedChat) {
-    return (
-      <ChatScreen
-        chat={selectedChat}
-        onBack={() => {
-          setSelectedChat(null);
-          setScrollToMessageId(null);
-        }}
-        onOpenChatSettings={() => setShowChatSettings(true)}
-        scrollToMessageId={scrollToMessageId}
-        onForward={(messages) => setForwardPayload(messages)}
-        onCreateGroupWith={(profile) => setShowCreateChat([profile])}
-      />
-    );
-  }
+  const chatsTranslateX = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -SCREEN_WIDTH * 0.3],
+  });
+
+  const chatTranslateX = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SCREEN_WIDTH, 0],
+  });
+
+  const chatOpacity = animValue.interpolate({
+    inputRange: [0, 0.1, 1],
+    outputRange: [0, 1, 1],
+  });
+
+  const chatsOpacity = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.6],
+  });
 
   return (
-    <ChatsScreen
-      onOpenChat={(chat, messageId) => {
-        setShowChatSettings(false);
-        setScrollToMessageId(messageId ?? null);
-        setSelectedChat(chat);
-      }}
-      onOpenSavedMessages={() => setShowSavedMessages(true)}
-      onOpenSettings={() => setShowSettings(true)}
-      onCreateChat={() => setShowCreateChat(true)}
-    />
+    <View style={{ flex: 1, backgroundColor: "#000" }}>
+      {(!selectedChat || isAnimating) && (
+        <Animated.View style={{ 
+          ...StyleSheet.absoluteFillObject, 
+          transform: [{ translateX: chatsTranslateX }],
+          opacity: chatsOpacity
+        }}>
+          <ChatsScreen
+            onOpenChat={(chat, messageId) => {
+              setShowChatSettings(false);
+              setScrollToMessageId(messageId ?? null);
+              // Pre-load messages so they're ready when the animation ends
+              void loadMessages(chat.id);
+              setSelectedChat(chat);
+            }}
+            onOpenSavedMessages={() => setShowSavedMessages(true)}
+            onOpenSettings={() => setShowSettings(true)}
+            onCreateChat={() => setShowCreateChat(true)}
+          />
+        </Animated.View>
+      )}
+
+      {(selectedChat || (isAnimating && prevChat)) && (
+        <Animated.View style={{ 
+          ...StyleSheet.absoluteFillObject, 
+          transform: [{ translateX: chatTranslateX }],
+          opacity: chatOpacity,
+          zIndex: 10,
+          backgroundColor: "#000",
+          shadowColor: "#000",
+          shadowOffset: { width: -10, height: 0 },
+          shadowOpacity: 0.3,
+          shadowRadius: 20,
+          elevation: 20,
+        }}>
+          { (selectedChat || prevChat) && (
+            <ChatScreen
+              chat={(selectedChat || prevChat)!}
+              onBack={() => {
+                setSelectedChat(null);
+                setScrollToMessageId(null);
+              }}
+              onOpenChatSettings={() => setShowChatSettings(true)}
+              scrollToMessageId={scrollToMessageId}
+              onForward={(messages) => setForwardPayload(messages)}
+              onCreateGroupWith={(profile) => setShowCreateChat([profile])}
+            />
+          )}
+        </Animated.View>
+      )}
+    </View>
   );
 }

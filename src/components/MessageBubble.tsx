@@ -95,6 +95,16 @@ export function MessageBubble({
       const displayName = nick || prof?.full_name || prof?.username || "משתתף/ת";
       body = `${displayName} הוסר/ה מהקבוצה`;
     }
+  } else if (isSystem && body.startsWith("[SYSTEM_SCREENSHOT_APPROVED]:")) {
+    const parts = body.split(":");
+    const requester = parts[1] || "מישהו";
+    const approver = parts[2] || "מישהו";
+    const durationMin = parts[3] || "1";
+    body = `צילום מסך אושר ל-${requester} על ידי ${approver} למשך ${durationMin} דקות`;
+  } else if (isSystem && body.startsWith("[SYSTEM_SCREENSHOT_EXPIRED]:")) {
+    const parts = body.split(":");
+    const requester = parts[1] || "מישהו";
+    body = `תם הזמן המוקצב לצילום מסך עבור ${requester}`;
   }
   
   const d = new Date(message.created_at);
@@ -145,7 +155,15 @@ export function MessageBubble({
                   </View>
                 )}
                 
-                {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles} approveRequest={approveRequest} denyRequest={denyRequest} /> :
+                {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles} 
+                  approveRequest={(reqId) => {
+                    const scReq = allRequests[reqId];
+                    const nick = contactNicknames[currentUserId]?.first_name;
+                    const prof = profiles[currentUserId];
+                    const myName = nick || prof?.full_name || prof?.username || "משתתף/ת";
+                    approveRequest(reqId, message.chat_id, scReq?.requesterUsername || "מישהו", myName);
+                  }} 
+                  denyRequest={denyRequest} /> :
                  isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
                  <Text style={styles.body}>{body + " "}</Text>}
 

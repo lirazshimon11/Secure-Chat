@@ -36,7 +36,7 @@ export const ChatService = {
 
   async fetchReactions(messageIds: string[]) {
     if (!messageIds.length) return { data: [] };
-    return supabase.from("message_reactions").select("message_id,emoji,user_id").in("message_id", messageIds);
+    return supabase.from("message_reactions").select("message_id,emoji,user_id,created_at").in("message_id", messageIds);
   },
 
   async fetchViewOnceOpened(userId: string, messageIds: string[]) {

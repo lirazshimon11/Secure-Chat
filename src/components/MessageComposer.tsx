@@ -81,34 +81,32 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   return (
     <View style={styles.safeAreaWrapper}>
       <View style={styles.wrapper}>
-        {!emojiKeyboardOpen ? (
-          <View style={styles.modeRow}>
-            <ModeChip
-              active={kind === "standard"}
-              activeColor={theme.colors.mine}
-              textColor={theme.colors.text}
-              icon="message-text-outline"
-              label="הודעה"
-              onPress={() => setKind("standard")}
-            />
-            <ModeChip
-              active={kind === "temporary"}
-              activeColor="#8b5cf6" // Elegant Purple
-              textColor="#ffffff"
-              icon="timer-sand"
-              label="דקה 1"
-              onPress={() => setKind("temporary")}
-            />
-            <ModeChip
-              active={kind === "view_once"}
-              activeColor="#ff4444" // True Red
-              textColor="#ffffff"
-              icon="eye-outline"
-              label="צפייה חד-פעמית"
-              onPress={() => setKind("view_once")}
-            />
-          </View>
-        ) : null}
+        <View style={styles.modeRow}>
+          <ModeChip
+            active={kind === "standard"}
+            activeColor={theme.colors.mine}
+            textColor={theme.colors.text}
+            icon="message-text-outline"
+            label="הודעה"
+            onPress={() => setKind("standard")}
+          />
+          <ModeChip
+            active={kind === "temporary"}
+            activeColor="#8b5cf6" // Elegant Purple
+            textColor="#ffffff"
+            icon="timer-sand"
+            label="דקה 1"
+            onPress={() => setKind("temporary")}
+          />
+          <ModeChip
+            active={kind === "view_once"}
+            activeColor="#ff4444" // True Red
+            textColor="#ffffff"
+            icon="eye-outline"
+            label="צפייה חד-פעמית"
+            onPress={() => setKind("view_once")}
+          />
+        </View>
 
         <View style={styles.composerRow}>
           <View style={styles.mainStack}>

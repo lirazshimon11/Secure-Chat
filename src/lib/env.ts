@@ -15,8 +15,8 @@ export const env = {
 
 export function assertEnv() {
   if (!env.supabaseUrl || !env.supabaseAnonKey) {
-    throw new Error(
-      "Missing Supabase environment variables. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.",
+    console.warn(
+      "Warning: Missing Supabase environment variables. Check EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.",
     );
   }
 }

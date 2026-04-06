@@ -49,14 +49,21 @@ export function sortDisplayChats(a: DisplayChat, b: DisplayChat) {
   return bLastMessageAt - aLastMessageAt;
 }
 
-export function parsePollPreview(preview?: string): { isPoll: boolean; question: string } {
-  if (!preview || !preview.startsWith("[POLL]:")) {
-    return { isPoll: false, question: "" };
+export function parsePollPreview(preview?: string): { isPoll: boolean; isScreenshot: boolean; question: string } {
+  if (!preview) return { isPoll: false, isScreenshot: false, question: "" };
+  
+  if (preview.startsWith("[SCREENSHOT_REQUEST]:")) {
+    return { isPoll: true, isScreenshot: true, question: "בקשת אישור צילום מסך" };
   }
+
+  if (!preview.startsWith("[POLL]:")) {
+    return { isPoll: false, isScreenshot: false, question: "" };
+  }
+  
   try {
     const pollData = JSON.parse(preview.substring(7));
-    return { isPoll: true, question: pollData.question || "סקר" };
+    return { isPoll: true, isScreenshot: false, question: pollData.question || "סקר" };
   } catch (e) {
-    return { isPoll: true, question: "סקר" };
+    return { isPoll: true, isScreenshot: false, question: "סקר" };
   }
 }

@@ -1,63 +1,51 @@
 import { useState, useEffect } from "react";
 import { Chat, Profile } from "@/lib/types";
 import { useScreenshots } from "@/context/ScreenshotContext";
-import { blockScreenshots, unblockScreenshots, addScreenshotListener } from "@/lib/screenshotPermission";
+import { addScreenshotListener } from "@/lib/screenshotPermission";
+import { preventScreenCaptureAsync, allowScreenCaptureAsync } from "expo-screen-capture";
 
 export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMessage: (p: any) => void) {
-  const { activePermissions, myRequests, requestScreenshotPermission } = useScreenshots();
-  const hasScreenshotPerm = (activePermissions[chat.id] ?? 0) > Date.now();
-  const [screenshotBanner, setScreenshotBanner] = useState<"none" | "approved">("none");
-  const [, setBannerTick] = useState(0);
+  const { activePermissions, myRequests, requestScreenshotPermission, hasPermission } = useScreenshots();
+  const hasScreenshotPerm = hasPermission(chat.id);
+  const [screenshotHold, setScreenshotHold] = useState(false);
 
   useEffect(() => {
     if (!chat.is_group) return;
     const tag = `sc-${chat.id}`;
     if (hasScreenshotPerm) {
-      void unblockScreenshots(tag);
+      void allowScreenCaptureAsync(tag);
     } else {
-      void blockScreenshots(tag);
+      void preventScreenCaptureAsync(tag);
     }
-    return () => { void unblockScreenshots(tag); };
+    return () => { void allowScreenCaptureAsync(tag); };
   }, [hasScreenshotPerm, chat.id, chat.is_group]);
 
   useEffect(() => {
     if (!chat.is_group) return;
     const sub = addScreenshotListener(() => {
-      if ((activePermissions[chat.id] ?? 0) > Date.now()) return;
+      if (hasScreenshotPerm) return;
+      setScreenshotHold(true);
+      setTimeout(() => setScreenshotHold(false), 800);
       const curReq = myRequests[chat.id];
       if (curReq?.status === "pending") return;
-      
       const memberIds = groupMembers.map((m) => m.id);
       void requestScreenshotPermission(chat.id, memberIds).then((result) => {
-        if (result?.id) {
-          sendMessage({ chatId: chat.id, body: `[SCREENSHOT_REQUEST]:${result.id}`, messageKind: "standard" });
+        if (result?.pollBody) {
+          sendMessage({ chatId: chat.id, body: result.pollBody, messageKind: "standard" });
         }
       });
     });
     return () => sub.remove();
   }, [chat.id, chat.is_group, hasScreenshotPerm, groupMembers, myRequests, requestScreenshotPermission, sendMessage]);
 
-  useEffect(() => {
-    if (!chat.is_group) return;
-    const req = myRequests[chat.id];
-    if (req?.status === "approved" && hasScreenshotPerm) {
-      setScreenshotBanner("approved");
-    } else {
-      setScreenshotBanner("none");
-    }
-  }, [myRequests[chat.id]?.status, chat.id, chat.is_group, hasScreenshotPerm]);
-
-  useEffect(() => {
-    if (screenshotBanner !== "approved") return;
-    const iv = setInterval(() => setBannerTick((t) => t + 1), 1000);
-    return () => clearInterval(iv);
-  }, [screenshotBanner]);
-
   return {
     hasScreenshotPerm,
-    screenshotBanner,
+    screenshotHold,
     activePermissions,
     myRequests,
-    requestScreenshotPermission
+    requestScreenshotPermission,
+    approveRequest: useScreenshots().approveRequest,
+    denyRequest: useScreenshots().denyRequest,
+    revokeApproval: useScreenshots().revokeApproval
   };
 }

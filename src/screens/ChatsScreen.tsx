@@ -1,6 +1,6 @@
 import { Alert, Image, Pressable, ScrollView, Text, TextInput, View, useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
@@ -32,9 +32,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   
   const {
     chats, muteSettings, unreadCounts, chatPreferences, archiveChats, unarchiveChats,
-    togglePinnedChats, lockChats, unlockChats, deleteChats, loading, searchMessagesGlobal
+    togglePinnedChats, lockChats, unlockChats, deleteChats, loading, searchMessagesGlobal,
+    refreshChats
   } = useChats();
-  
+
   const { screenshotPendingCount } = useScreenshots();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChatIds, setSelectedChatIds] = useState<string[]>([]);
@@ -44,6 +45,13 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const [activeTab, setActiveTab] = useState<"chats" | "communities" | "updates" | "calls">("chats");
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
   const [messageSearchResults, setMessageSearchResults] = useState<any[]>([]);
+
+  // Silent sync when returning to focus on 'chats' tab
+  useEffect(() => {
+    if (activeTab === "chats") {
+      void refreshChats(true);
+    }
+  }, [activeTab, refreshChats]);
 
   useEffect(() => {
     if (!searchQuery.trim()) { setMessageSearchResults([]); return; }
@@ -186,11 +194,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         {viewMode === "home" && !selectionMode && <Pressable style={styles.fab} onPress={onCreateChat}><MaterialCommunityIcons color="#ffffff" name="message-plus" size={26} /></Pressable>}
 
         <View style={styles.tabBar}>
-          {[ {id: "chats", label: "צ'אטים", icon: require("../../public/images/light mode/chats_icon.png")}, {id: "updates", label: "עדכונים", icon: scheme === "dark" ? require("../../public/images/dark mode/updates_icon.png") : require("../../public/images/light mode/updates_icon.png"), badge: screenshotPendingCount}, {id: "communities", label: "קהילות", icon: scheme === "dark" ? require("../../public/images/dark mode/communities_icon.png") : require("../../public/images/light mode/communities_icon.png")}, {id: "calls", label: "שיחות", icon: scheme === "dark" ? require("../../public/images/dark mode/voice_call_icon.png") : require("../../public/images/light mode/voice_call_icon.png")} ].map(t => (
+          {[ {id: "chats", label: "צ'אטים", icon: require("../../public/images/light mode/chats_icon.png")}, {id: "updates", label: "עדכונים", icon: scheme === "dark" ? require("../../public/images/dark mode/updates_icon.png") : require("../../public/images/light mode/updates_icon.png")}, {id: "communities", label: "קהילות", icon: scheme === "dark" ? require("../../public/images/dark mode/communities_icon.png") : require("../../public/images/light mode/communities_icon.png")}, {id: "calls", label: "שיחות", icon: scheme === "dark" ? require("../../public/images/dark mode/voice_call_icon.png") : require("../../public/images/light mode/voice_call_icon.png")} ].map(t => (
             <Pressable key={t.id} style={styles.tabItem} onPress={() => setActiveTab(t.id as any)}>
               <View style={[styles.tabIconWrap, activeTab === t.id && styles.tabIconWrapActive]}>
                 <Image source={t.icon} style={[styles.tabIcon, { tintColor: theme.colors.headerIcon }]} />
-                {t.badge ? <View style={styles.tabBadge}><Text style={styles.tabBadgeText}>{t.badge > 9 ? "9+" : t.badge}</Text></View> : null}
               </View>
               <Text style={[styles.tabLabel, activeTab === t.id && styles.tabLabelActive]}>{t.label}</Text>
             </Pressable>

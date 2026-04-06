@@ -46,4 +46,4 @@ export type ChatLocalPreferences = {
   deleted_from_home_at: string | null;
 };
 
-export type ReactionSummary = Record<string, string[]>;
+export type ReactionSummary = Record<string, { userId: string; createdAt: string }[]>;

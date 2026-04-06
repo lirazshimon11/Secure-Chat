@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet } from "react-native";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,7 +26,6 @@ import { ChatPollVotesScreen } from "./chat-settings/ChatPollVotesScreen";
 import { isChatMuted, formatRelativeDate } from "./chat/ChatUtils";
 import { createStyles } from "./chat/ChatStyles";
 import { ChatHeader } from "./chat/ChatHeader";
-import { ScreenshotBanner } from "./chat/ScreenshotBanner";
 import { ChatOverlayManager } from "./chat/ChatOverlayManager";
 import { useChatPermissions } from "./chat/useChatPermissions";
 import { ChatBackground } from "./chat/ChatBackground";
@@ -151,6 +150,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
+  const [isRevealingChat, setIsRevealingChat] = useState(false);
 
   const scrollRef = useRef<ScrollView | null>(null);
   const scrollMetricsRef = useRef({ y: 0, height: 0, contentHeight: 0 });
@@ -204,8 +204,38 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }
   };
 
-  const { hasScreenshotPerm, screenshotBanner, activePermissions, myRequests, requestScreenshotPermission } = 
+  const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } = 
     useChatPermissions(chat, groupMembers, (p) => sendMessage(p));
+
+  const handleToggleReaction = (messageId: string, emoji: string) => {
+    const msg = visibleMessages.find(m => m.id === messageId);
+    if (msg?.body_ciphertext.startsWith("[POLL]:")) {
+      try {
+        const pData = JSON.parse(msg.body_ciphertext.substring(7));
+        if (pData.isScreenshotRequest) {
+          const requestId = pData.screenshotRequestId;
+          const requesterName = profiles[msg.sender_id]?.username || "מישהו";
+          const alreadyApproved = myRequests[chat.id]?.status === "approved";
+
+          if (emoji === "poll:0") {
+            // Background permission update
+            approveRequest(requestId, chat.id, requesterName, profile?.username || "מישהו");
+          } else if (emoji === "poll:1") {
+            // Background cleanup and denial
+            void (async () => {
+               if (alreadyApproved) await revokeApproval(requestId, chat.id, requesterName);
+               await denyRequest(requestId);
+            })();
+          }
+        }
+      } catch (e) {
+        console.error("Screenshot poll vote error", e);
+      }
+    }
+    
+    // Optimistic UI update via global context
+    toggleReaction(messageId, emoji);
+  };
 
   useEffect(() => {
     if (chat?.is_group) loadChatMembers(chat.id).then(setGroupMembers);
@@ -340,7 +370,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         />
       </SafeAreaView>
 
-      <SafeAreaView edges={["left", "right", "bottom"]} style={{ flex: 1, backgroundColor: 'transparent' }}>
+      <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: 'transparent' }}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} enabled={Platform.OS === "ios"}>
           <View style={{ flex: 1 }}>
             {searchOpen && (
@@ -350,73 +380,84 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 <Pressable onPress={() => { setSearchOpen(false); setSearchQuery(""); }}><Feather color={theme.colors.textMuted} name="x" size={18} /></Pressable>
               </View>
             )}
-            {chat?.is_group && screenshotBanner !== "none" && <ScreenshotBanner type={screenshotBanner} secondsLeft={Math.max(0, Math.floor((((activePermissions && chat && activePermissions[chat.id]) ?? 0) - Date.now()) / 1000))} />}
             
-            <Animated.View style={[styles.thread, { opacity: fadeAnim }]}>
-              <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
-                // Initial offset to bottom to reduce jump
-                contentOffset={{ x: 0, y: 10000 }}
-                onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
-                onContentSizeChange={(w, h) => scrollMetricsRef.current.contentHeight = h}
-                onScroll={(e) => { 
-                  scrollMetricsRef.current.y = e.nativeEvent.contentOffset.y;
-                  scrollMetricsRef.current.height = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
-                  scrollMetricsRef.current.contentHeight = e.nativeEvent.contentSize.height || scrollMetricsRef.current.contentHeight;
-                }}
-                onScrollBeginDrag={() => { if (showReactionsForId) setShowReactionsForId(null); }}
-                onMomentumScrollEnd={() => checkVisibility()} onScrollEndDrag={() => checkVisibility()}
-              >
-                <Pressable style={{ flexGrow: 1 }} onPress={() => { if (showReactionsForId) setShowReactionsForId(null); }}>
-                  {groupedMessages.map((item, idx) => {
-                    if (item.type === "date") return <View key={`date-${idx}`} style={styles.dateSeparator}><View style={styles.datePill}><Text style={styles.datePillText}>{item.dateLabel}</Text></View></View>;
-                    if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
-                    const msg = item.message;
-                    return (
-                      <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = e.nativeEvent.layout.y} style={highlightedMessageId === msg.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}>
-                        <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onRevealViewOnce={() => {
-                          if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
-                          setRevealedMessageId(msg.id);
-                          revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
-                        }} onToggleReaction={(e) => toggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
-                        reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
-                        onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }} 
-                        replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
-                        replyToName={(() => {
-                          if (!msg.reply_to_id) return null;
-                          const original = messageMap[msg.reply_to_id];
-                          if (!original) return "תגובה";
-                          const authorId = original.sender_id;
-                          return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
-                        })()}
-                        viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
-                      </View>
-                    );
-                  })}
-                </Pressable>
-              </ScrollView>
-            </Animated.View>
+            <View style={{ flex: 1 }}>
+              <Animated.View style={[styles.thread, { opacity: fadeAnim }]}>
+                <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                  // Initial offset to bottom to reduce jump
+                  contentOffset={{ x: 0, y: 10000 }}
+                  onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
+                  onContentSizeChange={(w, h) => scrollMetricsRef.current.contentHeight = h}
+                  onScroll={(e) => { 
+                    scrollMetricsRef.current.y = e.nativeEvent.contentOffset.y;
+                    scrollMetricsRef.current.height = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
+                    scrollMetricsRef.current.contentHeight = e.nativeEvent.contentSize.height || scrollMetricsRef.current.contentHeight;
+                  }}
+                  onScrollBeginDrag={() => { if (showReactionsForId) setShowReactionsForId(null); }}
+                  onMomentumScrollEnd={() => checkVisibility()} onScrollEndDrag={() => checkVisibility()}
+                >
+                  <Pressable style={{ flexGrow: 1 }} onPress={() => { if (showReactionsForId) setShowReactionsForId(null); }}>
+                    {groupedMessages.map((item, idx) => {
+                      if (item.type === "date") return <View key={`date-${idx}`} style={styles.dateSeparator}><View style={styles.datePill}><Text style={styles.datePillText}>{item.dateLabel}</Text></View></View>;
+                      if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
+                      const msg = item.message;
+                      return (
+                        <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = e.nativeEvent.layout.y} style={highlightedMessageId === msg.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}>
+                          <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onRevealViewOnce={() => {
+                            if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+                            setRevealedMessageId(msg.id);
+                            revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
+                          }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
+                          reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
+                          onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }} 
+                          replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
+                          replyToName={(() => {
+                            if (!msg.reply_to_id) return null;
+                            const original = messageMap[msg.reply_to_id];
+                            if (!original) return "תגובה";
+                            const authorId = original.sender_id;
+                            return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+                          })()}
+                          viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
+                        </View>
+                      );
+                    })}
+                  </Pressable>
+                </ScrollView>
+              </Animated.View>
+            </View>
           </View>
           {isMember && (
-            <MessageComposer onInputFocus={() => { setShowReactionsForId(null); if (showEmojiKeyboard) setShowEmojiKeyboard(false); }} onCancelReply={() => setReplyTo(null)}
-              onSend={(body, kind, expireSeconds) => { 
-                scrollToBottom(true); 
-                setReplyTo(null);
-                void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); 
-              }}
-              replyToText={replyTo?.body_preview ?? null} 
-              replyToName={(() => {
-                if (!replyTo) return null;
-                const authorId = replyTo.sender_id;
-                return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
-              })()}
-              emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
-              onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setAndroidNativeKeyboardPadding(0); setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+            <View style={{ paddingBottom: (showEmojiKeyboard || keyboardHeight > 0) ? 16 : insets.bottom }}>
+              <MessageComposer 
+                onInputFocus={() => { 
+                  setShowReactionsForId(null); 
+                  if (showEmojiKeyboard) {
+                    // Delay hiding emoji keyboard to avoid jump while OS keyboard animates up
+                    setTimeout(() => setShowEmojiKeyboard(false), 300);
+                  }
+                }} 
+                onCancelReply={() => setReplyTo(null)}
+                onSend={(body, kind, expireSeconds) => { 
+                  scrollToBottom(true); 
+                  setReplyTo(null);
+                  void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); 
+                }}
+                replyToText={replyTo?.body_preview ?? null} 
+                replyToName={(() => {
+                  if (!replyTo) return null;
+                  const authorId = replyTo.sender_id;
+                  return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+                })()}
+                emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
+                onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setAndroidNativeKeyboardPadding(0); setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+            </View>
           )}
         </KeyboardAvoidingView>
         
         {showEmojiKeyboard ? (
            <View style={{ height: recordedKeyboardHeight || 300, width: "100%" }}>
-             <EmojiKeyboard height={recordedKeyboardHeight || 300} onEmojiSelected={(emoji) => setComposerEmojiEvent({ emoji, ts: Date.now() })} recents={emojiRecents} onRecentsUpdate={setEmojiRecents} />
+             <EmojiKeyboard height={recordedKeyboardHeight || 300} onEmojiSelected={(emoji) => setComposerEmojiEvent({ emoji, ts: Date.now() })} recents={emojiRecents} onRecentsUpdate={setEmojiRecents} bottomInset={insets.bottom} />
            </View>
         ) : Platform.OS === "android" && androidNativeKeyboardPadding > 0 ? (
            <View style={{ height: androidNativeKeyboardPadding, width: "100%" }} />
@@ -432,6 +473,28 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight
         }}
       />
+
+      {screenshotHold && (
+        <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 999999, top: -100, bottom: -100 }}>
+          {/* Shutter effect - quick flash */}
+          <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "#fff" }} />
+          
+          {/* Result is black */}
+          <View style={{ 
+            ...StyleSheet.absoluteFillObject, 
+            backgroundColor: "#000",
+            opacity: 0.98,
+            justifyContent: "center",
+            alignItems: "center"
+          }}>
+            <MaterialCommunityIcons name="camera-off" size={64} color="#ffffff" style={{ opacity: 0.7, marginBottom: 20 }} />
+            <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700", textAlign: "center" }}>צילום מסך נחסם</Text>
+            <Text style={{ color: "#fff", fontSize: 14, marginTop: 8, opacity: 0.6, width: "70%", textAlign: "center" }}>
+              המסך מושחר בעת הניסיון לצלם את הצ'אט מבלי לקבל הרשאה.
+            </Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }

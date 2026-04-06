@@ -1,11 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  FlatList,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, Profile } from "@/lib/types";
 import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
+
+// הפעלת האנימציות במכשירי אנדרואיד (דרוש כדי ש-LayoutAnimation יעבוד שם)
+if (Platform.OS === "android") {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 
 type Props = {
   onBack: () => void;
@@ -46,6 +64,10 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
 
   function toggleUser(user: Profile) {
     setError(null);
+
+    // מפעיל אנימציה חלקה להופעה/היעלמות של רשימת הנבחרים והזזת התוצאות למטה/למעלה
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+
     setSelectedUsers((current) =>
       current.some((item) => item.id === user.id)
         ? current.filter((item) => item.id !== user.id)
@@ -115,7 +137,7 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
-            inverted={true}
+            // הוסר המאפיין inverted כדי שהמשתמשים יופיעו מצד ימין כראוי
             data={selectedUsers}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => {
@@ -200,7 +222,7 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
             <Text style={styles.modalTitle}>שם הקבוצה</Text>
             <TextInput
               style={[styles.modalInput, webEmbeddedInputReset]}
-              placeholder="לדוגמה: צוות סופ״ש"
+              placeholder="לדוגמה: חופשה לאיראן"
               placeholderTextColor={theme.colors.textMuted}
               value={groupTitle}
               onChangeText={setGroupTitle}
@@ -255,11 +277,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     selectedContainer: {
       backgroundColor: theme.colors.background,
       paddingTop: theme.spacing.lg,
+      //overflow: 'hidden', // ניתן להוסיף אם רוצים למנוע מהתוכן לבלוט החוצה בזמן האנימציה
     },
     selectedChip: {
       alignItems: "center",
-      marginHorizontal: 10,
-      width: 60,
+      marginHorizontal: 4,
+      minWidth: 68,
+      maxWidth: 100,
     },
     selectedAvatarContainer: {
       position: "relative",
@@ -295,6 +319,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 13,
       color: theme.colors.text,
       textAlign: "center",
+      marginTop: 4,
+      width: "100%",
     },
     thickSeparator: {
       height: 1,
@@ -307,11 +333,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.md,
       paddingBottom: theme.spacing.sm,
-      textAlign: "right",
+      textAlign: "left",
       fontWeight: "600",
     },
     resultRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row", // התיקון הקודם שלנו כדי שהאייקון יהיה בשמאל והסימון בימין
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: 12,
@@ -338,13 +364,13 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 17,
       fontWeight: "500",
       color: theme.colors.text,
-      textAlign: "right",
+      textAlign: "left",
     },
     resultSub: {
       fontSize: 14,
       color: theme.colors.textMuted,
       marginTop: 2,
-      textAlign: "right",
+      textAlign: "left",
     },
     radio: {
       width: 24,

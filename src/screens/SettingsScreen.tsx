@@ -1,3 +1,4 @@
+import { useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -5,6 +6,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { useAppTheme } from "@/lib/theme";
+import { AdminScreen } from "./AdminScreen";
 
 type Props = {
   onBack: () => void;
@@ -14,6 +16,11 @@ export function SettingsScreen({ onBack }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
   const { profile, signOut } = useAuth();
+  const [activeSubScreen, setActiveSubScreen] = useState<"admin" | null>(null);
+
+  if (activeSubScreen === "admin") {
+    return <AdminScreen onBack={() => setActiveSubScreen(null)} />;
+  }
 
   return (
     <Screen scroll>
@@ -39,6 +46,11 @@ export function SettingsScreen({ onBack }: Props) {
           <SettingRow icon="account-outline" subtitle="הזהות שלך המבוססת על שם משתמש" title="פרופיל" />
           <SettingRow icon="shield-lock-outline" subtitle="הודעות נעלמות וצפייה חד-פעמית" title="פרטיות" />
           <SettingRow icon="message-text-outline" subtitle="רק הודעות טקסט מותרות באפליקציה" title="צ'אטים" />
+          {profile?.username === "admin" && (
+            <Pressable onPress={() => setActiveSubScreen("admin")}>
+              <SettingRow icon="shield-crown-outline" subtitle="ניהול משתמשים והרשאות" title="הרשאות מנהל" />
+            </Pressable>
+          )}
         </View>
 
         <View style={styles.actions}>

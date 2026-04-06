@@ -24,11 +24,12 @@
       "favicon": "./public/images/icon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {
-        "projectId": "replace-me"
+        "projectId": "0b85e461-e09c-49da-a6e7-28b5f9e0268c"
       }
     }
   }

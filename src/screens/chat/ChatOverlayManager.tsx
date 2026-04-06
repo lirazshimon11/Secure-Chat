@@ -6,6 +6,7 @@ import { Chat, Message, Profile } from "@/lib/types";
 import { useAppTheme } from "@/lib/theme";
 import { describeMute } from "./ChatUtils";
 import { MessageBubble } from "@/components/MessageBubble";
+import { PERMISSION_DURATION_MS } from "@/context/ScreenshotContext";
 
 type OverlayProps = {
   chat: Chat;
@@ -110,6 +111,30 @@ export const ChatOverlayManager = (props: OverlayProps) => {
     hasScreenshotPerm, myRequests, groupMembers,
     setSearchOpen, keyboardHeight
   } = props;
+
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => {
+    const iv = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const isScreenshotRequestBlocked = useMemo(() => {
+    // 1. If currently have permission, strict block
+    if (hasScreenshotPerm) return true;
+    
+    const req = myRequests[chat.id];
+    if (!req) return false;
+
+    // 2. If it's a pending/approved request, check its age
+    const baseTime = req.approved_at 
+      ? new Date(req.approved_at).getTime() 
+      : new Date(req.requested_at).getTime();
+    
+    // If it's still within the "cooldown" window, block it
+    if (Date.now() - baseTime < PERMISSION_DURATION_MS) return true;
+
+    return false;
+  }, [hasScreenshotPerm, myRequests, chat.id, tick]);
 
   return (
     <>
@@ -361,15 +386,24 @@ export const ChatOverlayManager = (props: OverlayProps) => {
               <AttachmentItem icon="file-document" label="קבצים" color="#651FFF" theme={theme} />
               <AttachmentItem icon="poll" label="סקר" color="#FFB300" theme={theme} onPress={() => { setShowAttachmentMenu(false); setActiveSubScreen("createPoll"); }} />
               <AttachmentItem icon="calendar" label="אירוע" color="#D81B60" theme={theme} />
-              <AttachmentItem icon="camera-outline" label="בקשת צילום" color="#00A884" theme={theme} onPress={async () => {
+              <AttachmentItem 
+                icon="camera-outline" 
+                label="בקשת צילום" 
+                color="#00A884" 
+                theme={theme} 
+                disabled={isScreenshotRequestBlocked}
+                onPress={async () => {
+                   if (isScreenshotRequestBlocked) return;
                    setShowAttachmentMenu(false);
-                   if (!hasScreenshotPerm && myRequests[chat.id]?.status !== "pending") {
-                     let targetMemberIds = groupMembers.map((m) => m.id);
-                     if (!chat.is_group) targetMemberIds = Object.keys(profiles).filter(id => id !== profile?.id);
-                     const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
-                     if (reqResult?.id) sendMessage({ chatId: chat.id, body: `[SCREENSHOT_REQUEST]:${reqResult.id}`, messageKind: "standard" });
+                   const targetMemberIds = chat.is_group 
+                     ? groupMembers.map((m) => m.id)
+                     : Object.keys(profiles).filter(id => id !== profile?.id);
+                   const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
+                   if (reqResult?.pollBody) {
+                     sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
                    }
-              }} />
+                }} 
+              />
             </View>
           </View>
         </View>
@@ -492,9 +526,9 @@ function MenuItem({ label, secondary, onPress }: { label: string; secondary?: st
   );
 }
 
-function AttachmentItem({ icon, label, color, theme, onPress }: { icon: any, label: string, color: string, theme: any, onPress?: () => void }) {
+function AttachmentItem({ icon, label, color, theme, disabled, onPress }: { icon: any, label: string, color: string, theme: any, disabled?: boolean, onPress?: () => void }) {
   return (
-    <Pressable style={{ width: 70, alignItems: "center", gap: 8 }} onPress={onPress}>
+    <Pressable disabled={disabled} style={{ width: 70, alignItems: "center", gap: 8, opacity: disabled ? 0.35 : 1 }} onPress={onPress}>
       <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.menuIconBackground, borderColor: theme.colors.bubbleBorder, borderWidth: 1 }} >
         <MaterialCommunityIcons name={icon} size={24} color={color} />
       </View>

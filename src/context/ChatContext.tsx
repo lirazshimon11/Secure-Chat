@@ -14,10 +14,11 @@ type MessageComposerInput = { chatId: string; body: string; messageKind: "standa
 
 type ChatContextValue = {
   chats: Chat[]; profiles: Record<string, Profile>; messagesByChat: Record<string, Message[]>; reactionsByMessage: Record<string, ReactionSummary>; unreadCounts: Record<string, number>; muteSettings: Record<string, ChatMuteSetting>; chatPreferences: Record<string, ChatLocalPreferences>; contactNicknames: Record<string, ContactNicknameData>; openedViewOnceIds: Record<string, boolean>; loading: boolean;
-  refreshChats: () => Promise<void>; loadMessages: (chatId: string) => Promise<void>; loadChatMembers: (chatId: string) => Promise<Profile[]>; markChatSeen: (chatId: string, timestamp?: string, nextUnreadCount?: number) => Promise<void>;
+  refreshChats: (silent?: boolean) => Promise<void>; loadMessages: (chatId: string) => Promise<void>; loadChatMembers: (chatId: string) => Promise<Profile[]>; markChatSeen: (chatId: string, timestamp?: string, nextUnreadCount?: number) => Promise<void>;
   setChatMute: (chatId: string, duration: MuteDurationOption) => void; clearChatMute: (chatId: string) => void; archiveChats: (chatIds: string[]) => void; unarchiveChats: (chatIds: string[]) => void; togglePinnedChats: (chatIds: string[]) => void; lockChats: (chatIds: string[]) => void; unlockChats: (chatIds: string[]) => void; clearChatsLocally: (chatIds: string[]) => void;
   searchUsers: (query: string) => Promise<Profile[]>; sendMessage: (input: MessageComposerInput) => Promise<string | null>; createChat: (title: string, memberUsernames: string[]) => Promise<{ chat: Chat | null; error: string | null }>; toggleReaction: (messageId: string, emoji: string) => Promise<void>; openViewOnceMessage: (message: Message) => Promise<void>; deleteMessages: (messageIds: string[], forEveryone: boolean) => Promise<void>; updateChatDescription: (chatId: string, description: string) => Promise<void>; updateChatTitle: (chatId: string, title: string) => Promise<void>; deleteChats: (chatIds: string[]) => Promise<void>; setContactNickname: (userId: string, data: ContactNicknameData) => Promise<void>; searchMessagesGlobal: (query: string) => Promise<{ chat_id: string; message: Message }[]>;
   setChatMemberRole: (chatId: string, userId: string, role: string) => Promise<void>; removeChatMember: (chatId: string, profile: Profile, chatTitle: string) => Promise<void>; isCurrentMember: (chatId: string) => Promise<boolean>;
+  hardResetChats: () => void;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -89,6 +90,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     })();
 
     subscribe(profile.id);
+
     return () => { 
       active = false;
       if (channelRef.current) void supabase.removeChannel(channelRef.current); 
@@ -105,74 +107,113 @@ export function ChatProvider({ children }: PropsWithChildren) {
     void AsyncStorage.setItem(`${LOCAL_CHAT_STATE_KEY_PREFIX}:${profile.id}`, JSON.stringify(chatPreferences));
   }, [chatPreferences, localPreferencesReady, profile?.id]);
 
-  // ── Core Actions ────────────────────────────────────────────────────────
-  const refreshChats = async (silent = false) => {
-    if (!profile?.id) return;
-    if (!silent) setLoading(true);
-    const { data: rows } = await ChatService.fetchMemberDetails(profile.id);
-    const cIds = (rows ?? []).map(r => r.chat_id);
-    const directIds = (rows ?? []).filter(r => !r.is_group).map(r => r.chat_id);
-    const { data: memberRows } = await ChatService.fetchDirectPartners(directIds);
-    const otherIds = [...new Set(((memberRows ?? []) as any).filter((r: any) => r.user_id !== profile.id).map((r: any) => r.user_id))];
-    const { data: otherProfiles } = await ChatService.fetchProfiles(otherIds as string[]);
-    const { data: readRows } = await ChatService.fetchLastReadAt(profile.id, cIds);
-    const { data: unreadMsgRows } = cIds.length ? await supabase.from("messages").select("chat_id,sender_id,created_at").in("chat_id", cIds).is("deleted_at", null) : { data: [] };
-
-    const profMap = Object.fromEntries(((otherProfiles ?? []) as Profile[]).map(p => [p.id, p]));
-    const partners: Record<string, string> = {};
-    const directTitles: Record<string, string> = {};
-    for (const r of (memberRows ?? []) as any) if (r.user_id !== profile.id) { partners[r.chat_id] = r.user_id; if (profMap[r.user_id]) directTitles[r.chat_id] = profMap[r.user_id].username; }
-    setPrivateChatPartners(partners); setProfiles(cur => ({ ...cur, ...profMap }));
-
-    const lastReadMap: Record<string, string> = {};
-    for (const r of (readRows ?? []) as any) if (!lastReadMap[r.chat_id] || getUtcTime(r.last_read_at) > getUtcTime(lastReadMap[r.chat_id])) lastReadMap[r.chat_id] = r.last_read_at;
+  // ── Helper: Format Message Preview to Hebrew ──────────────────────────
+  const formatMessagePreview = (body: string | null, messageKind: string, _senderId: string) => {
+    if (!body || typeof body !== 'string') return "";
+    if (messageKind === "view_once") return "הודעה לצפייה חד-פעמית";
     
-    const unCounts: Record<string, number> = {};
-    for (const id of cIds) unCounts[id] = 0;
-    for (const r of (unreadMsgRows ?? []) as any) if (r.sender_id !== profile.id) {
-        const lastRead = lastReadMap[r.chat_id];
-        if (!lastRead || getUtcTime(r.created_at) > getUtcTime(lastRead)) unCounts[r.chat_id] = (unCounts[r.chat_id] ?? 0) + 1;
+    if (body && body.startsWith("[POLL]:")) {
+      try {
+        const data = JSON.parse(body.substring(7));
+        return `סקר: ${data.question}`;
+      } catch { return "סקר"; }
     }
 
-    const nextRawChats = rows!.map(r => {
-      const isRemoved = r.role === "removed";
-      let preview = isRemoved ? "את/ה הוסרת/ה מהקבוצה" : r.last_message_preview;
-      let lastAt = isRemoved ? r.removed_at || r.last_message_at : r.last_message_at;
+    if (messageKind === "system" || (body && body.startsWith("[SYSTEM_"))) {
+      if (body && body.startsWith("[SYSTEM_USER_REMOVED]:")) {
+        const targetId = body.split(":")[1];
+        const isMe = targetId === profile?.id;
+        if (isMe) return "את/ה הוסרת/ה מהקבוצה";
+        const nick = contactNicknames[targetId]?.first_name;
+        const prof = profiles[targetId];
+        const displayName = nick || prof?.full_name || prof?.username || "משתתף/ת";
+        return `${displayName} הוסר/ה מהקבוצה`;
+      }
+      if (body && body.startsWith("[SYSTEM_SCREENSHOT_APPROVED]:")) {
+        const parts = body.split(":");
+        const requester = parts[1] || "מישהו";
+        const approver = parts[2] || "מישהו";
+        const durationMin = parts[3] || "1";
+        return `צילום מסך אושר ל-${requester} על ידי ${approver} למשך ${durationMin} דקות`;
+      }
+      if (body && body.startsWith("[SYSTEM_SCREENSHOT_EXPIRED]:")) {
+        const parts = body.split(":");
+        const requester = parts[1] || "מישהו";
+        return `תם הזמן המוקצב לצילום מסך עבור ${requester}`;
+      }
+    }
+    
+    return body;
+  };
+  const refreshChats = async (silent: boolean = false) => {
+    if (!profile?.id) return;
+    if (!silent) setLoading(true);
+    try {
+      const { data: rows, error } = await ChatService.fetchMemberDetails(profile.id);
+      if (error) throw error;
 
-      // Smart override: if we have local messages already loaded, they honor local deletions and optimistic updates.
-      const local = messagesByChat[r.chat_id];
-      if (local && local.length > 0) {
-        const lastLocal = local[local.length - 1];
-        const serverTs = lastAt ? new Date(lastAt).getTime() : 0;
-        const localTs = new Date(lastLocal.created_at).getTime();
-        
-        // Only use server preview if it refers to a message NEWER than our latest local one.
-        // This handles the case where we deleted the server's last message locally.
-        if (serverTs <= localTs) {
-          preview = lastLocal.body_preview || lastLocal.body_ciphertext;
-          lastAt = lastLocal.created_at;
-        }
-      } else if (local) {
-        // We have messages loaded for this chat and they are all filtered/empty.
-        // If the server preview is still pointing at something, it must be something we've filtered.
-        preview = "אין הודעות עדיין";
+      const safeRows = rows || [];
+      const cIds = safeRows.map(r => r.chat_id);
+      const directIds = safeRows.filter(r => !r.is_group).map(r => r.chat_id);
+      const { data: memberRows } = await ChatService.fetchDirectPartners(directIds);
+      const otherIds = [...new Set(((memberRows ?? []) as any).filter((r: any) => r.user_id !== profile.id).map((r: any) => r.user_id))];
+      const { data: otherProfiles } = await ChatService.fetchProfiles(otherIds as string[]);
+      const { data: readRows } = await ChatService.fetchLastReadAt(profile.id, cIds);
+      const { data: unreadMsgRows } = cIds.length ? await supabase.from("messages").select("chat_id,sender_id,created_at").in("chat_id", cIds).is("deleted_at", null) : { data: [] };
+
+      const profMap = Object.fromEntries(((otherProfiles ?? []) as Profile[]).map(p => [p.id, p]));
+      const partners: Record<string, string> = {};
+      const directTitles: Record<string, string> = {};
+      for (const r of (memberRows ?? []) as any) if (r.user_id !== profile.id) { partners[r.chat_id] = r.user_id; if (profMap[r.user_id]) directTitles[r.chat_id] = profMap[r.user_id].username; }
+      setPrivateChatPartners(partners); setProfiles(cur => ({ ...cur, ...profMap }));
+
+      const lastReadMap: Record<string, string> = {};
+      for (const r of (readRows ?? []) as any) if (!lastReadMap[r.chat_id] || getUtcTime(r.last_read_at) > getUtcTime(lastReadMap[r.chat_id])) lastReadMap[r.chat_id] = r.last_read_at;
+      
+      const unCounts: Record<string, number> = {};
+      for (const id of cIds) unCounts[id] = 0;
+      for (const r of (unreadMsgRows ?? []) as any) if (r.sender_id !== profile.id) {
+          const lastRead = lastReadMap[r.chat_id];
+          if (!lastRead || getUtcTime(r.created_at) > getUtcTime(lastRead)) unCounts[r.chat_id] = (unCounts[r.chat_id] ?? 0) + 1;
       }
 
-      return { 
-        id: r.chat_id, 
-        title: r.is_group ? r.chat_title : directTitles[r.chat_id] ?? r.chat_title, 
-        is_group: r.is_group, 
-        description: r.description ?? null, 
-        created_by: r.created_by, 
-        created_at: r.created_at, 
-        last_message_preview: preview, 
-        last_message_at: lastAt 
-      };
-    });
+      const nextRawChats = safeRows.map(r => {
+        const isRemoved = r.role === "removed";
+        let preview = isRemoved ? "את/ה הוסרת/ה מהקבוצה" : r.last_message_preview;
+        let lastAt = isRemoved ? r.removed_at || r.last_message_at : r.last_message_at;
 
-    setRawChats(nextRawChats as any);
-    setUnreadCounts(cur => { const next = { ...unCounts }; Object.keys(cur).forEach(id => { if (cur[id] === 0) next[id] = 0; }); return next; });
-    setLoading(false);
+        const local = messagesByChat[r.chat_id];
+        if (local && local.length > 0) {
+          const lastLocal = local[local.length - 1];
+          const serverTs = lastAt ? new Date(lastAt).getTime() : 0;
+          const localTs = new Date(lastLocal.created_at).getTime();
+          if (serverTs <= localTs) {
+            preview = formatMessagePreview(lastLocal.body_preview || lastLocal.body_ciphertext, lastLocal.message_kind, lastLocal.sender_id);
+            lastAt = lastLocal.created_at;
+          }
+        } else {
+          preview = formatMessagePreview(preview, r.last_message_kind || "standard", r.last_message_sender_id);
+        }
+
+        return { 
+          id: r.chat_id, 
+          title: r.is_group ? r.chat_title : directTitles[r.chat_id] ?? r.chat_title, 
+          is_group: r.is_group, 
+          description: r.description ?? null, 
+          created_by: r.created_by, 
+          created_at: r.created_at, 
+          last_message_preview: preview, 
+          last_message_at: lastAt 
+        };
+      });
+
+      setRawChats(nextRawChats as any);
+      setUnreadCounts(cur => { const next = { ...unCounts }; Object.keys(cur).forEach(id => { if (cur[id] === 0) next[id] = 0; }); return next; });
+    } catch (err) {
+      console.error("Refresh chats error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadMessages = async (chatId: string) => {
@@ -187,7 +228,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
     loadedChatIdsRef.current = [...new Set([...loadedChatIdsRef.current, chatId])];
     setMessagesByChat(cur => ({ ...cur, [chatId]: ((messages as Message[]) ?? []).filter(m => !deletedForMeIdsRef.current.includes(m.id)) }));
     if (profRows) setProfiles(cur => ({ ...cur, ...Object.fromEntries(((profRows as Profile[]) ?? []).map(p => [p.id, p])) }));
-    if (reactionRows) setReactionsByMessage(cur => { const next = { ...cur }; mIds.forEach(id => next[id] = {}); ((reactionRows as any) ?? []).forEach((r: any) => { next[r.message_id] ??= {}; next[r.message_id][r.emoji] ??= []; next[r.message_id][r.emoji].push(r.user_id); }); return next; });
+    if (reactionRows) setReactionsByMessage(cur => { const next = { ...cur }; mIds.forEach(id => next[id] = {}); ((reactionRows as any) ?? []).forEach((r: any) => { next[r.message_id] ??= {}; next[r.message_id][r.emoji] ??= []; next[r.message_id][r.emoji].push({ userId: r.user_id, createdAt: r.created_at }); }); return next; });
     if (viewRows) setOpenedViewOnceIds(cur => ({ ...cur, ...Object.fromEntries(((viewRows as any) ?? []).map((r: any) => [r.message_id, !!r.opened_at])) }));
   };
 
@@ -196,32 +237,26 @@ export function ChatProvider({ children }: PropsWithChildren) {
     channelRef.current = supabase.channel(`chat-stream-${userId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (p) => {
         const n = p.new as Message; if (!n?.chat_id) return;
-        
-        // If it's an INSERT and it's from ME, we handle it via the optimistic ID logic or just ignore
-        // because we already have the optimistic version and the 'single' return from sendMessage.
-        // Actually, to be safe and flicker-free: only handle if it's NOT from me, or if it's an UPDATE.
-        if (p.eventType === 'INSERT' && n.sender_id === userId) return;
-
+        if (p.eventType === 'INSERT' && n.sender_id === userId && n.message_kind !== 'system') return;
         setMessagesByChat(cur => { 
           if (deletedForMeIdsRef.current.includes(n.id)) return cur; 
           const existing = cur[n.chat_id] ?? [];
           const exists = existing.find(m => m.id === n.id);
-          
-          let next;
-          if (exists) {
-            next = existing.map(m => m.id === n.id ? n : m);
-          } else {
-            next = [...existing, n].sort((a,b) => a.created_at.localeCompare(b.created_at));
-          }
-          
+          let next = exists ? existing.map(m => m.id === n.id ? n : m) : [...existing, n].sort((a,b) => a.created_at.localeCompare(b.created_at));
           return { ...cur, [n.chat_id]: next }; 
         });
-        
-        // Manual preview update to avoid jitter while being responsive
-        setRawChats(cur => cur.map(c => c.id === n.chat_id ? { ...c, last_message_preview: n.body_preview || n.body_ciphertext, last_message_at: n.created_at } : c));
+        setRawChats(cur => cur.map(c => c.id === n.chat_id ? { ...c, last_message_preview: formatMessagePreview(n.body_preview || n.body_ciphertext, n.message_kind, n.sender_id), last_message_at: n.created_at } : c));
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
       .on("postgres_changes", { event: "*", schema: "public", table: "message_views" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
+      .on("postgres_changes", { event: "*", schema: "public", table: "chat_members" }, (p) => {
+          const n = (p.new || p.old) as any;
+          // Refresh after a tiny delay to allow DB views to settle during bulk updates
+          if (n?.user_id === userId) setTimeout(() => void refreshChats(true), 300);
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "chats" }, () => {
+          setTimeout(() => void refreshChats(true), 300);
+      })
       .subscribe();
   };
 
@@ -265,7 +300,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
       // 2. Update chat preview in background to prevent UI jitter
       setTimeout(() => {
-        setRawChats(cur => cur.map(c => c.id === input.chatId ? { ...c, last_message_preview: preview, last_message_at: optimisticMsg.created_at } : c));
+        setRawChats(cur => cur.map(c => c.id === input.chatId ? { ...c, last_message_preview: formatMessagePreview(preview, input.messageKind, profile.id), last_message_at: optimisticMsg.created_at } : c));
       }, 0);
 
       // 3. Send to DB with the SAME ID
@@ -281,10 +316,10 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const toggleReaction = async (messageId: string, emoji: string) => {
     if (!profile?.id) return;
     const curUsers = reactionsByMessage[messageId]?.[emoji] ?? [];
-    const already = curUsers.includes(profile.id);
+    const already = curUsers.some(r => r.userId === profile.id);
     setReactionsByMessage(cur => {
       const next = { ...cur }; const msgReactions = { ...(next[messageId] ?? {}) };
-      msgReactions[emoji] = already ? curUsers.filter(id => id !== profile.id) : [...curUsers, profile.id];
+      msgReactions[emoji] = already ? curUsers.filter(r => r.userId !== profile.id) : [...curUsers, { userId: profile.id, createdAt: new Date().toISOString() }];
       next[messageId] = msgReactions; return next;
     });
     await ChatService.toggleReaction(messageId, profile.id, emoji, already);
@@ -424,6 +459,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
       if (!profile?.id) return false;
       const { data } = await supabase.from("chat_members").select("chat_id").match({ chat_id: chatId, user_id: profile.id }).neq("role", "removed").maybeSingle();
       return !!data;
+    },
+    hardResetChats: () => {
+      setRawChats([]);
+      setPrivateChatPartners({});
+      setMessagesByChat({});
     }
   }), [rawChats, profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, contactNicknames, loading, privateChatPartners, profile?.id]);
 

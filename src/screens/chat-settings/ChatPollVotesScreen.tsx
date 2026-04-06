@@ -49,26 +49,44 @@ export function ChatPollVotesScreen({ message, reactions, onBack, currentUserId 
                 <Text style={styles.optionHeaderText}>{opt}</Text>
                 {voterIds.length > 0 ? (
                   <View style={styles.voteCountRow}>
-                     <Text style={styles.voteCountText}>{voterIds.length}</Text>
-                     <Text style={styles.voteStar}>★</Text>
+                    <Text style={styles.voteCountText}>{voterIds.length}</Text>
+                    <Text style={styles.voteStar}>★</Text>
                   </View>
                 ) : (
                   <Text style={styles.voteCountZero}>0</Text>
                 )}
               </View>
 
-              {Array.isArray(voterIds) && voterIds.map((uid) => {
+              {Array.isArray(voterIds) && voterIds.map((voter) => {
+                const uid = voter.userId;
                 const userProfile = profiles[uid];
                 const isMe = uid === currentUserId;
                 const displayName = isMe ? "את/ה" : userProfile?.username || "משתמש אנונימי";
+
+                // Format the relative time
+                let timeLabel = "";
+                if (voter.createdAt) {
+                   const diff = Date.now() - new Date(voter.createdAt).getTime();
+                   if (diff < 60000) timeLabel = "ממש עכשיו";
+                   else {
+                      const mins = Math.floor(diff / 60000);
+                      if (mins < 60) timeLabel = `לפני ${mins} דקות`;
+                      else {
+                         const hours = Math.floor(mins / 60);
+                         if (hours < 24) timeLabel = `לפני ${hours} שעות`;
+                         else timeLabel = new Date(voter.createdAt).toLocaleDateString("he-IL");
+                      }
+                   }
+                }
+
                 return (
                   <View key={uid} style={styles.voterRow}>
-                    <View style={styles.voterInfo}>
-                      <Text style={styles.voterName}>{displayName}</Text>
-                      {isMe && <Text style={styles.voterSub}>ממש עכשיו</Text>}
-                    </View>
                     <View style={styles.avatarEmpty}>
                       <MaterialCommunityIcons name="account" size={30} color={theme.colors.border} style={styles.avatarIcon} />
+                    </View>
+                    <View style={styles.voterInfo}>
+                      <Text style={styles.voterName}>{displayName}</Text>
+                      {timeLabel ? <Text style={styles.voterSub}>{timeLabel}</Text> : null}
                     </View>
                   </View>
                 );
@@ -108,7 +126,7 @@ const createStyles = (theme: any) =>
       fontWeight: "bold",
       color: theme.colors.text,
       flex: 1,
-      textAlign: "right",
+      textAlign: "left", // שונה לימין
       paddingRight: 16,
     },
     content: {
@@ -123,10 +141,10 @@ const createStyles = (theme: any) =>
       fontSize: 16,
       fontWeight: "bold",
       color: theme.colors.text,
-      textAlign: "right",
+      textAlign: "left",
     },
     optionHeader: {
-      flexDirection: "row-reverse",
+      flexDirection: "row", // שונה ל-row כדי שהטקסט יהיה בשמאל
       alignItems: "center",
       justifyContent: "space-between",
       padding: 16,
@@ -158,21 +176,21 @@ const createStyles = (theme: any) =>
       fontSize: 14,
     },
     voterRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row", // שונה ל-row
       alignItems: "center",
-      justifyContent: "space-between",
+      justifyContent: "flex-start", // מיושר לשמאל
       paddingHorizontal: 16,
       paddingVertical: 12,
     },
     voterInfo: {
       flex: 1,
-      alignItems: "flex-end",
+      alignItems: "flex-start", // מיושר לשמאל
     },
     voterName: {
       fontSize: 16,
       fontWeight: "bold",
       color: theme.colors.text,
-      textAlign: "right",
+      textAlign: "left",
     },
     voterSub: {
       fontSize: 13,
@@ -184,7 +202,7 @@ const createStyles = (theme: any) =>
       height: 40,
       borderRadius: 20,
       overflow: "hidden",
-      marginLeft: 14,
+      marginRight: 14, // שונה ל-marginRight כדי להרחיק את הטקסט
       backgroundColor: theme.colors.surface,
       alignItems: "center",
       justifyContent: "center",

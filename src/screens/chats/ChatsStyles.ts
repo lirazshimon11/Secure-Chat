@@ -266,6 +266,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     overlayRoot: {
       ...StyleSheet.absoluteFillObject,
+      top: -15,
       zIndex: 40,
       justifyContent: "flex-start",
       alignItems: "flex-end",
@@ -356,7 +357,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       marginTop: 2,
     },
     tabLabelActive: {
-      color: "#ffffff",
+      color: scheme === "dark" ? "#FFFFFF" : "#008069",
       fontWeight: "900",
     },
     tabBadge: {

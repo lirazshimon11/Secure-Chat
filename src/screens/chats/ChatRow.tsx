@@ -56,19 +56,27 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}>
             {(() => {
-              const { isPoll, question } = parsePollPreview(item.preview);
+              const { isPoll, isScreenshot, question } = parsePollPreview(item.preview);
               if (isPoll) {
                 return (
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1, justifyContent: "flex-start" }}>
                     <MaterialCommunityIcons 
                       name="poll" 
                       size={18} 
                       color={theme.colors.textMuted} 
-                      style={{ marginRight: 4 }}
+                      style={{ marginHorizontal: 2 }}
                     />
+                    {isScreenshot && (
+                      <MaterialCommunityIcons 
+                        name="camera-outline" 
+                        size={17} 
+                        color={theme.colors.textMuted} 
+                        style={{ marginHorizontal: 2 }}
+                      />
+                    )}
                     <Text 
                       numberOfLines={1} 
-                      style={[styles.chatPreview, { marginTop: 0, flex: 1 }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}
+                      style={[styles.chatPreview, { marginTop: 0, flex: 1, textAlign: "left" }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}
                     >
                       {question}
                     </Text>
@@ -76,7 +84,7 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
                 );
               }
               return (
-                <Text numberOfLines={1} style={[styles.chatPreview, { flex: 1 }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
+                <Text numberOfLines={1} style={[styles.chatPreview, { flex: 1, textAlign: "left" }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
                   {item.preview}
                 </Text>
               );

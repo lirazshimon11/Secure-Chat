@@ -26,8 +26,9 @@ export const ScreenshotRequestBubble = ({
   const scReq = allRequests[reqId];
   if (!scReq) return <Text style={styles.body}>טוען בקשה...</Text>;
 
-  const isApproved = scReq.status === "approved";
+  const isApproved = scReq.status === "approved" || (scReq.approvals && scReq.approvals.length > 0);
   const isDenied = scReq.status === "denied";
+  const approvedCount = scReq.approvals ? scReq.approvals.length : 0;
   const requesterName = scReq.requesterUsername || "המשתמש";
   const isMine = scReq.requester_id === currentUserId;
 
@@ -42,25 +43,25 @@ export const ScreenshotRequestBubble = ({
       </View>
 
       <Pressable
-        style={styles.pollOptionRow}
-        onPress={() => !isApproved && !isDenied && !isMine && approveRequest(reqId)}
+        style={({ pressed }) => [styles.pollOptionRow, pressed && { opacity: 0.7 }]}
+        onPress={() => !isApproved && !isDenied && approveRequest(reqId)}
       >
-        <View style={styles.pollOptionInner}>
+        <View style={styles.pollOptionInner} pointerEvents="none">
           <View style={styles.pollOptionTextWrapper}>
             <View style={[styles.pollRadioCircle, isApproved && styles.pollRadioCircleChecked]}>
               {isApproved && <MaterialCommunityIcons name="check" size={14} color={theme.colors.textOnAccent} />}
             </View>
             <Text style={styles.pollOptionText}>מאשר</Text>
           </View>
-          <Text style={styles.pollVoteCount}>{isApproved ? "1" : "0"}</Text>
+          <Text style={styles.pollVoteCount}>{approvedCount}</Text>
         </View>
       </Pressable>
 
       <Pressable
-        style={styles.pollOptionRow}
-        onPress={() => !isApproved && !isDenied && !isMine && denyRequest(reqId)}
+        style={({ pressed }) => [styles.pollOptionRow, pressed && { opacity: 0.7 }]}
+        onPress={() => !isApproved && !isDenied && denyRequest(reqId)}
       >
-        <View style={styles.pollOptionInner}>
+        <View style={styles.pollOptionInner} pointerEvents="none">
           <View style={styles.pollOptionTextWrapper}>
             <View style={[styles.pollRadioCircle, isDenied && styles.pollRadioCircleChecked]}>
               {isDenied && <MaterialCommunityIcons name="check" size={14} color={theme.colors.textOnAccent} />}

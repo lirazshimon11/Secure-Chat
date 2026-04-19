@@ -68,15 +68,23 @@ export function MessageBubble({
     }
   }, [showReactions, onReportPickerLayout]);
 
+  const isSelectionModeRef = useRef(isSelectionMode);
+  useEffect(() => { isSelectionModeRef.current = isSelectionMode; }, [isSelectionMode]);
+
   const responder = useMemo(() =>
-    Platform.OS === "web" || isSelectionMode ? null : PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 8,
-      onPanResponderMove: (_, gesture) => { if (gesture.dx > 0) translateX.setValue(Math.min(gesture.dx, 70)); },
+    Platform.OS === "web" ? null : PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) => !isSelectionModeRef.current && Math.abs(gesture.dx) > 8,
+      onPanResponderMove: (_, gesture) => { if (!isSelectionModeRef.current && gesture.dx > 0) translateX.setValue(Math.min(gesture.dx, 70)); },
       onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx > 40) onReply(message);
-        Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+        if (!isSelectionModeRef.current) {
+          if (gesture.dx > 40) onReply(message);
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+        }
       },
-    }), [isSelectionMode, message, onReply, translateX]);
+      onPanResponderTerminate: () => {
+        if (!isSelectionModeRef.current) Animated.spring(translateX, { toValue: 0, useNativeDriver: true }).start();
+      }
+    }), [message, onReply, translateX]);
 
   const isScreenshotRequest = message.body_ciphertext.startsWith("[SCREENSHOT_REQUEST]:");
   const isPoll = message.body_ciphertext.startsWith("[POLL]:");

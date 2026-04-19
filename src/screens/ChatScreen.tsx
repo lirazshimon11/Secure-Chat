@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet } from "react-native";
+import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -247,8 +247,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
 
   const scrollRef = useRef<ScrollView | null>(null);
+  const threadContainerRef = useRef<any>(null);
   const scrollMetricsRef = useRef({ y: 0, height: 0, contentHeight: 0 });
-  const messageLayoutsRef = useRef<Record<string, number>>({});
+  const messageLayoutsRef = useRef<Record<string, { y: number; h: number }>>({});
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const initialScrollDone = useRef(false);
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -264,7 +265,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
       const msg = visibleMessages[i];
       if (msg.sender_id !== profile.id) {
-        const topY = messageLayoutsRef.current[msg.id];
+        const layout = messageLayoutsRef.current[msg.id];
+        const topY = layout?.y;
         if (topY !== undefined && topY <= bottomEdge + 50) {
           latestSeenMsg = msg;
           break;
@@ -289,7 +291,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   };
 
   const scrollToMessageWithRetry = (msgId: string, highlight = true, attempts = 6) => {
-    const y = messageLayoutsRef.current[msgId];
+    const layout = messageLayoutsRef.current[msgId];
+    const y = layout?.y;
     if (y !== undefined) {
       scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
       if (highlight) { setHighlightedMessageId(msgId); setTimeout(() => setHighlightedMessageId(null), 2000); }
@@ -505,6 +508,122 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }).start();
   }, []);
 
+  // ── Drag to Select Setup ───────────────────────────────────────────────
+  const selectedIdsRef = useRef<string[]>([]);
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
+
+  const threadHeightRef = useRef(0);
+  const isDragSelectingRef = useRef(false);
+  const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  const dragPivotIdRef = useRef<string | null>(null);
+  const dragInitialIdsRef = useRef<Set<string>>(new Set());
+
+  const selectionPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponderCapture: () => false,
+    onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
+      if (selectedIdsRef.current.length > 0 && Math.abs(gestureState.dy) > 8) {
+        return true;
+      }
+      return false;
+    },
+    onPanResponderGrant: () => {
+      isDragSelectingRef.current = true;
+      dragPivotIdRef.current = null;
+      dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const topOffset = insets.top + 58 + (searchOpen ? 52 : 0);
+      const viewportY = gestureState.moveY - topOffset;
+      const contentY = viewportY + scrollMetricsRef.current.y;
+      
+      let targetId: string | null = null;
+      for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
+        if (contentY >= layout.y && contentY <= layout.y + layout.h) {
+          targetId = id;
+          break;
+        }
+      }
+
+      if (targetId) {
+        if (!dragPivotIdRef.current) {
+          dragPivotIdRef.current = targetId;
+          dragInitialIdsRef.current.add(targetId);
+        }
+
+        const pivotLayout = messageLayoutsRef.current[dragPivotIdRef.current];
+        const targetLayout = messageLayoutsRef.current[targetId];
+
+        if (pivotLayout && targetLayout) {
+          const minY = Math.min(pivotLayout.y, targetLayout.y);
+          const maxY = Math.max(pivotLayout.y, targetLayout.y);
+
+          const dragRangeIds = new Set<string>();
+          for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
+            if (layout.y >= minY && layout.y <= maxY) {
+              dragRangeIds.add(id);
+            }
+          }
+
+          const nextSelectedSet = new Set(dragInitialIdsRef.current);
+          for (const id of dragRangeIds) {
+            nextSelectedSet.add(id);
+          }
+
+          let changed = false;
+          if (nextSelectedSet.size !== selectedIdsRef.current.length) {
+            changed = true;
+          } else {
+            for (const id of selectedIdsRef.current) {
+              if (!nextSelectedSet.has(id)) {
+                changed = true;
+                break;
+              }
+            }
+          }
+
+          if (changed) {
+            setSelectedIds(Array.from(nextSelectedSet));
+          }
+        }
+      }
+
+      if (viewportY < 50) {
+        if (!scrollTimerRef.current) {
+          scrollTimerRef.current = setInterval(() => {
+             scrollRef.current?.scrollTo({ y: Math.max(0, scrollMetricsRef.current.y - 25), animated: false });
+          }, 16);
+        }
+      } else if (viewportY > threadHeightRef.current - 50) {
+         if (!scrollTimerRef.current) {
+          scrollTimerRef.current = setInterval(() => {
+             scrollRef.current?.scrollTo({ y: scrollMetricsRef.current.y + 25, animated: false });
+          }, 16);
+        }
+      } else {
+        if (scrollTimerRef.current) {
+          clearInterval(scrollTimerRef.current);
+          scrollTimerRef.current = null;
+        }
+      }
+    },
+    onPanResponderRelease: () => {
+      isDragSelectingRef.current = false;
+      if (scrollTimerRef.current) {
+        clearInterval(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+    },
+    onPanResponderTerminate: () => {
+      isDragSelectingRef.current = false;
+      if (scrollTimerRef.current) {
+        clearInterval(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+    }
+  }), [insets.top, searchOpen]);
+
+
   // ── 4. Render ──────────────────────────────────────────────────────────
   if (activeSubScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
   if (activeSubScreen === "media") return <ChatMediaScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
@@ -579,8 +698,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             )}
 
             <View style={{ flex: 1 }}>
-              <Animated.View style={[styles.thread, { opacity: fadeAnim }]}>
-                <ScrollView ref={scrollRef} contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+              <Animated.View 
+                ref={threadContainerRef}
+                style={[styles.thread, { opacity: fadeAnim }]}
+                {...selectionPanResponder.panHandlers}
+                onLayout={(e) => {
+                  threadHeightRef.current = e.nativeEvent.layout.height;
+                }}
+              >
+                <ScrollView ref={scrollRef} scrollEnabled={selectedIds.length === 0} contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
@@ -599,7 +725,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                       if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
                       const msg = item.message;
                       return (
-                        <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = e.nativeEvent.layout.y} style={highlightedMessageId === msg.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}>
+                        <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = { y: e.nativeEvent.layout.y, h: e.nativeEvent.layout.height }} style={highlightedMessageId === msg.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}>
                           <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onRevealViewOnce={() => {
                             if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
                             setRevealedMessageId(msg.id);

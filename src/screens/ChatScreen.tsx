@@ -243,7 +243,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
   const [isRevealingChat, setIsRevealingChat] = useState(false);
-
+  const [isDragSelectLocked, setIsDragSelectLocked] = useState(false);
+  const isDragSelectLockedRef = useRef(false);
+  useEffect(() => { isDragSelectLockedRef.current = isDragSelectLocked; }, [isDragSelectLocked]);
 
 
   const scrollRef = useRef<ScrollView | null>(null);
@@ -522,7 +524,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const selectionPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponderCapture: () => false,
     onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
-      if (selectedIdsRef.current.length > 0 && Math.abs(gestureState.dy) > 8) {
+      if (isDragSelectLockedRef.current && Math.abs(gestureState.dy) > 8) {
         return true;
       }
       return false;
@@ -540,8 +542,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       let targetId: string | null = null;
       for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
         if (contentY >= layout.y && contentY <= layout.y + layout.h) {
-          targetId = id;
-          break;
+          if (messageMap[id]?.message_kind !== "system") {
+            targetId = id;
+            break;
+          }
         }
       }
 
@@ -561,7 +565,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           const dragRangeIds = new Set<string>();
           for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
             if (layout.y >= minY && layout.y <= maxY) {
-              dragRangeIds.add(id);
+              if (messageMap[id]?.message_kind !== "system") {
+                dragRangeIds.add(id);
+              }
             }
           }
 
@@ -609,6 +615,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     },
     onPanResponderRelease: () => {
       isDragSelectingRef.current = false;
+      setIsDragSelectLocked(false);
       if (scrollTimerRef.current) {
         clearInterval(scrollTimerRef.current);
         scrollTimerRef.current = null;
@@ -616,12 +623,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     },
     onPanResponderTerminate: () => {
       isDragSelectingRef.current = false;
+      setIsDragSelectLocked(false);
       if (scrollTimerRef.current) {
         clearInterval(scrollTimerRef.current);
         scrollTimerRef.current = null;
       }
     }
-  }), [insets.top, searchOpen]);
+  }), [insets.top, searchOpen, messageMap]);
 
 
   // ── 4. Render ──────────────────────────────────────────────────────────
@@ -706,7 +714,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   threadHeightRef.current = e.nativeEvent.layout.height;
                 }}
               >
-                <ScrollView ref={scrollRef} scrollEnabled={selectedIds.length === 0} contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                <ScrollView ref={scrollRef} scrollEnabled={!isDragSelectLocked} contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
@@ -733,6 +741,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                           }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
                             reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                             onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
+                            onInitiateDragSelect={() => setIsDragSelectLocked(true)}
                             replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                             replyToName={(() => {
                               if (!msg.reply_to_id) return null;

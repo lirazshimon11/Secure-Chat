@@ -36,6 +36,7 @@ type Props = {
   onReportPickerLayout?: (layout: { x: number; y: number; width: number; height: number } | null) => void;
   isSaved?: boolean;
   onOpenPollVotes?: (id: string) => void;
+  onInitiateDragSelect?: () => void;
 };
 
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
@@ -44,7 +45,7 @@ export function MessageBubble({
   currentUserId, message, author, replyToText, replyToName, reactions, viewOnceState,
   isSelected, isSelectionMode, onReply, onToggleReaction, onRevealViewOnce,
   onToggleSelection, onShowReactions, onShowReactionsSheet, onPlusExtra,
-  showReactions, onReportPickerLayout, isSaved, onOpenPollVotes
+  showReactions, onReportPickerLayout, isSaved, onOpenPollVotes, onInitiateDragSelect
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -126,8 +127,18 @@ export function MessageBubble({
   const metaLabel = message.message_kind === "temporary" ? "1 דק'" : message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : "פעם אחת") : null;
   const hasReactions = reactions && Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:")).length > 0;
 
-  const handleLongPress = () => { if (!isSelectionMode) { onToggleSelection(message.id); onShowReactions(message.id); } };
+  const handleLongPress = () => { 
+    if (isSystem) return;
+    onInitiateDragSelect?.();
+    if (!isSelected) {
+      onToggleSelection(message.id);
+    }
+    if (!isSelectionMode) {
+      onShowReactions(message.id); 
+    }
+  };
   const handlePress = () => {
+    if (isSystem) return;
     if (isSelectionMode) { onToggleSelection(message.id); return; }
     const now = Date.now();
     if (lastTap.current && now - lastTap.current < 300) { onToggleReaction("\u{2764}"); lastTap.current = 0; }

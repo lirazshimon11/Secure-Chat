@@ -22,6 +22,7 @@ import { ChatDisappearingMessagesScreen } from "./chat-settings/ChatDisappearing
 import { ChatThemeScreen } from "./chat-settings/ChatThemeScreen";
 import { CreatePollScreen } from "./chat-settings/CreatePollScreen";
 import { ChatPollVotesScreen } from "./chat-settings/ChatPollVotesScreen";
+import { ChatMemberActionModal } from "./chat-settings/ChatMemberActionModal";
 
 // Extracted modules
 import { isChatMuted, formatRelativeDate } from "./chat/ChatUtils";
@@ -34,15 +35,16 @@ import { ChatBackground } from "./chat/ChatBackground";
 type Props = {
   chat: Chat;
   onBack: () => void;
-  onOpenChatSettings: () => void;
+  onOpenChatSettings: (chat?: Chat) => void;
   scrollToMessageId?: string | null;
   onForward?: (messages: Message[]) => void;
   onCreateGroupWith?: (profile: Profile) => void;
+  onOpenChat?: (chat: Chat) => void;
   /** When true, renders as the Decoy Content editor — same UI, different data source */
   decoyMode?: boolean;
 };
 
-export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward, onCreateGroupWith, decoyMode }: Props) {
+export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward, onCreateGroupWith, onOpenChat, decoyMode }: Props) {
   const insets = useSafeAreaInsets() || { top: 0, bottom: 0, left: 0, right: 0 };
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
@@ -55,10 +57,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles, chats,
     contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings,
     chatPreferences, setChatMute, clearChatMute, sendMessage, openViewOnceMessage,
-    toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember
+    toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember,
+    createChat, setChatMemberRole, removeChatMember
   } = useChats();
 
   const [isMember, setIsMember] = useState(false);
+  const [selectedAvatarMember, setSelectedAvatarMember] = useState<Profile | null>(null);
 
   // Initialize membership from context data if available
   useEffect(() => {
@@ -200,8 +204,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }, [messageMap, searchQuery, visibleMessages, initialUnreadCount, initialUnreadStartIndex, isDecoyActive, decoyMessages]);
 
   const groupSubtitle = useMemo(() => {
-    if (!chat?.is_group || !groupMembers || groupMembers.length === 0) return "קבוצה";
-    const allNames = groupMembers.map(m => m.id === profile?.id ? "את/ה" : m.username);
+    if (!chat?.is_group || !groupMembers || (groupMembers?.length || 0) === 0) return "קבוצה";
+    const allNames = (groupMembers || []).map(m => m.id === profile?.id ? "את/ה" : m.username);
     const text = allNames.join(", ");
     return text.length > 40 ? text.slice(0, 37) + "..." : text;
   }, [groupMembers, chat?.is_group, profile?.id]);
@@ -301,6 +305,54 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     } else if (attempts > 0) {
       setTimeout(() => scrollToMessageWithRetry(msgId, highlight, attempts - 1), 250);
     }
+  };
+
+  const handleMemberAction = async (member: Profile) => {
+    setSelectedAvatarMember(null);
+    const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+    if (existing && onOpenChat) {
+      onOpenChat(existing);
+    } else if (onOpenChat) {
+      const { chat: newChat, error } = await createChat(member.username, [member.username]);
+      if (newChat) onOpenChat(newChat);
+      else Alert.alert("שגיאה", error || "לא ניתן לפתוח צ'אט כרגע.");
+    }
+  };
+
+  const handleDetailsAction = async (member: Profile) => {
+     setSelectedAvatarMember(null);
+     const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+     if (existing && onOpenChatSettings) {
+       onOpenChatSettings(existing);
+     } else if (onOpenChatSettings) {
+       const { chat: newChat } = await createChat(member.username, [member.username]);
+       if (newChat) onOpenChatSettings(newChat);
+     }
+  };
+
+  const handleSetAdmin = (memberId: string) => {
+    setSelectedAvatarMember(null);
+    Alert.alert("הגדרה כמנהל/ת", "האם להפוך משתתף זה למנהל הקבוצה?", [
+      { text: "ביטול", style: "cancel" },
+      { text: "אישור", onPress: async () => {
+          await setChatMemberRole(chat.id, memberId, "admin");
+          void loadChatMembers(chat.id).then(setGroupMembers);
+        }
+      }
+    ]);
+  };
+
+  const handleRemoveMember = (member: Profile) => {
+    setSelectedAvatarMember(null);
+    const displayName = contactNicknames[member.id]?.first_name || member.full_name || member.username;
+    Alert.alert("הסרה", `האם להסיר את ${displayName} מהקבוצה "${chat.title}"?`, [
+      { text: "ביטול", style: "cancel" },
+      { text: "הסרה", style: "destructive", onPress: async () => {
+          await removeChatMember(chat.id, member, chat.title);
+          void loadChatMembers(chat.id).then(setGroupMembers);
+        }
+      }
+    ]);
   };
 
   const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } =
@@ -662,7 +714,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           chat={chat} theme={theme} styles={styles} isSelectionMode={selectedIds && selectedIds.length > 0}
           selectedIds={selectedIds} savedMessageIds={savedMessageIds} chatMuted={isChatMuted(muteSettings && chat && muteSettings[chat.id])}
           muteSetting={muteSettings && chat && muteSettings[chat.id]} groupSubtitle={groupSubtitle} chatLocked={chatPreferences && chat && chatPreferences[chat.id]?.locked}
-          onBack={() => selectedIds.length ? setSelectedIds([]) : onBack()} onOpenChatSettings={onOpenChatSettings}
+          onBack={() => selectedIds.length ? setSelectedIds([]) : onBack()} onOpenChatSettings={() => onOpenChatSettings()}
           onReplyToSelected={() => { const m = messageMap[selectedIds[0]]; if (m) setReplyTo(m); setSelectedIds([]); }}
           onToggleStarSelected={async () => {
             const allStarred = selectedIds.every(id => savedMessageIds.has(id));
@@ -742,13 +794,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                             reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                             onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
                             onInitiateDragSelect={() => setIsDragSelectLocked(true)}
+                            onAvatarPress={(author) => setSelectedAvatarMember(author)}
                             replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                             replyToName={(() => {
                               if (!msg.reply_to_id) return null;
-                              const original = messageMap[msg.reply_to_id];
+                              const original = messageMap?.[msg.reply_to_id];
                               if (!original) return "תגובה";
                               const authorId = original.sender_id;
-                              return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+                              if (!authorId) return "תגובה";
+                              return contactNicknames?.[authorId]?.first_name || profiles?.[authorId]?.full_name || profiles?.[authorId]?.username || "משתתף/ת";
                             })()}
                             viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
                         </View>
@@ -855,6 +909,17 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             await sendMessage({ chatId: chat.id, body, messageKind: "system" });
           },
         }}
+      />
+
+      <ChatMemberActionModal 
+        visible={!!selectedAvatarMember} 
+        onClose={() => setSelectedAvatarMember(null)} 
+        member={selectedAvatarMember}
+        nickname={selectedAvatarMember ? contactNicknames?.[selectedAvatarMember.id]?.first_name : undefined}
+        onMessage={handleMemberAction}
+        onDetails={handleDetailsAction}
+        onSetAdmin={profile?.id === chat.created_by ? handleSetAdmin : undefined}
+        onRemove={profile?.id === chat.created_by ? handleRemoveMember : undefined}
       />
 
       {screenshotHold && (

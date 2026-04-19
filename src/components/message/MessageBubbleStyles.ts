@@ -59,12 +59,41 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     bubbleMine: {
       backgroundColor: theme.colors.mine,
       borderTopRightRadius: 4,
-      alignSelf: "flex-end",
     },
     bubbleTheirs: {
       backgroundColor: theme.colors.theirs,
       borderTopLeftRadius: 4,
-      alignSelf: "flex-start",
+    },
+    bubbleWrapperMine: {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+      alignItems: "flex-start",
+    },
+    bubbleWrapperTheirs: {
+      flexDirection: "row",
+      justifyContent: "flex-start",
+      alignItems: "flex-start",
+    },
+    messageAvatarWrap: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      marginRight: 8,
+      marginLeft: 2,
+      overflow: "hidden",
+      backgroundColor: theme.colors.surfaceAlt,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    messageAvatarImage: {
+      width: "100%",
+      height: "100%",
+      resizeMode: "cover",
+    },
+    messageAvatarText: {
+      color: theme.colors.textMuted,
+      fontSize: 14,
+      fontWeight: "bold",
     },
     systemBubble: {
       backgroundColor: theme.colors.surfaceAlt,

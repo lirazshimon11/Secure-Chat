@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Modal, StyleSheet, Text, View, Pressable, Animated, PanResponder, Dimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAppTheme } from "@/lib/theme";
 import { Profile } from "@/lib/types";
 
@@ -20,6 +21,7 @@ const MODAL_HEIGHT = 450;
 
 export function ChatMemberActionModal({ visible, onClose, member, nickname, onMessage, onDetails, onSetAdmin, onRemove }: Props) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets() || { bottom: 0 };
   const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useEffect(() => {
@@ -69,15 +71,15 @@ export function ChatMemberActionModal({ visible, onClose, member, nickname, onMe
 
   if (!member) return null;
 
-  const displayName = nickname || member.full_name || member.username;
-  const initial = (nickname || member.username).slice(0, 1).toUpperCase();
+  const displayName = nickname || member.full_name || member.username || "משתתף/ת";
+  const initial = (nickname || member.full_name || member.username || "?").slice(0, 1).toUpperCase();
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={closeBottomSheet}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={closeBottomSheet} statusBarTranslucent hardwareAccelerated>
       <View style={styles.overlayRoot}>
         <Pressable style={styles.backdrop} onPress={closeBottomSheet} />
 
-        <Animated.View {...panResponder.panHandlers} style={[styles.sheetContainer, { backgroundColor: theme.colors.surface, transform: [{ translateY }] }]}>
+        <Animated.View {...panResponder.panHandlers} style={[styles.sheetContainer, { backgroundColor: theme.colors.surface, transform: [{ translateY }], paddingBottom: insets.bottom + 5 }]}>
           <View style={styles.dragHandleContainer}>
             <View style={styles.dragHandle} />
           </View>
@@ -178,7 +180,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     minHeight: MODAL_HEIGHT,
-    paddingBottom: 40,
   },
   dragHandleContainer: {
     alignItems: "center",
@@ -193,6 +194,7 @@ const styles = StyleSheet.create({
   content: {
     alignItems: "center",
     paddingHorizontal: 16,
+
   },
   avatar: {
     width: 80,

@@ -218,10 +218,22 @@ export function AppShell() {
                 setSelectedChat(null);
                 setScrollToMessageId(null);
               }}
-              onOpenChatSettings={() => setShowChatSettings(true)}
+              onOpenChatSettings={(chat) => {
+                if (chat && chat?.id !== selectedChat?.id) {
+                  setSettingsChatStack([chat]);
+                } else {
+                  setSettingsChatStack([]);
+                }
+                setShowChatSettings(true);
+              }}
               scrollToMessageId={scrollToMessageId}
               onForward={(messages) => setForwardPayload(messages)}
               onCreateGroupWith={(profile) => setShowCreateChat([profile])}
+              onOpenChat={(chat) => {
+                setShowChatSettings(false);
+                setSettingsChatStack([]);
+                setSelectedChat(chat);
+              }}
             />
           )}
         </Animated.View>

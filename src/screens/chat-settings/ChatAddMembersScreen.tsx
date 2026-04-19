@@ -154,7 +154,7 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
                   <View style={styles.selectedAvatarContainer}>
                     <View style={styles.selectedAvatar}>
                       <Text style={styles.selectedAvatarText}>
-                        {(nickname || item.username).slice(0, 1).toUpperCase()}
+                        {(nickname || item.username || "?").slice(0, 1).toUpperCase()}
                       </Text>
                     </View>
                     {/* אייקון המחיקה "X" יופיע רק לחברים החדשים שנבחרו וניתנים לביטול */}
@@ -207,7 +207,7 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
             <Pressable style={[styles.resultRow, webNoOutline]} onPress={() => toggleUser(item)}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
-                  {(nickname || item.username).slice(0, 1).toUpperCase()}
+                  {(nickname || item.username || "?").slice(0, 1).toUpperCase()}
                 </Text>
               </View>
               <View style={styles.resultCopy}>

@@ -71,7 +71,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   const handleMemberAction = async (member: Profile) => {
     // Navigate to private chat with this member
     // Check if chat exists
-    const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+    const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames?.[member.id]?.first_name));
     if (existing && onOpenChat) {
       onOpenChat(existing);
     } else if (onOpenChat) {
@@ -85,7 +85,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   const handleDetailsAction = async (member: Profile) => {
      setSelectedMember(null);
      // 1. Find or create private chat
-     const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+     const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames?.[member.id]?.first_name));
      if (existing && onOpenChatSettings) {
        onOpenChatSettings(existing);
      } else if (onOpenChatSettings) {
@@ -108,7 +108,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
 
   const handleRemoveMember = (member: Profile) => {
     setSelectedMember(null);
-    const displayName = contactNicknames[member.id]?.first_name || member.full_name || member.username;
+    const displayName = contactNicknames?.[member.id]?.first_name || member.full_name || member.username || "משתתף/ת";
     setConfirmData({
       visible: true,
       title: `האם להסיר את ${displayName} מהקבוצה "${chat.title}"?`,
@@ -122,17 +122,17 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   useEffect(() => {
     void (async () => {
       const nextMembers = await loadChatMembers(chat.id);
-      setMembers(nextMembers);
+      setMembers(nextMembers || []);
     })();
     // Explicitly unblock screenshots whenever entering a settings page
     void ScreenCapture.allowScreenCaptureAsync();
     void ScreenCapture.allowScreenCaptureAsync(`sc-${chat.id}`);
-  }, [chat.id, loadChatMembers]);
+  }, [chat.id]);
 
   const filteredMembers = useMemo(() => {
     if (!searchQuery) return members;
-    return members.filter((m) =>
-      m.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    return (members || []).filter((m) =>
+      (m.username || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.full_name?.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [members, searchQuery]);
@@ -167,10 +167,10 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
         {/* Hero Section */}
         <View style={styles.heroSection}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{liveChat.title.slice(0, 1).toUpperCase()}</Text>
+            <Text style={styles.avatarText}>{(liveChat?.title || "?").slice(0, 1).toUpperCase()}</Text>
           </View>
-          <Text style={styles.chatTitle}>{liveChat.title}</Text>
-          <Text style={styles.chatSubtitle}>{liveChat.is_group ? `קבוצה · ${members.length} חברים` : "צ'אט פרטי"}</Text>
+          <Text style={styles.chatTitle}>{liveChat?.title || "ללא שם"}</Text>
+          <Text style={styles.chatSubtitle}>{liveChat?.is_group ? `קבוצה · ${(members?.length || 0)} חברים` : "צ'אט פרטי"}</Text>
         </View>
 
         {/* Action Buttons */}
@@ -278,8 +278,8 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
           </View>
 
           {filteredMembers.map((member) => {
-            const nickname = contactNicknames[member.id]?.first_name;
-            const displayName = nickname || member.full_name || member.username;
+            const nickname = contactNicknames?.[member.id]?.first_name;
+            const displayName = nickname || member.full_name || member.username || "משתתף/ת";
             const isAdmin = member.id === liveChat.created_by;
             
             // Skip rendering "You" in the list if already rendered above
@@ -288,7 +288,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
             return (
               <Pressable key={member.id} style={styles.memberRow} onPress={() => setSelectedMember(member)} onLongPress={() => setSelectedMember(member)}>
                 <View style={styles.memberAvatar}>
-                  <Text style={styles.memberAvatarText}>{(nickname || member.username).slice(0, 1).toUpperCase()}</Text>
+                  <Text style={styles.memberAvatarText}>{(nickname || member.username || "?").slice(0, 1).toUpperCase()}</Text>
                 </View>
                 <View style={[styles.memberCopy, { paddingRight: isAdmin ? 8 : 16 }]}>
                   <Text style={styles.memberName}>{displayName}</Text>
@@ -340,7 +340,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
         visible={!!selectedMember} 
         onClose={() => setSelectedMember(null)} 
         member={selectedMember}
-        nickname={selectedMember ? contactNicknames[selectedMember.id]?.first_name : undefined}
+        nickname={selectedMember ? contactNicknames?.[selectedMember.id]?.first_name : undefined}
         onMessage={handleMemberAction}
         onDetails={handleDetailsAction}
         onSetAdmin={profile?.id === chat.created_by ? handleSetAdmin : undefined}

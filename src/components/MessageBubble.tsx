@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Animated, PanResponder, Platform, Pressable, Text, View } from "react-native";
+import { Animated, PanResponder, Platform, Pressable, Text, View, Image } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { Message, Profile, ReactionSummary } from "@/lib/types";
@@ -37,6 +37,7 @@ type Props = {
   isSaved?: boolean;
   onOpenPollVotes?: (id: string) => void;
   onInitiateDragSelect?: () => void;
+  onAvatarPress?: (author: Profile) => void;
 };
 
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
@@ -45,7 +46,8 @@ export function MessageBubble({
   currentUserId, message, author, replyToText, replyToName, reactions, viewOnceState,
   isSelected, isSelectionMode, onReply, onToggleReaction, onRevealViewOnce,
   onToggleSelection, onShowReactions, onShowReactionsSheet, onPlusExtra,
-  showReactions, onReportPickerLayout, isSaved, onOpenPollVotes, onInitiateDragSelect
+  showReactions, onReportPickerLayout, isSaved, onOpenPollVotes, onInitiateDragSelect,
+  onAvatarPress
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -149,9 +151,19 @@ export function MessageBubble({
     if (!replyToName) return "#00A884";
     const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63"];
     let hash = 0;
-    for (let i = 0; i < replyToName.length; i++) hash = replyToName.charCodeAt(i) + ((hash << 5) - hash);
+    for (let i = 0; i < (replyToName?.length || 0); i++) hash = replyToName!.charCodeAt(i) + ((hash << 5) - hash);
     return colors[Math.abs(hash) % colors.length];
   }, [replyToName]);
+
+  const authorColor = useMemo(() => {
+    if (!author) return "#00A884";
+    const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63", "#F28C28", "#8E44AD"];
+    let hash = 0;
+    const key = author.username || author.id || "?";
+    for (let i = 0; i < (key?.length || 0); i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+  }, [author]);
+
 
   return (
     <View style={styles.rowWrapper}>
@@ -169,8 +181,20 @@ export function MessageBubble({
           </View>
         ) : (
           <Pressable delayLongPress={220} onLongPress={handleLongPress} onPress={handlePress} style={[styles.fullWidthSelection, webDefaultCursor]}>
-            <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
-              {!mine && author && <Text style={styles.author}>{contactNicknames[author.id]?.first_name || author.username}</Text>}
+            <View style={[mine ? styles.bubbleWrapperMine : styles.bubbleWrapperTheirs]}>
+              {!mine && author && (
+                <Pressable onPress={() => onAvatarPress && onAvatarPress(author)} style={[styles.messageAvatarWrap, { backgroundColor: authorColor }]}>
+                  {(author as any).avatar_url ? (
+                    <Image source={{ uri: (author as any).avatar_url }} style={styles.messageAvatarImage} />
+                  ) : (
+                    <Text style={[styles.messageAvatarText, { color: "#FFF" }]}>
+                      {(contactNicknames?.[author.id]?.first_name || author.full_name || author.username || "?").slice(0, 1).toUpperCase()}
+                    </Text>
+                  )}
+                </Pressable>
+              )}
+              <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
+                {!mine && author && <Text style={[styles.author, { color: authorColor }]}>{contactNicknames?.[author.id]?.first_name || author.full_name || author.username}</Text>}
               {replyToText && (
                 <View style={styles.replyBlock}>
                   <View style={styles.replyBlockContent}>
@@ -230,6 +254,7 @@ export function MessageBubble({
                   </Pressable>
                 );
               })()}
+              </View>
             </View>
           </Pressable>
         )}

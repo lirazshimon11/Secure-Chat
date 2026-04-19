@@ -172,7 +172,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       const profMap = Object.fromEntries(((otherProfiles ?? []) as Profile[]).map(p => [p.id, p]));
       const partners: Record<string, string> = {};
       const directTitles: Record<string, string> = {};
-      for (const r of (memberRows ?? []) as any) if (r.user_id !== profile.id) { partners[r.chat_id] = r.user_id; if (profMap[r.user_id]) directTitles[r.chat_id] = profMap[r.user_id].username; }
+      for (const r of (memberRows ?? []) as any) if (r.user_id !== profile.id) { partners[r.chat_id] = r.user_id; if (profMap[r.user_id]) directTitles[r.chat_id] = profMap[r.user_id].username || profMap[r.user_id].full_name || "משתתף/ת"; }
       setPrivateChatPartners(partners); setProfiles(cur => ({ ...cur, ...profMap }));
 
       const lastReadMap: Record<string, string> = {};
@@ -205,7 +205,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
         return { 
           id: r.chat_id, 
-          title: r.is_group ? r.chat_title : directTitles[r.chat_id] ?? r.chat_title, 
+          title: r.is_group ? (r.chat_title || "קבוצה ללא שם") : (directTitles[r.chat_id] ?? r.chat_title ?? "משתתף/ת"), 
           is_group: r.is_group, 
           description: r.description ?? null, 
           created_by: r.created_by, 
@@ -234,7 +234,13 @@ export function ChatProvider({ children }: PropsWithChildren) {
     const { data: profRows } = await ChatService.fetchProfiles(sIds);
 
     loadedChatIdsRef.current = [...new Set([...loadedChatIdsRef.current, chatId])];
-    setMessagesByChat(cur => ({ ...cur, [chatId]: ((messages as Message[]) ?? []).filter(m => !deletedForMeIdsRef.current.includes(m.id)) }));
+    setMessagesByChat(cur => {
+      const existing = cur[chatId] || [];
+      const dbMsgs = ((messages as Message[]) ?? []).filter(m => !deletedForMeIdsRef.current.includes(m.id));
+      const dbIds = new Set(dbMsgs.map(m => m.id));
+      const pending = existing.filter(m => !dbIds.has(m.id) && m.sender_id === profile.id && Math.abs(Date.now() - new Date(m.created_at).getTime()) < 15000);
+      return { ...cur, [chatId]: [...dbMsgs, ...pending].sort((a,b) => a.created_at.localeCompare(b.created_at)) };
+    });
     if (profRows) setProfiles(cur => ({ ...cur, ...Object.fromEntries(((profRows as Profile[]) ?? []).map(p => [p.id, p])) }));
     if (reactionRows) setReactionsByMessage(cur => { const next = { ...cur }; mIds.forEach(id => next[id] = {}); ((reactionRows as any) ?? []).forEach((r: any) => { next[r.message_id] ??= {}; next[r.message_id][r.emoji] ??= []; next[r.message_id][r.emoji].push({ userId: r.user_id, createdAt: r.created_at }); }); return next; });
     if (viewRows) setOpenedViewOnceIds(cur => ({ ...cur, ...Object.fromEntries(((viewRows as any) ?? []).map((r: any) => [r.message_id, !!r.opened_at])) }));
@@ -403,7 +409,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       if (c.is_group) return c;
       const oId = privateChatPartners[c.id]; if (!oId) return c;
       const nick = contactNicknames[oId]; if (nick) { const name = `${nick.first_name} ${nick.last_name}`.trim(); if (name) return { ...c, title: name }; }
-      if (profiles[oId]) return { ...c, title: profiles[oId].username };
+      if (profiles[oId]) return { ...c, title: profiles[oId].username || "משתתף/ת" };
       return c;
     }),
     profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, contactNicknames, loading, refreshChats, loadMessages, markChatSeen,

@@ -19,15 +19,15 @@ export function ChatRenameModal({ chat, visible, onClose, onRenamed }: Props) {
   const styles = createStyles(theme);
   const { chats, updateChatTitle } = useChats();
   const liveChat = chats.find((c) => c.id === chat.id) || chat;
-  const [name, setName] = useState(liveChat.title);
+  const [name, setName] = useState(liveChat?.title || "");
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
-      setName(liveChat.title);
+      setName(liveChat?.title || "");
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [visible, liveChat.title]);
+  }, [visible, liveChat?.title]);
 
   const handleSave = async () => {
     const trimmed = name.trim();
@@ -38,7 +38,7 @@ export function ChatRenameModal({ chat, visible, onClose, onRenamed }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose} statusBarTranslucent hardwareAccelerated>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <View style={styles.overlay}>
           <View style={styles.card}>

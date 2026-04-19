@@ -65,15 +65,15 @@ export const ChatHeader = ({
             <Pressable onPress={onToggleStarSelected} style={styles.headerButton}>
               <MaterialCommunityIcons 
                 color={theme.colors.headerIcon} 
-                name={selectedIds.every((id) => savedMessageIds.has(id)) ? "star-off" : "star"} 
-                size={22} 
+                name={selectedIds.every((id) => savedMessageIds.has(id)) ? "star" : "star-outline"} 
+                size={24} 
               />
             </Pressable>
             <Pressable onPress={onDeleteSelected} style={styles.headerButton}>
-              <MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can" size={22} />
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can-outline" size={24} />
             </Pressable>
             <Pressable onPress={onForwardSelected} style={styles.headerButton}>
-              <MaterialCommunityIcons color={theme.colors.headerIcon} name="share-outline" size={24} style={{ transform: [{ scaleX: -1 }] }} />
+              <MaterialCommunityIcons color={theme.colors.headerIcon} name="share-all-outline" size={24} />
             </Pressable>
             <Pressable onPress={onShowSelectionOverflow} style={styles.headerButton}>
               <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={26} />

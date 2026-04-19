@@ -29,7 +29,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const scheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme, insets, scheme), [theme, insets, scheme]);
-  
+
   const {
     chats, muteSettings, unreadCounts, chatPreferences, archiveChats, unarchiveChats,
     togglePinnedChats, lockChats, unlockChats, deleteChats, loading, searchMessagesGlobal,
@@ -147,7 +147,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
               <View style={styles.selectionActions}>
                 <Pressable onPress={() => { allSelectedArchived ? unarchiveChats(selectedChatIds) : archiveChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name={allSelectedArchived ? "archive-arrow-up-outline" : "archive-arrow-down-outline"} size={22} /></Pressable>
                 <Pressable onPress={() => { togglePinnedChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name={allSelectedPinned ? "pin-off-outline" : "pin-outline"} size={21} /></Pressable>
-                <Pressable onPress={() => { Alert.alert("מחיקת צ'אט?", "האם למחוק?", [{text: "ביטול"}, {text: "מחיקה", style:"destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); }}]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can-outline" size={23} /></Pressable>
+                <Pressable onPress={() => { Alert.alert("מחיקת צ'אט?", "האם למחוק?", [{ text: "ביטול" }, { text: "מחיקה", style: "destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); } }]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can-outline" size={23} /></Pressable>
                 <Pressable onPress={() => { allSelectedLocked ? unlockChats(selectedChatIds) : lockChats(selectedChatIds); setSelectedChatIds([]); }} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name={allSelectedLocked ? "lock-open-variant-outline" : "lock-outline"} size={22} /></Pressable>
                 <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={22} /></Pressable>
               </View>
@@ -163,7 +163,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         {viewMode === "home" && activeTab === "chats" && (
           <View style={styles.filterBar}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
-              {[ {id: "all", label: "הכול"}, {id: "unread", label: "לא נקראו", count: unreadTotal}, {id: "favorites", label: "מועדפים"}, {id: "groups", label: "קבוצות"} ].map(f => (
+              {[{ id: "all", label: "הכול" }, { id: "unread", label: "לא נקראו", count: unreadTotal }, { id: "favorites", label: "מועדפים" }, { id: "groups", label: "קבוצות" }].map(f => (
                 <Pressable key={f.id} onPress={() => setActiveFilter(f.id as any)} style={[chipStyles.chip, activeFilter === f.id ? { backgroundColor: scheme === "dark" ? "#0F3528" : "#E7FCE3" } : { backgroundColor: scheme === "dark" ? "#202C33" : "#FFFFFF", borderWidth: scheme === "dark" ? 0 : 0.8, borderColor: "#E9EDF0" }]}>
                   <Text style={[chipStyles.label, { color: activeFilter === f.id ? (scheme === "dark" ? "#ffffff" : "#008069") : (scheme === "dark" ? "#8696A0" : "#667781") }]}>{f.label}{f.count ? ` ${f.count}` : ""}</Text>
                 </Pressable>
@@ -194,7 +194,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         {viewMode === "home" && !selectionMode && <Pressable style={styles.fab} onPress={onCreateChat}><MaterialCommunityIcons color="#ffffff" name="message-plus" size={26} /></Pressable>}
 
         <View style={styles.tabBar}>
-          {[ {id: "chats", label: "צ'אטים", icon: require("../../public/images/light mode/chats_icon.png")}, {id: "updates", label: "עדכונים", icon: scheme === "dark" ? require("../../public/images/dark mode/updates_icon.png") : require("../../public/images/light mode/updates_icon.png")}, {id: "communities", label: "קהילות", icon: scheme === "dark" ? require("../../public/images/dark mode/communities_icon.png") : require("../../public/images/light mode/communities_icon.png")}, {id: "calls", label: "שיחות", icon: scheme === "dark" ? require("../../public/images/dark mode/voice_call_icon.png") : require("../../public/images/light mode/voice_call_icon.png")} ].map(t => (
+          {[{ id: "chats", label: "צ'אטים", icon: require("../../public/images/light mode/chats_icon.png") }, { id: "updates", label: "עדכונים", icon: scheme === "dark" ? require("../../public/images/dark mode/updates_icon.png") : require("../../public/images/light mode/updates_icon.png") }, { id: "communities", label: "קהילות", icon: scheme === "dark" ? require("../../public/images/dark mode/communities_icon.png") : require("../../public/images/light mode/communities_icon.png") }, { id: "calls", label: "שיחות", icon: scheme === "dark" ? require("../../public/images/dark mode/voice_call_icon.png") : require("../../public/images/light mode/voice_call_icon.png") }].map(t => (
             <Pressable key={t.id} style={styles.tabItem} onPress={() => setActiveTab(t.id as any)}>
               <View style={[styles.tabIconWrap, activeTab === t.id && styles.tabIconWrapActive]}>
                 <Image source={t.icon} style={[styles.tabIcon, { tintColor: theme.colors.headerIcon }]} />
@@ -221,7 +221,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
             <View style={styles.menuCard}>
               <MenuItem label={allSelectedArchived ? "הוצאה מהארכיון" : "העברה לארכיון"} onPress={() => { allSelectedArchived ? unarchiveChats(selectedChatIds) : archiveChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); }} theme={theme} styles={styles} />
               <MenuItem label={allSelectedPinned ? "ביטול הצמדה" : "הצמדה"} onPress={() => { togglePinnedChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); }} theme={theme} styles={styles} />
-              <MenuItem danger label="מחיקת צ'אט" onPress={() => { Alert.alert("מחיקה", "בטוח?", [{text: "ביטול"}, {text: "מחיקה", style: "destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); }}]); }} theme={theme} styles={styles} />
+              <MenuItem danger label="מחיקת צ'אט" onPress={() => { Alert.alert("מחיקה", "בטוח?", [{ text: "ביטול" }, { text: "מחיקה", style: "destructive", onPress: () => { deleteChats(selectedChatIds); setSelectedChatIds([]); setShowSelectionMenu(false); } }]); }} theme={theme} styles={styles} />
             </View>
           </View>
         )}

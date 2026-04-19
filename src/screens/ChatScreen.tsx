@@ -12,7 +12,8 @@ import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, Message, Profile } from "@/lib/types";
-import { webEmbeddedInputReset } from "@/lib/webStyles";
+import { webEmbeddedInputReset, webDefaultCursor } from "@/lib/webStyles";
+import { supabase } from "@/lib/supabase";
 
 // Sub-screens
 import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
@@ -37,9 +38,11 @@ type Props = {
   scrollToMessageId?: string | null;
   onForward?: (messages: Message[]) => void;
   onCreateGroupWith?: (profile: Profile) => void;
+  /** When true, renders as the Decoy Content editor — same UI, different data source */
+  decoyMode?: boolean;
 };
 
-export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward, onCreateGroupWith }: Props) {
+export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward, onCreateGroupWith, decoyMode }: Props) {
   const insets = useSafeAreaInsets() || { top: 0, bottom: 0, left: 0, right: 0 };
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
@@ -48,11 +51,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [initialUnreadCount, setInitialUnreadCount] = useState<number>(0);
   const [initialUnreadStartIndex, setInitialUnreadStartIndex] = useState<number>(-1);
 
-  const { 
-    loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles, chats, 
-    contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings, 
-    chatPreferences, setChatMute, clearChatMute, sendMessage, openViewOnceMessage, 
-    toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember 
+  const {
+    loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles, chats,
+    contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings,
+    chatPreferences, setChatMute, clearChatMute, sendMessage, openViewOnceMessage,
+    toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember
   } = useChats();
 
   const [isMember, setIsMember] = useState(false);
@@ -70,35 +73,123 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }, [chat?.id, chats]);
 
   // ── 1. Memoized Data (Moved to top of scope) ───────────────────────────
+  // ── Decoy content mode: load from chat_decoy_messages instead of real messages ──
+  const [decoyDbMessages, setDecoyDbMessages] = useState<Message[]>([]);
+  useEffect(() => {
+    if (!decoyMode || !profile?.id) return;
+    let active = true;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("chat_decoy_messages")
+        .select("id, body, is_me, created_at, sender_id")
+        .eq("chat_id", chat.id)
+        .order("created_at", { ascending: true });
+      if (!active || error || !data) return;
+      setDecoyDbMessages(
+        data.map((r: any) => ({
+          id: `decoy-${r.id}`,
+          _decoy_row_id: r.id,
+          chat_id: chat.id,
+          sender_id: r.is_me ? profile.id : (`decoy-other-${r.sender_id}`),
+          body_ciphertext: r.body,
+          body_preview: r.body,
+          message_kind: "standard" as const,
+          reply_to_id: null,
+          expires_at: null,
+          created_at: r.created_at,
+          deleted_at: null,
+        })),
+      );
+    })();
+    return () => { active = false; };
+  }, [decoyMode, chat.id, profile?.id]);
+
   const visibleMessages = useMemo(() => {
+    if (decoyMode) return decoyDbMessages;
     const allMessages = (messagesByChat && chat && messagesByChat[chat.id]) ?? [];
     const prefs = chatPreferences && chat && chatPreferences[chat.id];
     const clearedAt = prefs?.cleared_at;
     if (!clearedAt) return allMessages;
     const clearedAtMs = new Date(clearedAt).getTime();
     return allMessages.filter((m) => new Date(m.created_at).getTime() > clearedAtMs);
-  }, [chat?.id, chatPreferences, messagesByChat]);
+  }, [decoyMode, decoyDbMessages, chat?.id, chatPreferences, messagesByChat]);
 
   const messageMap = useMemo(() => Object.fromEntries((visibleMessages || []).map((msg) => [msg.id, msg])), [visibleMessages]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
+
+  // ── Decoy (guard) state (must be declared before groupedMessages) ───────
+  const [showDecoyManager, setShowDecoyManager] = useState(false);
+  const [isDecoyActive, setIsDecoyActive] = useState(false);
+  /** DB bait messages loaded from chat_decoy_messages when decoy activates */
+  const [dbDecoyMessages, setDbDecoyMessages] = useState<Message[]>([]);
+  /** Messages sent by this user during decoy mode — shown in fake chat, cleared when guard lifts */
+  const [localDecoyMessages, setLocalDecoyMessages] = useState<Message[]>([]);
+
+  // Load DB decoy messages when guard activates; clear when it deactivates
+  useEffect(() => {
+    if (!isDecoyActive || !profile?.id) {
+      setDbDecoyMessages([]);
+      setLocalDecoyMessages([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      const { data } = await supabase
+        .from("chat_decoy_messages")
+        .select("id, body, is_me, created_at, sender_id")
+        .eq("chat_id", chat.id)
+        .order("created_at", { ascending: true });
+
+      if (!active || !data) return;
+
+      const otherMember = groupMembers.find((m) => m.id !== profile.id);
+      setDbDecoyMessages(
+        data.map((dm: any) => ({
+          id: `db-decoy-${dm.id}`,
+          chat_id: chat.id,
+          sender_id: dm.is_me
+            ? profile.id
+            : (otherMember?.id ?? "decoy-user"),
+          body_ciphertext: dm.body,
+          body_preview: dm.body,
+          message_kind: "standard" as const,
+          reply_to_id: null,
+          expires_at: null,
+          created_at: dm.created_at,
+          deleted_at: null,
+        })),
+      );
+    })();
+    return () => { active = false; };
+  }, [isDecoyActive, profile?.id, chat.id, groupMembers]);
+
+  // Combined decoy messages: DB content + messages sent this session
+  const decoyMessages = useMemo<Message[]>(
+    () => (isDecoyActive ? [...dbDecoyMessages, ...localDecoyMessages] : []),
+    [isDecoyActive, dbDecoyMessages, localDecoyMessages],
+  );
+
 
   const groupedMessages = useMemo(() => {
     const groups: any[] = [];
     if (!chat || !visibleMessages) return groups;
 
-    let lastDateLabel = "";
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    const messagesToGroup = visibleMessages.filter((msg) => {
+    // ── When decoy is active, show fake boring messages ────────────────
+    const messagesToGroup = isDecoyActive ? decoyMessages : (visibleMessages || []).filter((msg) => {
+      const normalizedQuery = searchQuery.trim().toLowerCase();
       if (!normalizedQuery) return true;
-      const replyPreview = msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview ?? "" : "";
-      return [msg.body_ciphertext, msg.body_preview ?? "", replyPreview].some((v) => v.toLowerCase().includes(normalizedQuery));
+      const originalMsg = msg?.reply_to_id ? messageMap[msg.reply_to_id] : null;
+      const replyPreview = originalMsg?.body_preview ?? "";
+      const bodyText = msg?.body_ciphertext || "";
+      const previewText = msg?.body_preview || "";
+      return [bodyText, previewText, replyPreview].some((v) => v.toLowerCase().includes(normalizedQuery));
     });
 
+    let lastDateLabel = "";
     messagesToGroup.forEach((msg, idx) => {
-      // Use initial values for unread divider to ensure it stays in place during the session
-      if (initialUnreadCount > 0 && idx === initialUnreadStartIndex && !normalizedQuery) {
+      if (!isDecoyActive && initialUnreadCount > 0 && idx === initialUnreadStartIndex && !searchQuery.trim()) {
         groups.push({ type: "unread", unreadCount: initialUnreadCount });
       }
       const label = formatRelativeDate(new Date(msg.created_at));
@@ -106,9 +197,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       groups.push({ type: "message", message: msg });
     });
     return groups;
-  }, [messageMap, searchQuery, visibleMessages, initialUnreadCount, initialUnreadStartIndex]);
+  }, [messageMap, searchQuery, visibleMessages, initialUnreadCount, initialUnreadStartIndex, isDecoyActive, decoyMessages]);
 
-  const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
   const groupSubtitle = useMemo(() => {
     if (!chat?.is_group || !groupMembers || groupMembers.length === 0) return "קבוצה";
     const allNames = groupMembers.map(m => m.id === profile?.id ? "את/ה" : m.username);
@@ -140,7 +230,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [showEmojiPickerForId, setShowEmojiPickerForId] = useState<string | null>(null);
   const [showReactionsSheetForId, setShowReactionsSheetForId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [androidNativeKeyboardPadding, setAndroidNativeKeyboardPadding] = useState(0);
+  const [spacerHeight, setSpacerHeight] = useState(0);
+  const viewHeightRef = useRef(0);
+  const maxViewHeightRef = useRef(0);
   const [showEmojiKeyboard, setShowEmojiKeyboard] = useState(false);
   const [composerEmojiEvent, setComposerEmojiEvent] = useState<{ emoji: string; ts: number } | null>(null);
   const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
@@ -151,6 +243,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
   const [isRevealingChat, setIsRevealingChat] = useState(false);
+
+
 
   const scrollRef = useRef<ScrollView | null>(null);
   const scrollMetricsRef = useRef({ y: 0, height: 0, contentHeight: 0 });
@@ -168,14 +262,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const bottomEdge = y + h;
     let latestSeenMsg: Message | null = null;
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
-       const msg = visibleMessages[i];
-       if (msg.sender_id !== profile.id) {
-          const topY = messageLayoutsRef.current[msg.id];
-          if (topY !== undefined && topY <= bottomEdge + 50) {
-             latestSeenMsg = msg;
-             break;
-          }
-       }
+      const msg = visibleMessages[i];
+      if (msg.sender_id !== profile.id) {
+        const topY = messageLayoutsRef.current[msg.id];
+        if (topY !== undefined && topY <= bottomEdge + 50) {
+          latestSeenMsg = msg;
+          break;
+        }
+      }
     }
     if (latestSeenMsg) {
       const remainingUnread = visibleMessages.filter((m) => m.sender_id !== profile?.id && new Date(m.created_at).getTime() > new Date(latestSeenMsg!.created_at).getTime()).length;
@@ -204,8 +298,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }
   };
 
-  const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } = 
-    useChatPermissions(chat, groupMembers, (p) => sendMessage(p));
+  const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } =
+    useChatPermissions(chat, groupMembers, (p) => sendMessage(p), activeSubScreen !== null);
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
     const msg = visibleMessages.find(m => m.id === messageId);
@@ -223,8 +317,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           } else if (emoji === "poll:1") {
             // Background cleanup and denial
             void (async () => {
-               if (alreadyApproved) await revokeApproval(requestId, chat.id, requesterName);
-               await denyRequest(requestId);
+              if (alreadyApproved) await revokeApproval(requestId, chat.id, requesterName);
+              await denyRequest(requestId);
             })();
           }
         }
@@ -232,7 +326,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         console.error("Screenshot poll vote error", e);
       }
     }
-    
+
     // Optimistic UI update via global context
     toggleReaction(messageId, emoji);
   };
@@ -241,17 +335,71 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     if (chat?.is_group) loadChatMembers(chat.id).then(setGroupMembers);
   }, [chat?.id, chat?.is_group]);
 
+  // ── Decoy detection: initial fetch + real-time subscription ───────────
+  useEffect(() => {
+    if (!profile?.id || !chat?.id) return;
+
+    // 1. Initial fetch — is this user currently protected?
+    void supabase
+      .from("chat_decoy_targets")
+      .select("id")
+      .eq("chat_id", chat.id)
+      .eq("target_id", profile.id)
+      .maybeSingle()
+      .then(({ data }) => setIsDecoyActive(!!data));
+
+    // 2. Realtime — react instantly when guard is toggled
+    const channel = supabase
+      .channel(`decoy-guard:${chat.id}:${profile.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "chat_decoy_targets",
+          filter: `chat_id=eq.${chat.id}`,
+        },
+        (payload) => {
+          if (payload.new?.target_id === profile.id) {
+            setIsDecoyActive(true);
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "chat_decoy_targets",
+          // No filter here: DELETE events can't filter by chat_id without REPLICA IDENTITY FULL
+          // Instead we re-fetch on any delete and check if this user is still protected
+        },
+        () => {
+          void supabase
+            .from("chat_decoy_targets")
+            .select("id")
+            .eq("chat_id", chat.id)
+            .eq("target_id", profile.id)
+            .maybeSingle()
+            .then(({ data }) => setIsDecoyActive(!!data));
+        },
+      )
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [chat?.id, profile?.id]);
+
   useEffect(() => {
     let active = true;
     AsyncStorage.getItem(`saved-messages:${profile?.id ?? "guest"}`).then((raw) => {
-      if (active && raw) { try { setSavedMessageIds(new Set(JSON.parse(raw).map((m: any) => m.id))); } catch {} }
+      if (active && raw) { try { setSavedMessageIds(new Set(JSON.parse(raw).map((m: any) => m.id))); } catch { } }
     });
     return () => { active = false; };
   }, [profile?.id, selectedIds?.length]);
 
   useEffect(() => {
     AsyncStorage.getItem(RECENT_KEY).then((raw) => {
-      if (raw) try { setEmojiRecents(JSON.parse(raw)); } catch {}
+      if (raw) try { setEmojiRecents(JSON.parse(raw)); } catch { }
     });
   }, []);
 
@@ -262,14 +410,22 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       return () => { s1.remove(); s2.remove(); };
     } else {
       const s1 = Keyboard.addListener("keyboardDidShow", (e) => {
-        setAndroidNativeKeyboardPadding(e.endCoordinates.height);
-        setRecordedKeyboardHeight(e.endCoordinates.height);
-        setKeyboardHeight(e.endCoordinates.height);
+        const kh = e.endCoordinates.height;
+        setRecordedKeyboardHeight(kh);
+        setKeyboardHeight(kh);
         setShowEmojiKeyboard(false);
+        // React Native kh includes nav bar area (insets.bottom).
+        // Kotlin imeHeight = kh - navBarHeight. Subtract to get true keyboard height above nav bar.
+        setTimeout(() => {
+          const shrinkage = Math.max(0, maxViewHeightRef.current - viewHeightRef.current);
+          const imeHeight = Math.max(0, kh - insets.bottom);
+          const needed = Math.max(0, imeHeight - shrinkage);
+          setSpacerHeight(needed);
+        }, 60);
       });
       const s2 = Keyboard.addListener("keyboardDidHide", () => {
-        setAndroidNativeKeyboardPadding(0);
         setKeyboardHeight(0);
+        setSpacerHeight(0);
       });
       return () => { s1.remove(); s2.remove(); };
     }
@@ -286,11 +442,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   useEffect(() => {
     if (!visibleMessages?.length || initialScrollDone.current) return;
     const currentUnread = (unreadCounts && chat && unreadCounts[chat.id]) || 0;
-    
+
     // Initialize unread divider positions once per chat entry
     if (!initialScrollDone.current) {
-        setInitialUnreadCount(currentUnread);
-        setInitialUnreadStartIndex(Math.max(0, visibleMessages.length - currentUnread));
+      setInitialUnreadCount(currentUnread);
+      setInitialUnreadStartIndex(Math.max(0, visibleMessages.length - currentUnread));
     }
 
     if (scrollToMessageId) {
@@ -300,9 +456,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       const unreadStartIndex = Math.max(0, visibleMessages.length - currentUnread);
       const firstUnreadMsg = visibleMessages[unreadStartIndex];
       if (firstUnreadMsg) {
-        setTimeout(() => { 
-          scrollToMessageWithRetry(firstUnreadMsg.id, false); 
-          setTimeout(checkVisibility, 400); 
+        setTimeout(() => {
+          scrollToMessageWithRetry(firstUnreadMsg.id, false);
+          setTimeout(checkVisibility, 400);
         }, 150);
       } else {
         scrollToBottom(false);
@@ -314,6 +470,30 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       initialScrollDone.current = true;
     }
   }, [chat?.id, visibleMessages?.length, scrollToMessageId, unreadCounts]);
+
+  // Live auto-scroll and visibility check
+  useEffect(() => {
+    if (!initialScrollDone.current || !visibleMessages?.length) return;
+
+    const lastMsg = visibleMessages[visibleMessages.length - 1];
+    if (!lastMsg) return;
+
+    // System messages (guard, group events, etc.) → always scroll to bottom
+    if (lastMsg.message_kind === "system") {
+      scrollToBottom(true);
+    } else if (lastMsg.sender_id !== profile?.id) {
+      // Someone else's regular message — only scroll if already near bottom
+      const { y, height, contentHeight } = scrollMetricsRef.current;
+      const distanceFromBottom = contentHeight - (y + height);
+      if (distanceFromBottom < 150) {
+        scrollToBottom(true);
+      }
+    }
+
+    // Always check visibility to mark new messages as seen if they are on screen
+    const timer = setTimeout(checkVisibility, 100);
+    return () => clearTimeout(timer);
+  }, [visibleMessages]);
 
   const [fadeAnim] = useState(new Animated.Value(0));
   useEffect(() => {
@@ -334,7 +514,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   if (activeSubScreen === "pollVotes" && viewPollVotesMessage) return <ChatPollVotesScreen message={viewPollVotesMessage} reactions={reactionsByMessage ? reactionsByMessage[viewPollVotesMessage.id] : undefined} currentUserId={profile?.id || ""} onBack={() => setActiveSubScreen(null)} />;
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.chatBackdrop }} onStartShouldSetResponderCapture={(e) => {
+    <View style={{ flex: 1, backgroundColor: theme.colors.chatBackdrop }}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        viewHeightRef.current = h;
+        if (h > maxViewHeightRef.current) maxViewHeightRef.current = h;
+      }}
+      onStartShouldSetResponderCapture={(e) => {
       if (showReactionsForId) {
         if (!pickerLayout) { setShowReactionsForId(null); return false; }
         const { pageX, pageY } = e.nativeEvent;
@@ -350,23 +536,34 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           selectedIds={selectedIds} savedMessageIds={savedMessageIds} chatMuted={isChatMuted(muteSettings && chat && muteSettings[chat.id])}
           muteSetting={muteSettings && chat && muteSettings[chat.id]} groupSubtitle={groupSubtitle} chatLocked={chatPreferences && chat && chatPreferences[chat.id]?.locked}
           onBack={() => selectedIds.length ? setSelectedIds([]) : onBack()} onOpenChatSettings={onOpenChatSettings}
-          onReplyToSelected={() => { setReplyTo(messageMap[selectedIds[0]]); setSelectedIds([]); }}
+          onReplyToSelected={() => { const m = messageMap[selectedIds[0]]; if (m) setReplyTo(m); setSelectedIds([]); }}
           onToggleStarSelected={async () => {
-             const allStarred = selectedIds.every(id => savedMessageIds.has(id));
-             const key = `saved-messages:${profile?.id ?? "guest"}`;
-             const raw = await AsyncStorage.getItem(key);
-             let saved: any[] = raw ? JSON.parse(raw) : [];
-             if (allStarred) saved = saved.filter(m => !selectedIds.includes(m.id));
-             else saved = [...saved, ...selectedIds.map(id => ({ id, body: messageMap[id].body_ciphertext, created_at: messageMap[id].created_at, source_chat_title: chat.title, chat_id: chat.id }))];
-             await AsyncStorage.setItem(key, JSON.stringify(saved));
-             setSavedMessageIds(new Set(saved.map(m => m.id)));
-             setSelectedIds([]);
-             showToast(allStarred ? "הוסר מההודעות השמורות" : "נשמר בהודעות השמורות");
+            const allStarred = selectedIds.every(id => savedMessageIds.has(id));
+            const key = `saved-messages:${profile?.id ?? "guest"}`;
+            const raw = await AsyncStorage.getItem(key);
+            let saved: any[] = raw ? JSON.parse(raw) : [];
+            if (allStarred) {
+              saved = saved.filter(m => !selectedIds.includes(m.id));
+            } else {
+              const toAdd = selectedIds.map(id => messageMap[id]).filter(Boolean).map(m => ({
+                id: m!.id,
+                body: m!.body_ciphertext,
+                created_at: m!.created_at,
+                source_chat_title: chat.title,
+                chat_id: chat.id
+              }));
+              saved = [...saved, ...toAdd];
+            }
+            await AsyncStorage.setItem(key, JSON.stringify(saved));
+            setSavedMessageIds(new Set(saved.map(m => m.id)));
+            setSelectedIds([]);
+            showToast(allStarred ? "הוסר מההודעות השמורות" : "נשמר בהודעות השמורות");
           }}
           onDeleteSelected={() => setShowDeleteModal(true)}
           onForwardSelected={() => { onForward?.(selectedIds.map(id => messageMap[id]).filter(Boolean)); setSelectedIds([]); }}
           onShowSelectionOverflow={() => setShowSelectionOverflowMenu(true)}
           onShowOverflowMenu={() => setShowOverflowMenu(true)}
+          decoyMode={decoyMode}
         />
       </SafeAreaView>
 
@@ -380,15 +577,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 <Pressable onPress={() => { setSearchOpen(false); setSearchQuery(""); }}><Feather color={theme.colors.textMuted} name="x" size={18} /></Pressable>
               </View>
             )}
-            
+
             <View style={{ flex: 1 }}>
               <Animated.View style={[styles.thread, { opacity: fadeAnim }]}>
-                <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                <ScrollView ref={scrollRef} contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
                   onContentSizeChange={(w, h) => scrollMetricsRef.current.contentHeight = h}
-                  onScroll={(e) => { 
+                  onScroll={(e) => {
                     scrollMetricsRef.current.y = e.nativeEvent.contentOffset.y;
                     scrollMetricsRef.current.height = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
                     scrollMetricsRef.current.contentHeight = e.nativeEvent.contentSize.height || scrollMetricsRef.current.contentHeight;
@@ -396,7 +593,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   onScrollBeginDrag={() => { if (showReactionsForId) setShowReactionsForId(null); }}
                   onMomentumScrollEnd={() => checkVisibility()} onScrollEndDrag={() => checkVisibility()}
                 >
-                  <Pressable style={{ flexGrow: 1 }} onPress={() => { if (showReactionsForId) setShowReactionsForId(null); }}>
+                  <Pressable style={[{ flexGrow: 1 }, webDefaultCursor]} onPress={() => { if (showReactionsForId) setShowReactionsForId(null); }}>
                     {groupedMessages.map((item, idx) => {
                       if (item.type === "date") return <View key={`date-${idx}`} style={styles.dateSeparator}><View style={styles.datePill}><Text style={styles.datePillText}>{item.dateLabel}</Text></View></View>;
                       if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
@@ -408,17 +605,17 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                             setRevealedMessageId(msg.id);
                             revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
                           }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
-                          reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
-                          onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }} 
-                          replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
-                          replyToName={(() => {
-                            if (!msg.reply_to_id) return null;
-                            const original = messageMap[msg.reply_to_id];
-                            if (!original) return "תגובה";
-                            const authorId = original.sender_id;
-                            return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
-                          })()}
-                          viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
+                            reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
+                            onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
+                            replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
+                            replyToName={(() => {
+                              if (!msg.reply_to_id) return null;
+                              const original = messageMap[msg.reply_to_id];
+                              if (!original) return "תגובה";
+                              const authorId = original.sender_id;
+                              return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+                            })()}
+                            viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
                         </View>
                       );
                     })}
@@ -427,41 +624,88 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
               </Animated.View>
             </View>
           </View>
-          {isMember && (
+          {/* Composer — always visible for members (decoy users can still send real messages) */}
+          {(isMember || decoyMode) && (
             <View style={{ paddingBottom: (showEmojiKeyboard || keyboardHeight > 0) ? 16 : insets.bottom }}>
-              <MessageComposer 
-                onInputFocus={() => { 
-                  setShowReactionsForId(null); 
+              <MessageComposer
+                onInputFocus={() => {
+                  setShowReactionsForId(null);
                   if (showEmojiKeyboard) {
-                    // Delay hiding emoji keyboard to avoid jump while OS keyboard animates up
                     setTimeout(() => setShowEmojiKeyboard(false), 300);
                   }
-                }} 
-                onCancelReply={() => setReplyTo(null)}
-                onSend={(body, kind, expireSeconds) => { 
-                  scrollToBottom(true); 
-                  setReplyTo(null);
-                  void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds }); 
                 }}
-                replyToText={replyTo?.body_preview ?? null} 
+                onCancelReply={() => setReplyTo(null)}
+                onSend={(body, kind, expireSeconds) => {
+                  scrollToBottom(true);
+                  setReplyTo(null);
+                  if (decoyMode && profile?.id) {
+                    // Decoy mode: write to chat_decoy_messages
+                    void supabase
+                      .from("chat_decoy_messages")
+                      .insert([{ chat_id: chat.id, sender_id: profile.id, body, is_me: true }])
+                      .select("id, body, is_me, created_at, sender_id")
+                      .single()
+                      .then(({ data }) => {
+                        if (data) {
+                          setDecoyDbMessages((prev) => [
+                            ...prev,
+                            {
+                              id: `decoy-${data.id}`,
+                              chat_id: chat.id,
+                              sender_id: profile.id,
+                              body_ciphertext: data.body,
+                              body_preview: data.body,
+                              message_kind: "standard" as const,
+                              reply_to_id: null,
+                              expires_at: null,
+                              created_at: data.created_at,
+                              deleted_at: null,
+                            } as any,
+                          ]);
+                        }
+                      });
+                  } else {
+                    // Real mode: send to real chat
+                    void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds });
+                    // While decoy guard is active, also append to fake chat view (client-side)
+                    if (isDecoyActive && profile?.id) {
+                      setLocalDecoyMessages((prev) => [
+                        ...prev,
+                        {
+                          id: `local-decoy-${Date.now()}`,
+                          chat_id: chat.id,
+                          sender_id: profile.id,
+                          body_ciphertext: body,
+                          body_preview: body,
+                          message_kind: kind,
+                          reply_to_id: replyTo?.id ?? null,
+                          expires_at: null,
+                          created_at: new Date().toISOString(),
+                          deleted_at: null,
+                        },
+                      ]);
+                    }
+                  }
+                }}
+                replyToText={replyTo?.body_preview ?? null}
                 replyToName={(() => {
                   if (!replyTo) return null;
                   const authorId = replyTo.sender_id;
                   return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
                 })()}
                 emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
-                onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setAndroidNativeKeyboardPadding(0); setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+                onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
             </View>
           )}
         </KeyboardAvoidingView>
-        
+
         {showEmojiKeyboard ? (
-           <View style={{ height: recordedKeyboardHeight || 300, width: "100%" }}>
-             <EmojiKeyboard height={recordedKeyboardHeight || 300} onEmojiSelected={(emoji) => setComposerEmojiEvent({ emoji, ts: Date.now() })} recents={emojiRecents} onRecentsUpdate={setEmojiRecents} bottomInset={insets.bottom} />
-           </View>
-        ) : Platform.OS === "android" && androidNativeKeyboardPadding > 0 ? (
-           <View style={{ height: androidNativeKeyboardPadding, width: "100%" }} />
-        ) : null}
+          <View style={{ height: recordedKeyboardHeight || 300, width: "100%" }}>
+            <EmojiKeyboard height={recordedKeyboardHeight || 300} onEmojiSelected={(emoji) => setComposerEmojiEvent({ emoji, ts: Date.now() })} recents={emojiRecents} onRecentsUpdate={setEmojiRecents} bottomInset={insets.bottom} />
+          </View>
+        ) : (spacerHeight > 0 ? (
+          <View style={{ height: spacerHeight, width: "100%" }} />
+        ) : null)}
       </SafeAreaView>
 
       <ChatOverlayManager
@@ -470,7 +714,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           muteSelection, setMuteSelection, clearSelection, setClearSelection, clearStarred, setClearStarred, reportExit, setReportExit, selectedIds, setSelectedIds, messageMap, viewInfoMessage, setViewInfoMessage, showReactionsSheetForId, setShowReactionsSheetForId, reactionsByMessage, contactNicknames, showEmojiPickerForId, setShowEmojiPickerForId, toastMessage, activeSubScreen, setActiveSubScreen, onOpenChatSettings, onCreateGroupWith, setChatMute, clearChatsLocally, showToast, toggleReaction, toggleSelection: (id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id]), requestScreenshotPermission, sendMessage, hasScreenshotPerm, myRequests, groupMembers, setSearchOpen,
           muteSetting: (muteSettings && chat) ? muteSettings[chat.id] : undefined,
           performDelete: async (everyone) => { await deleteMessages(selectedIds, everyone); setSelectedIds([]); setShowDeleteModal(false); },
-          keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight
+          keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight,
+          showDecoyManager, setShowDecoyManager,
+          onSendSystemMessage: async (body: string) => {
+            await sendMessage({ chatId: chat.id, body, messageKind: "system" });
+          },
         }}
       />
 
@@ -478,10 +726,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 999999, top: -100, bottom: -100 }}>
           {/* Shutter effect - quick flash */}
           <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "#fff" }} />
-          
+
           {/* Result is black */}
-          <View style={{ 
-            ...StyleSheet.absoluteFillObject, 
+          <View style={{
+            ...StyleSheet.absoluteFillObject,
             backgroundColor: "#000",
             opacity: 0.98,
             justifyContent: "center",

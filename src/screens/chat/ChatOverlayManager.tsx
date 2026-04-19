@@ -7,6 +7,7 @@ import { useAppTheme } from "@/lib/theme";
 import { describeMute } from "./ChatUtils";
 import { MessageBubble } from "@/components/MessageBubble";
 import { PERMISSION_DURATION_MS } from "@/context/ScreenshotContext";
+import { DecoyManagerOverlay } from "./DecoyManagerOverlay";
 
 type OverlayProps = {
   chat: Chat;
@@ -78,6 +79,9 @@ type OverlayProps = {
   groupMembers: Profile[];
   setSearchOpen: (v: boolean) => void;
   keyboardHeight?: number;
+  showDecoyManager: boolean;
+  setShowDecoyManager: (v: boolean) => void;
+  onSendSystemMessage: (body: string) => Promise<void>;
 };
 
 export const ChatOverlayManager = (props: OverlayProps) => {
@@ -109,7 +113,8 @@ export const ChatOverlayManager = (props: OverlayProps) => {
     showToast, toggleReaction, toggleSelection,
     requestScreenshotPermission, sendMessage,
     hasScreenshotPerm, myRequests, groupMembers,
-    setSearchOpen, keyboardHeight
+    setSearchOpen, keyboardHeight,
+    showDecoyManager, setShowDecoyManager, onSendSystemMessage,
   } = props;
 
   const [tick, setTick] = React.useState(0);
@@ -374,37 +379,61 @@ export const ChatOverlayManager = (props: OverlayProps) => {
 
       {showAttachmentMenu ? (
         <View pointerEvents="box-none" style={styles.overlayRoot}>
-          <Pressable onPress={() => setShowAttachmentMenu(false)} style={styles.backdrop} />
-          <View style={[styles.attachmentMenuCard, keyboardHeight ? { bottom: keyboardHeight + 70 } : {}]}>
-            <View style={styles.attachmentRow}>
-              <AttachmentItem icon="image" label="גלריה" color="#0066FF" theme={theme} />
-              <AttachmentItem icon="camera" label="מצלמה" color="#E53935" theme={theme} />
-              <AttachmentItem icon="map-marker" label="מיקום" color="#00C853" theme={theme} />
-              <AttachmentItem icon="account" label="איש קשר" color="#0091EA" theme={theme} />
-            </View>
-            <View style={styles.attachmentRow}>
-              <AttachmentItem icon="file-document" label="קבצים" color="#651FFF" theme={theme} />
-              <AttachmentItem icon="poll" label="סקר" color="#FFB300" theme={theme} onPress={() => { setShowAttachmentMenu(false); setActiveSubScreen("createPoll"); }} />
-              <AttachmentItem icon="calendar" label="אירוע" color="#D81B60" theme={theme} />
-              <AttachmentItem 
-                icon="camera-outline" 
-                label="בקשת צילום" 
-                color="#00A884" 
-                theme={theme} 
-                disabled={isScreenshotRequestBlocked}
-                onPress={async () => {
-                   if (isScreenshotRequestBlocked) return;
-                   setShowAttachmentMenu(false);
-                   const targetMemberIds = chat.is_group 
-                     ? groupMembers.map((m) => m.id)
-                     : Object.keys(profiles).filter(id => id !== profile?.id);
-                   const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
-                   if (reqResult?.pollBody) {
-                     sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
-                   }
-                }} 
+          <Pressable onPress={() => { setShowAttachmentMenu(false); setShowDecoyManager(false); }} style={styles.backdrop} />
+          <View style={[styles.attachmentMenuCard, keyboardHeight ? { bottom: keyboardHeight + 70 } : {}, showDecoyManager && { minHeight: 440, paddingVertical: 0, paddingHorizontal: 0 }]}>
+            {showDecoyManager ? (
+              // ── Decoy manager fills the panel ──────────────────────────
+              <DecoyManagerOverlay
+                chat={chat}
+                currentUserId={profile?.id ?? ""}
+                groupMembers={groupMembers}
+                onClose={() => { setShowDecoyManager(false); setShowAttachmentMenu(false); }}
+                onSendSystemMessage={onSendSystemMessage}
               />
-            </View>
+            ) : (
+              // ── Default attachment grid: 2 rows × 4 (groups get shield in row 2)
+              <>
+                {/* Row 1: גלריה, מצלמה, מיקום, קבצים */}
+                <View style={styles.attachmentRow}>
+                  <AttachmentItem icon="image" label="גלריה" color="#0066FF" theme={theme} />
+                  <AttachmentItem icon="camera" label="מצלמה" color="#E53935" theme={theme} />
+                  <AttachmentItem icon="map-marker" label="מיקום" color="#00C853" theme={theme} />
+                  <AttachmentItem icon="file-document" label="קבצים" color="#651FFF" theme={theme} />
+                </View>
+                {/* Row 2: סקר, אירוע, בקשת צילום, מגן הגנה (groups) / only 3 (non-groups) */}
+                <View style={styles.attachmentRow}>
+                  <AttachmentItem icon="poll" label="סקר" color="#FFB300" theme={theme} onPress={() => { setShowAttachmentMenu(false); setActiveSubScreen("createPoll"); }} />
+                  <AttachmentItem icon="calendar" label="אירוע" color="#D81B60" theme={theme} />
+                  <AttachmentItem
+                    icon="camera-outline"
+                    label="בקשת צילום"
+                    color="#00A884"
+                    theme={theme}
+                    disabled={isScreenshotRequestBlocked}
+                    onPress={async () => {
+                       if (isScreenshotRequestBlocked) return;
+                       setShowAttachmentMenu(false);
+                       const targetMemberIds = chat.is_group
+                         ? groupMembers.map((m) => m.id)
+                         : Object.keys(profiles).filter(id => id !== profile?.id);
+                       const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
+                       if (reqResult?.pollBody) {
+                         sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
+                       }
+                    }}
+                  />
+                  {chat.is_group ? (
+                    <AttachmentItem
+                      icon="shield-check"
+                      label="מגן הגנה"
+                      color="#5C6BC0"
+                      theme={theme}
+                      onPress={() => setShowDecoyManager(true)}
+                    />
+                  ) : <View style={{ width: 70 }} />}
+                </View>
+              </>
+            )}
           </View>
         </View>
       ) : null}

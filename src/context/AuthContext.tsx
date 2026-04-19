@@ -14,6 +14,7 @@ type AuthContextValue = {
     username: string,
   ) => Promise<{ error: string | null; notice: string | null }>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -118,6 +119,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signIn,
       signUp,
       signOut,
+      refreshProfile: async () => {
+        if (session?.user) await loadProfile(session.user.id);
+      },
     }),
     [loading, profile, session],
   );

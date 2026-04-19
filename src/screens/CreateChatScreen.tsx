@@ -222,7 +222,7 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
             <Text style={styles.modalTitle}>שם הקבוצה</Text>
             <TextInput
               style={[styles.modalInput, webEmbeddedInputReset]}
-              placeholder="לדוגמה: חופשה לאיראן"
+              placeholder="לדוגמה: חופשה באיראן"
               placeholderTextColor={theme.colors.textMuted}
               value={groupTitle}
               onChangeText={setGroupTitle}
@@ -447,7 +447,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     error: {
       color: theme.colors.danger ?? "#ef4444",
       fontSize: 13,
-      textAlign: "right",
+      textAlign: "left",
       marginBottom: 8,
     },
     modalActions: {

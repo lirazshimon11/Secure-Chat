@@ -88,6 +88,17 @@ export function ChatMemberActionModal({ visible, onClose, member, nickname, onMe
             </View>
 
             <Text style={[styles.memberName, { color: theme.colors.text }]}>{displayName}</Text>
+            {/* Relationship status */}
+            <View style={styles.relationshipBadge}>
+              <MaterialCommunityIcons
+                name={member.is_in_relationship ? "heart" : "heart-outline"}
+                size={14}
+                color={member.is_in_relationship ? "#E91E8C" : theme.colors.textMuted}
+              />
+              <Text style={[styles.relationshipLabel, { color: member.is_in_relationship ? "#E91E8C" : theme.colors.textMuted }]}>
+                {member.is_in_relationship ? "בזוגיות" : "רווק/ה"}
+              </Text>
+            </View>
             <View style={styles.actionsBox}>
               <Pressable style={[styles.actionBtn, { borderColor: theme.colors.separator }]} onPress={() => { }}>
                 <View style={styles.actionIconBox}>
@@ -199,7 +210,17 @@ const styles = StyleSheet.create({
   memberName: {
     fontSize: 22,
     fontWeight: "700",
+    marginBottom: 8,
+  },
+  relationshipBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     marginBottom: 24,
+  },
+  relationshipLabel: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   memberPhone: {
     fontSize: 16,

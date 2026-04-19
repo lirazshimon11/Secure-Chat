@@ -7,6 +7,15 @@ export type Profile = {
   username: string;
   full_name: string | null;
   created_at: string;
+  is_in_relationship: boolean;
+};
+
+export type DecoyTarget = {
+  id: string;
+  chat_id: string;
+  target_id: string;
+  enabled_by: string;
+  created_at: string;
 };
 
 export type Chat = {

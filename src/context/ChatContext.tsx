@@ -141,6 +141,14 @@ export function ChatProvider({ children }: PropsWithChildren) {
         const requester = parts[1] || "מישהו";
         return `תם הזמן המוקצב לצילום מסך עבור ${requester}`;
       }
+      if (body && body.startsWith("[SYSTEM_DECOY_ON]:")) {
+        const names = body.substring("[SYSTEM_DECOY_ON]:".length);
+        return `🕵️ ${names} במצב הסוואה`;
+      }
+      if (body && body.startsWith("[SYSTEM_DECOY_OFF]:")) {
+        const names = body.substring("[SYSTEM_DECOY_OFF]:".length);
+        return `🔓 ${names} חזרה לשגרה`;
+      }
     }
     
     return body;
@@ -233,31 +241,56 @@ export function ChatProvider({ children }: PropsWithChildren) {
   };
 
   const subscribe = (userId: string) => {
-    if (channelRef.current) void supabase.removeChannel(channelRef.current);
-    channelRef.current = supabase.channel(`chat-stream-${userId}`)
+    if (channelRef.current) {
+      console.log("[DEBUG-Realtime] Removing old channel");
+      void supabase.removeChannel(channelRef.current);
+    }
+    
+    console.log(`[DEBUG-Realtime] Subscribing for user: ${userId}`);
+    
+    channelRef.current = supabase.channel('any-change')
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (p) => {
-        const n = p.new as Message; if (!n?.chat_id) return;
-        if (p.eventType === 'INSERT' && n.sender_id === userId && n.message_kind !== 'system') return;
-        setMessagesByChat(cur => { 
-          if (deletedForMeIdsRef.current.includes(n.id)) return cur; 
-          const existing = cur[n.chat_id] ?? [];
-          const exists = existing.find(m => m.id === n.id);
-          let next = exists ? existing.map(m => m.id === n.id ? n : m) : [...existing, n].sort((a,b) => a.created_at.localeCompare(b.created_at));
-          return { ...cur, [n.chat_id]: next }; 
-        });
-        setRawChats(cur => cur.map(c => c.id === n.chat_id ? { ...c, last_message_preview: formatMessagePreview(n.body_preview || n.body_ciphertext, n.message_kind, n.sender_id), last_message_at: n.created_at } : c));
+        console.log("[DEBUG-Realtime] EVENT RECEIVED:", p.eventType, p.new ? (p.new as any).id : "no-data");
+        const n = p.new as Message;
+        if (!n || !n.chat_id) {
+          console.warn("[DEBUG-Realtime] Received event without valid data. Check RLS or Replica Identity.");
+          return;
+        }
+
+        if (p.eventType === 'INSERT') {
+          if (n.sender_id === userId && n.message_kind !== 'system') {
+            console.log("[DEBUG-Realtime] Ignoring own message (inserted via optimistic UI)");
+            return;
+          }
+
+          console.log("[DEBUG-Realtime] Processing new incoming message for chat:", n.chat_id);
+          
+          if (n.sender_id !== userId) {
+            setUnreadCounts(cur => ({ ...cur, [n.chat_id]: (cur[n.chat_id] ?? 0) + 1 }));
+          }
+
+          setMessagesByChat(cur => {
+            if (deletedForMeIdsRef.current.includes(n.id)) return cur;
+            const existing = cur[n.chat_id] ?? [];
+            if (existing.find(m => m.id === n.id)) return cur;
+            return { ...cur, [n.chat_id]: [...existing, n].sort((a, b) => a.created_at.localeCompare(b.created_at)) };
+          });
+
+          setRawChats(cur => cur.map(c => 
+            c.id === n.chat_id ? { ...c, last_message_preview: formatMessagePreview(n.body_preview || n.body_ciphertext, n.message_kind, n.sender_id), last_message_at: n.created_at } : c
+          ));
+        } else {
+          // Handle update/delete
+          if (loadedChatIdsRef.current.includes(n.chat_id)) loadMessages(n.chat_id);
+        }
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
-      .on("postgres_changes", { event: "*", schema: "public", table: "message_views" }, () => loadedChatIdsRef.current.forEach(id => void loadMessages(id)))
-      .on("postgres_changes", { event: "*", schema: "public", table: "chat_members" }, (p) => {
-          const n = (p.new || p.old) as any;
-          // Refresh after a tiny delay to allow DB views to settle during bulk updates
-          if (n?.user_id === userId) setTimeout(() => void refreshChats(true), 300);
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "chats" }, () => {
-          setTimeout(() => void refreshChats(true), 300);
-      })
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log(`[DEBUG-Realtime] Status update: ${status}`);
+        if (err) console.error("[DEBUG-Realtime] ERROR:", err);
+        if (status === 'SUBSCRIBED') {
+          console.log("[DEBUG-Realtime] ✅ Successfully subscribed to messages table!");
+        }
+      });
   };
 
   const markChatSeen = async (chatId: string, timestamp?: string, nextUnread?: number) => {

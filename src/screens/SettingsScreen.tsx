@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { useAppTheme } from "@/lib/theme";
+import { supabase } from "@/lib/supabase";
 import { AdminScreen } from "./AdminScreen";
 
 type Props = {
@@ -15,8 +16,34 @@ type Props = {
 export function SettingsScreen({ onBack }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme);
-  const { profile, signOut } = useAuth();
+  const { profile, refreshProfile, signOut } = useAuth();
   const [activeSubScreen, setActiveSubScreen] = useState<"admin" | null>(null);
+  const [isInRelationship, setIsInRelationship] = useState(
+    profile?.is_in_relationship ?? false,
+  );
+  const [savingRelationship, setSavingRelationship] = useState(false);
+
+  // Keep local state in sync if profile changes (e.g. after reload)
+  useEffect(() => {
+    setIsInRelationship(profile?.is_in_relationship ?? false);
+  }, [profile?.is_in_relationship]);
+
+  const handleRelationshipToggle = async (value: boolean) => {
+    if (!profile?.id || savingRelationship) return;
+    setSavingRelationship(true);
+    setIsInRelationship(value);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ is_in_relationship: value })
+      .eq("id", profile.id);
+    if (error) {
+      Alert.alert("שגיאה", "לא ניתן לעדכן את המצב. נסה שוב.");
+      setIsInRelationship(!value); // rollback
+    } else {
+      await refreshProfile();
+    }
+    setSavingRelationship(false);
+  };
 
   if (activeSubScreen === "admin") {
     return <AdminScreen onBack={() => setActiveSubScreen(null)} />;
@@ -40,6 +67,30 @@ export function SettingsScreen({ onBack }: Props) {
             <Text style={styles.handle}>@{profile?.username ?? "לא ידוע"}</Text>
             <Text style={styles.email}>{profile?.email ?? "אין אימייל"}</Text>
           </View>
+        </View>
+
+        {/* Relationship status toggle */}
+        <View style={styles.relationshipCard}>
+          <View style={styles.relationshipIconWrap}>
+            <MaterialCommunityIcons
+              color={isInRelationship ? "#E91E8C" : theme.colors.textMuted}
+              name={isInRelationship ? "heart" : "heart-outline"}
+              size={24}
+            />
+          </View>
+          <View style={styles.relationshipCopy}>
+            <Text style={styles.relationshipTitle}>מצב זוגיות</Text>
+            <Text style={styles.relationshipSubtitle}>
+              {isInRelationship ? "בזוגיות — ניתן להגן עלייך בקבוצות" : "רווק/ה — ברירת מחדל"}
+            </Text>
+          </View>
+          <Switch
+            disabled={savingRelationship}
+            onValueChange={handleRelationshipToggle}
+            thumbColor={isInRelationship ? "#E91E8C" : theme.colors.textMuted}
+            trackColor={{ false: theme.colors.surfaceMuted, true: "#F8BBD9" }}
+            value={isInRelationship}
+          />
         </View>
 
         <View style={styles.listCard}>
@@ -91,6 +142,7 @@ export function SettingsScreen({ onBack }: Props) {
       </View>
     );
   }
+
 }
 
 const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
@@ -153,6 +205,31 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     email: {
       color: theme.colors.textMuted,
       marginTop: 3,
+    },
+    relationshipCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.radius.lg,
+      padding: theme.spacing.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    relationshipIconWrap: {
+      width: 36,
+      alignItems: "center",
+    },
+    relationshipCopy: {
+      flex: 1,
+    },
+    relationshipTitle: {
+      color: theme.colors.text,
+      fontSize: 16,
+      fontWeight: "700",
+    },
+    relationshipSubtitle: {
+      color: theme.colors.textMuted,
+      fontSize: 13,
+      marginTop: 2,
     },
     listCard: {
       backgroundColor: theme.colors.surface,

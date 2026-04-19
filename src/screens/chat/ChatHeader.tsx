@@ -23,6 +23,7 @@ type Props = {
   onForwardSelected: () => void;
   onShowSelectionOverflow: () => void;
   onShowOverflowMenu: () => void;
+  decoyMode?: boolean;
 };
 
 export const ChatHeader = ({
@@ -44,6 +45,7 @@ export const ChatHeader = ({
   onForwardSelected,
   onShowSelectionOverflow,
   onShowOverflowMenu,
+  decoyMode,
 }: Props) => {
   return (
     <View style={styles.header}>
@@ -98,12 +100,16 @@ export const ChatHeader = ({
             ) : null}
           </Pressable>
           
-          <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
-            <Feather color={theme.colors.headerIcon} name="video" size={20} />
-          </Pressable>
-          <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
-            <Feather color={theme.colors.headerIcon} name="phone" size={19} />
-          </Pressable>
+          {!decoyMode && (
+            <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
+              <Feather color={theme.colors.headerIcon} name="video" size={20} />
+            </Pressable>
+          )}
+          {!decoyMode && (
+            <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
+              <Feather color={theme.colors.headerIcon} name="phone" size={19} />
+            </Pressable>
+          )}
 
           <Pressable onPress={onShowOverflowMenu} style={styles.headerButtonSmall}>
             <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={24} />

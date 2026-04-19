@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+  Share,
+} from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
@@ -7,6 +18,13 @@ import { useAuth } from "@/context/AuthContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, Profile } from "@/lib/types";
 import { supabase } from "@/lib/supabase";
+import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
+
+if (Platform.OS === "android") {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 
 type Props = {
   chat: Chat;
@@ -19,48 +37,78 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
   const { profile } = useAuth();
   const { loadChatMembers, searchUsers, contactNicknames } = useChats();
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState<Profile[]>([]);
-  const [currentMembers, setCurrentMembers] = useState<Set<string>>(new Set());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // משתמשים שכבר בקבוצה
+  const [existingProfiles, setExistingProfiles] = useState<Profile[]>([]);
+  const existingIds = useMemo(() => new Set(existingProfiles.map((p) => p.id)), [existingProfiles]);
+
+  // משתמשים חדשים שנבחרו
+  const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
+  const selectedIds = useMemo(() => new Set(selectedUsers.map((u) => u.id)), [selectedUsers]);
+
+  const [loadingResults, setLoadingResults] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadChatMembers(chat.id).then((members) => {
-      setCurrentMembers(new Set(members.map((m) => m.id)));
+      setExistingProfiles(members);
     });
   }, [chat.id]);
 
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      const found = await searchUsers(searchQuery);
-      // Exclude already members
-      setResults(found.filter((u) => !currentMembers.has(u.id)));
-    }, 300);
+    const timer = setTimeout(() => {
+      void loadUsers(query);
+    }, 140);
     return () => clearTimeout(timer);
-  }, [searchQuery, currentMembers]);
+  }, [query, existingIds]);
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+  async function loadUsers(nextQuery: string) {
+    setLoadingResults(true);
+    const data = await searchUsers(nextQuery);
+    // מוריד מהתוצאות חיפוש משתמשים שכבר נמצאים בקבוצה כדי שיוכלו רק להוסיף חדשים
+    setResults(data.filter((u) => !existingIds.has(u.id)));
+    setLoadingResults(false);
+  }
+
+  function toggleUser(user: Profile) {
+    // לא ניתן להסיר או לשנות משתמשים שכבר קיימים על ידי לחיצה פה
+    if (existingIds.has(user.id)) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedUsers((current) =>
+      current.some((item) => item.id === user.id)
+        ? current.filter((item) => item.id !== user.id)
+        : [...current, user],
+    );
+  }
 
   const handleAdd = async () => {
-    if (!selectedIds.size || saving) return;
+    if (!selectedUsers.length || saving) return;
     setSaving(true);
-    const rows = [...selectedIds].map((userId) => ({
+    const rows = selectedUsers.map((user) => ({
       chat_id: chat.id,
-      user_id: userId,
+      user_id: user.id,
       role: "member",
     }));
     await supabase.from("chat_members").insert(rows);
     setSaving(false);
     onBack();
   };
+
+  const handleShareLink = async () => {
+    try {
+      await Share.share({
+        message: `הצטרפו לקבוצה שלנו ב-SecureApp: https://secureapp.com/join/${chat.id}`,
+      });
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  // מציג למעלה את כל הקיימים ומחבר אליהם את אלו שנבחרו עכשיו להוספה
+  const allShownChips = [...existingProfiles, ...selectedUsers];
 
   return (
     <Screen>
@@ -71,11 +119,11 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
             <Feather name="arrow-right" size={24} color={theme.colors.headerIcon} />
           </Pressable>
           <TextInput
-            style={styles.searchInput}
-            placeholder="אפשר לחפש שם או מספר..."
+            style={[styles.searchInput, webEmbeddedInputReset]}
+            placeholder="אפשר לחפש שם או מס'..."
             placeholderTextColor={theme.colors.textMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
+            value={query}
+            onChangeText={setQuery}
             autoFocus
           />
         </View>
@@ -85,27 +133,36 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
       </View>
 
       {/* Selected Users Chips */}
-      {selectedIds.size > 0 && (
+      {allShownChips.length > 0 && (
         <View style={styles.selectedContainer}>
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
-            inverted={true} // RTL scroll
-            data={[...selectedIds].map(id => results.find(r => r.id === id)).filter(Boolean)}
-            keyExtractor={item => item!.id}
+            data={allShownChips}
+            keyExtractor={(item) => item.id}
             renderItem={({ item }) => {
-              if (!item) return null;
               const nickname = contactNicknames[item.id]?.first_name;
               const displayName = nickname || item.username;
+              const isExisting = existingIds.has(item.id);
+
               return (
-                <Pressable style={styles.selectedChip} onPress={() => toggleSelect(item.id)}>
+                <Pressable
+                  style={[styles.selectedChip, webNoOutline]}
+                  onPress={() => toggleUser(item)}
+                  disabled={isExisting} // חוסם לחיצה למחיקה למשתמשים קיימים
+                >
                   <View style={styles.selectedAvatarContainer}>
                     <View style={styles.selectedAvatar}>
-                      <Text style={styles.selectedAvatarText}>{(nickname || item.username).slice(0, 1).toUpperCase()}</Text>
+                      <Text style={styles.selectedAvatarText}>
+                        {(nickname || item.username).slice(0, 1).toUpperCase()}
+                      </Text>
                     </View>
-                    <View style={styles.removeIconBadge}>
-                      <Feather name="x" size={12} color={theme.colors.textMuted} />
-                    </View>
+                    {/* אייקון המחיקה "X" יופיע רק לחברים החדשים שנבחרו וניתנים לביטול */}
+                    {!isExisting && (
+                      <View style={styles.removeIconBadge}>
+                        <Feather name="x" size={12} color={theme.colors.textMuted} />
+                      </View>
+                    )}
                   </View>
                   <Text style={styles.selectedChipName} numberOfLines={1}>
                     {displayName}
@@ -125,23 +182,21 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
       </Text>
 
       {/* Quick-add options */}
-      <Pressable style={styles.quickRow}>
-        <View style={styles.quickIcon}>
-          <MaterialCommunityIcons name="account-plus" size={22} color="#fff" />
-        </View>
-        <Text style={styles.quickText}>איש קשר חדש</Text>
-      </Pressable>
-      <Pressable style={styles.quickRow}>
-        <View style={[styles.quickIcon, { backgroundColor: theme.colors.accent }]}>
-          <MaterialCommunityIcons name="link-variant" size={22} color="#fff" />
-        </View>
-        <Text style={styles.quickText}>הזמנה באמצעות קישור או קוד QR</Text>
-      </Pressable>
-
-      {results.length > 0 && (
-        <Text style={styles.sectionLabel}>צ'אטים בשימוש נפוץ</Text>
+      {!query.trim() && (
+        <Pressable style={styles.quickRow} onPress={handleShareLink}>
+          <View style={[styles.quickIcon, { backgroundColor: theme.colors.accent }]}>
+            <MaterialCommunityIcons name="link-variant" size={22} color="#fff" />
+          </View>
+          <Text style={styles.quickText}>הזמנה באמצעות קישור או קוד QR</Text>
+        </Pressable>
       )}
 
+      {/* Section label */}
+      <Text style={styles.sectionLabel}>
+        {loadingResults ? "מחפש משתמשים..." : results.length > 0 ? "משתמשים" : (query.trim() ? "לא נמצאו משתמשים" : "")}
+      </Text>
+
+      {/* Users List */}
       <FlatList
         data={results}
         keyExtractor={(item) => item.id}
@@ -149,26 +204,39 @@ export function ChatAddMembersScreen({ chat, onBack }: Props) {
           const selected = selectedIds.has(item.id);
           const nickname = contactNicknames[item.id]?.first_name;
           return (
-            <Pressable style={styles.resultRow} onPress={() => toggleSelect(item.id)}>
+            <Pressable style={[styles.resultRow, webNoOutline]} onPress={() => toggleUser(item)}>
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(nickname || item.username).slice(0, 1).toUpperCase()}</Text>
+                <Text style={styles.avatarText}>
+                  {(nickname || item.username).slice(0, 1).toUpperCase()}
+                </Text>
               </View>
               <View style={styles.resultCopy}>
                 <Text style={styles.resultName}>{nickname || item.username}</Text>
-                <Text style={styles.resultSub}>{nickname ? `@${item.username}` : (item.full_name || `@${item.username}`)}</Text>
+                <Text style={styles.resultSub}>
+                  {nickname ? `@${item.username}` : item.full_name || `@${item.username}`}
+                </Text>
               </View>
               <View style={[styles.radio, selected && styles.radioSelected]}>
-                {selected && <Feather name="check" size={14} color="#fff" />}
+                {selected && <Feather name="check" size={14} color={theme.colors.textOnAccent} />}
               </View>
             </Pressable>
           );
         }}
+        ListEmptyComponent={
+          !loadingResults && query.trim() ? (
+            <View style={styles.emptyState}>
+              <MaterialCommunityIcons color={theme.colors.textMuted} name="account-search-outline" size={48} />
+              <Text style={styles.emptyTitle}>לא נמצאו משתמשים</Text>
+              <Text style={styles.emptySubtitle}>נסו שם משתמש אחר לחפש אותו.</Text>
+            </View>
+          ) : null
+        }
       />
 
-      {/* Floating Action Button (FAB) */}
-      {selectedIds.size > 0 && (
+      {/* FAB - הלחצן יופיע רק אם נבחרו משתמשים חדשים בפועל */}
+      {selectedUsers.length > 0 && (
         <Pressable style={styles.fabBtn} onPress={handleAdd} disabled={saving}>
-          <Feather name="arrow-left" size={24} color="#fff" />
+          <Feather name="arrow-left" size={24} color={theme.colors.textOnAccent} />
         </Pressable>
       )}
     </Screen>
@@ -210,8 +278,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     selectedChip: {
       alignItems: "center",
-      marginHorizontal: 10,
-      width: 60,
+      marginHorizontal: 4,
+      minWidth: 68,
+      maxWidth: 100,
     },
     selectedAvatarContainer: {
       position: "relative",
@@ -247,6 +316,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 13,
       color: theme.colors.text,
       textAlign: "center",
+      marginTop: 4,
+      width: "100%",
     },
     thickSeparator: {
       height: 1,
@@ -263,7 +334,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.accent,
     },
     quickRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row",
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: 14,
@@ -281,7 +352,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 16,
       color: theme.colors.text,
       fontWeight: "600",
-      textAlign: "right",
+      textAlign: "left",
     },
     sectionLabel: {
       fontSize: 13,
@@ -289,15 +360,44 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.md,
       paddingBottom: theme.spacing.sm,
-      textAlign: "right",
+      textAlign: "left",
       fontWeight: "600",
     },
     resultRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row", // כמו בוואטסאפ: שמאלי -> ימני
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: 12,
       gap: theme.spacing.md,
+    },
+    avatar: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: theme.colors.surfaceMuted,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarText: {
+      fontSize: 20,
+      fontWeight: "700",
+      color: theme.colors.accent,
+    },
+    resultCopy: {
+      flex: 1,
+      justifyContent: "center",
+    },
+    resultName: {
+      fontSize: 17,
+      fontWeight: "500",
+      color: theme.colors.text,
+      textAlign: "left",
+    },
+    resultSub: {
+      fontSize: 14,
+      color: theme.colors.textMuted,
+      marginTop: 2,
+      textAlign: "left",
     },
     radio: {
       width: 24,
@@ -312,34 +412,19 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: theme.colors.accent,
       borderColor: theme.colors.accent,
     },
-    avatar: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: theme.colors.surfaceMuted,
+    emptyState: {
       alignItems: "center",
-      justifyContent: "center",
+      paddingTop: 60,
+      gap: 12,
     },
-    avatarText: {
+    emptyTitle: {
       fontSize: 18,
       fontWeight: "700",
-      color: theme.colors.accent,
-    },
-    resultCopy: {
-      flex: 1,
-      justifyContent: "center",
-    },
-    resultName: {
-      fontSize: 17,
-      fontWeight: "500",
       color: theme.colors.text,
-      textAlign: "right",
     },
-    resultSub: {
+    emptySubtitle: {
       fontSize: 14,
       color: theme.colors.textMuted,
-      marginTop: 2,
-      textAlign: "right",
     },
     fabBtn: {
       position: "absolute",

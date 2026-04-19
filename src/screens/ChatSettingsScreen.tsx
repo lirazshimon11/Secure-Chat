@@ -17,12 +17,14 @@ import { ChatDisappearingMessagesScreen } from "./chat-settings/ChatDisappearing
 import { ChatNotificationsScreen } from "./chat-settings/ChatNotificationsScreen";
 import { ChatMediaScreen } from "./chat-settings/ChatMediaScreen";
 import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
+import * as ScreenCapture from "expo-screen-capture";
 import { ChatPermissionsScreen } from "./chat-settings/ChatPermissionsScreen";
 import { ChatRenameModal } from "./chat-settings/ChatRenameModal";
 import { ChatThemeScreen } from "./chat-settings/ChatThemeScreen";
 import { ChatEditContactScreen } from "./chat-settings/ChatEditContactScreen";
 import { ChatMemberActionModal } from "./chat-settings/ChatMemberActionModal";
 import { SimpleConfirmModal } from "./chat-settings/SimpleConfirmModal";
+import { DecoyContentScreen } from "./chat-settings/DecoyContentScreen";
 import { Alert } from "react-native";
 
 type Props = {
@@ -58,7 +60,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
 
   // Sub-screen orchestration
   const [activeScreen, setActiveScreen] = useState<
-    "storage" | "notifications" | "disappearing" | "advanced" | "media" | "addMembers" | "permissions" | "theme" | "editContact" | null
+    "storage" | "notifications" | "disappearing" | "advanced" | "media" | "addMembers" | "permissions" | "theme" | "editContact" | "decoyContent" | null
   >(null);
   const [showDescription, setShowDescription] = useState(false);
   const [showVisibility, setShowVisibility] = useState(false);
@@ -122,6 +124,9 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
       const nextMembers = await loadChatMembers(chat.id);
       setMembers(nextMembers);
     })();
+    // Explicitly unblock screenshots whenever entering a settings page
+    void ScreenCapture.allowScreenCaptureAsync();
+    void ScreenCapture.allowScreenCaptureAsync(`sc-${chat.id}`);
   }, [chat.id, loadChatMembers]);
 
   const filteredMembers = useMemo(() => {
@@ -142,6 +147,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   if (activeScreen === "permissions") return <ChatPermissionsScreen chat={chat} onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "theme") return <ChatThemeScreen chat={chat} onBack={() => setActiveScreen(null)} />;
   if (activeScreen === "editContact") return <ChatEditContactScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  if (activeScreen === "decoyContent") return <DecoyContentScreen chat={chat} onBack={() => setActiveScreen(null)} />;
 
   return (
     <Screen>
@@ -225,6 +231,15 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
           <SettingRow icon="cellphone-lock" title="נעילת הצ'אט" subtitle="נעילה והסתרה של הצ'אט הזה במכשיר" actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("נעילת צ'אט", "ניתן לנעול צ'אטים ממסך הבית (לחיצה ארוכה).")); }} />
           <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="כבה" onPress={() => setActiveScreen("advanced")} theme={theme} />
           <SettingRow icon="palette-outline" title="ערכת הנושא של הצאט" subtitle="ברירת מחדל" onPress={() => setActiveScreen("theme")} theme={theme} />
+          {liveChat.is_group && (
+            <SettingRow
+              icon="fish"
+              title="תוכן פיתיון"
+              subtitle="ערוך את הצאט שיוצג למוגנים"
+              onPress={() => setActiveScreen("decoyContent")}
+              theme={theme}
+            />
+          )}
         </View>
 
         <View style={styles.thickSeparator} />

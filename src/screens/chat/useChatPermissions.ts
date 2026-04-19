@@ -4,7 +4,7 @@ import { useScreenshots } from "@/context/ScreenshotContext";
 import { addScreenshotListener } from "@/lib/screenshotPermission";
 import { preventScreenCaptureAsync, allowScreenCaptureAsync } from "expo-screen-capture";
 
-export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMessage: (p: any) => void) {
+export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMessage: (p: any) => void, isSuspended: boolean = false) {
   const { activePermissions, myRequests, requestScreenshotPermission, hasPermission } = useScreenshots();
   const hasScreenshotPerm = hasPermission(chat.id);
   const [screenshotHold, setScreenshotHold] = useState(false);
@@ -12,13 +12,13 @@ export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMess
   useEffect(() => {
     if (!chat.is_group) return;
     const tag = `sc-${chat.id}`;
-    if (hasScreenshotPerm) {
+    if (hasScreenshotPerm || isSuspended) {
       void allowScreenCaptureAsync(tag);
     } else {
       void preventScreenCaptureAsync(tag);
     }
     return () => { void allowScreenCaptureAsync(tag); };
-  }, [hasScreenshotPerm, chat.id, chat.is_group]);
+  }, [hasScreenshotPerm, chat.id, chat.is_group, isSuspended]);
 
   useEffect(() => {
     if (!chat.is_group) return;

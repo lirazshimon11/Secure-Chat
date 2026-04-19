@@ -62,11 +62,29 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     setKind("standard");
   }
 
-  function handleSubmit(event: NativeSyntheticEvent<TextInputSubmitEditingEventData>) {
-    if (Platform.OS === "web" && event.nativeEvent.text?.includes("\n")) {
-      return;
-    }
+  const handleSendRef = useRef(handleSend);
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
 
+  useEffect(() => {
+    if (Platform.OS === "web" && inputRef.current) {
+      const el = inputRef.current as any;
+      const keydownHandler = (e: any) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleSendRef.current();
+        }
+      };
+      // For textarea in React Native Web we must catch it directly
+      el.addEventListener("keydown", keydownHandler);
+      return () => el.removeEventListener("keydown", keydownHandler);
+    }
+  }, []);
+
+  function handleSubmit(event: NativeSyntheticEvent<TextInputSubmitEditingEventData>) {
+    if (Platform.OS === "web") return; // Handled by DOM event
     handleSend();
   }
 
@@ -148,6 +166,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
                   returnKeyType="default"
                   blurOnSubmit={false}
                   multiline
+                  numberOfLines={1}
                   style={[styles.input, webEmbeddedInputReset]}
                   value={body}
                 />
@@ -373,8 +392,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       fontSize: 16,
       minHeight: 22,
       maxHeight: 120,
-      paddingVertical: Platform.OS === "ios" ? 8 : 4,
+      paddingVertical: Platform.OS === "web" ? 8 : (Platform.OS === "ios" ? 8 : 4),
       textAlign: "right", // Hebrew Support
+      alignSelf: "center", // This prevents the textarea from stretching vertically in the flex container
+      width: "100%",
     },
     sendButton: {
       width: 46,

@@ -145,7 +145,7 @@ export const PollBubble = ({
       </View>
 
       <View style={[styles.pollSubtitleWrapper, { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }]}>
-        <Text style={[styles.pollSubtitle, { textAlign: 'right', marginRight: 6 }]}>
+        <Text style={[styles.pollSubtitle, { textAlign: 'left', marginRight: 6 }]}>
           {pollData.isScreenshotRequest
             ? "יש לבחור כדי לאפשר צילום מסך זמני"
             : (pollData.multipleAnswers ? "צריך לבחור אפשרות אחת או יותר" : "יש לבחור אפשרות אחת")}

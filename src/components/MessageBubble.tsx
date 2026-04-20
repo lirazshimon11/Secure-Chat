@@ -28,6 +28,7 @@ type Props = {
   isSelected?: boolean;
   isSelectionMode?: boolean;
   onReply: (message: Message) => void;
+  onScrollToReply?: (replyToId: string) => void;
   onToggleReaction: (emoji: string) => void;
   onRevealViewOnce: () => void;
   onToggleSelection: (id: string) => void;
@@ -79,7 +80,7 @@ const TemporaryMessageTimer = ({ expiresAt, theme }: { expiresAt: string; theme:
 
 export function MessageBubble({
   currentUserId, message, author, replyToText, replyToName, reactions, viewOnceState,
-  isSelected, isSelectionMode, onReply, onToggleReaction, onRevealViewOnce,
+  isSelected, isSelectionMode, onReply, onScrollToReply, onToggleReaction, onRevealViewOnce,
   onToggleSelection, onShowReactions, onShowReactionsSheet, onPlusExtra,
   showReactions, onReportPickerLayout, isSaved, onOpenPollVotes, onInitiateDragSelect,
   onAvatarPress
@@ -91,7 +92,6 @@ export function MessageBubble({
   const mine = message.sender_id === currentUserId;
   const translateX = useRef(new Animated.Value(0)).current;
   const lastTap = useRef<number>(0);
-  const swipeIconOpacity = translateX.interpolate({ inputRange: [0, 40], outputRange: [0, 1], extrapolate: 'clamp' });
   const pickerRef = useRef<View>(null);
 
   useEffect(() => {
@@ -111,8 +111,12 @@ export function MessageBubble({
 
   const responder = useMemo(() =>
     Platform.OS === "web" ? null : PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gesture) => !isSelectionModeRef.current && Math.abs(gesture.dx) > 8,
-      onPanResponderMove: (_, gesture) => { if (!isSelectionModeRef.current && gesture.dx > 0) translateX.setValue(Math.min(gesture.dx, 70)); },
+      onMoveShouldSetPanResponder: (_, gesture) => !isSelectionModeRef.current && Math.abs(gesture.dx) > 8 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+      onPanResponderMove: (_, gesture) => {
+        if (!isSelectionModeRef.current && gesture.dx > 0) {
+          translateX.setValue(Math.min(gesture.dx, 70));
+        }
+      },
       onPanResponderRelease: (_, gesture) => {
         if (!isSelectionModeRef.current) {
           if (gesture.dx > 40) onReply(message);
@@ -227,11 +231,7 @@ export function MessageBubble({
 
   return (
     <View style={styles.rowWrapper}>
-      {!isSelectionMode && (
-        <Animated.View style={[styles.swipeIconContainer, { opacity: swipeIconOpacity, transform: [{ translateX: Animated.multiply(translateX, -0.5) }] }]}>
-          <MaterialCommunityIcons color={theme.colors.textMuted} name="reply" size={20} />
-        </Animated.View>
-      )}
+      {!isSelectionMode && null}
       <Animated.View {...(responder?.panHandlers ?? {})} style={[styles.row, isSystem ? styles.rowSystem : mine ? styles.rowMine : styles.rowTheirs, isSelected && styles.rowSelected, { transform: [{ translateX }] }]}>
         {isSystem ? (
           <View style={[styles.fullWidthSelection, webDefaultCursor]}>
@@ -291,7 +291,10 @@ export function MessageBubble({
                   </View>
                 ) : null}
               {replyToText && !isTemporaryExpired && (
-                <View style={styles.replyBlock}>
+                <Pressable
+                  style={styles.replyBlock}
+                  onPress={() => { if (message.reply_to_id && onScrollToReply) onScrollToReply(message.reply_to_id); }}
+                >
                   <View style={styles.replyBlockContent}>
                     <View style={[styles.replyBlockAccent, { backgroundColor: accentColor }]} />
                     <View style={styles.replyBlockTextContainer}>
@@ -299,7 +302,7 @@ export function MessageBubble({
                       <Text numberOfLines={2} style={styles.replyBlockText}>{getMessagePreview(replyToText)}</Text>
                     </View>
                   </View>
-                </View>
+                </Pressable>
               )}
 
               {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles}

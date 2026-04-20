@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
-    "icon": "./public/images/icon.png",
+    "icon": "./public/images/icon2.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -17,12 +17,12 @@
       "package": "com.secureapp.app",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./public/images/icon.png",
+        "foregroundImage": "./public/images/icon2.png",
         "backgroundColor": "#f4efe6"
       }
     },
     "web": {
-      "favicon": "./public/images/icon.png"
+      "favicon": "./public/images/icon2.png"
     },
     "plugins": [
       "expo-secure-store",

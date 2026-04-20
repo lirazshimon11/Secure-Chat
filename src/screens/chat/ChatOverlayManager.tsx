@@ -509,7 +509,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
       {toastMessage ? (
         <View pointerEvents="none" style={styles.toastContainer}>
           <View style={styles.toastPill}>
-            <ImageBackground source={require("../../../public/images/black_icon.png")} style={styles.toastIcon} imageStyle={{ opacity: 0.7 }} />
+            <ImageBackground source={require("../../../public/images/icon2.png")} style={styles.toastIcon} imageStyle={{ opacity: 0.7 }} />
             <Text style={styles.toastText}>{toastMessage}</Text>
           </View>
         </View>

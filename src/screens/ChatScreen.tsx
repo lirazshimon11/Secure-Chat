@@ -276,6 +276,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const scrollMetricsRef = useRef({ y: 0, height: 0, contentHeight: 0 });
   const messageLayoutsRef = useRef<Record<string, { y: number; h: number }>>({});
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const highlightAnim = useRef(new Animated.Value(0)).current;
   const initialScrollDone = useRef(false);
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -320,7 +321,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const y = layout?.y;
     if (y !== undefined) {
       scrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
-      if (highlight) { setHighlightedMessageId(msgId); setTimeout(() => setHighlightedMessageId(null), 2000); }
+      if (highlight) {
+        highlightAnim.setValue(1);
+        setHighlightedMessageId(msgId);
+        // Fade out after 1.2s over 0.8s
+        setTimeout(() => {
+          Animated.timing(highlightAnim, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: false,
+          }).start(() => setHighlightedMessageId(null));
+        }, 1200);
+      }
     } else if (attempts > 0) {
       setTimeout(() => scrollToMessageWithRetry(msgId, highlight, attempts - 1), 250);
     }
@@ -832,7 +844,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   threadHeightRef.current = e.nativeEvent.layout.height;
                 }}
               >
-                <ScrollView ref={scrollRef} scrollEnabled={!isDragSelectLocked} contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                <ScrollView ref={scrollRef} scrollEnabled={!isDragSelectLocked} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
@@ -866,26 +878,52 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                       if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
                       const msg = item.message;
                       return (
-                        <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = { y: e.nativeEvent.layout.y, h: e.nativeEvent.layout.height }} style={highlightedMessageId === msg.id ? { backgroundColor: theme.colors.selectionModeBackground } : undefined}>
-                          <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onRevealViewOnce={() => {
-                            if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
-                            setRevealedMessageId(msg.id);
-                            revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
-                          }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
-                            reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
-                            onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
-                            onInitiateDragSelect={() => setIsDragSelectLocked(true)}
-                            onAvatarPress={(author) => setSelectedAvatarMember(author)}
-                            replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
-                            replyToName={(() => {
-                              if (!msg.reply_to_id) return null;
-                              const original = messageMap?.[msg.reply_to_id];
-                              if (!original) return "תגובה";
-                              const authorId = original.sender_id;
-                              if (!authorId) return "תגובה";
-                              return contactNicknames?.[authorId]?.first_name || profiles?.[authorId]?.full_name || profiles?.[authorId]?.username || "משתתף/ת";
-                            })()}
-                            viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
+                        <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = { y: e.nativeEvent.layout.y, h: e.nativeEvent.layout.height }}>
+                          {highlightedMessageId === msg.id ? (
+                            <Animated.View style={{ backgroundColor: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', theme.colors.selectionModeBackground] }) }}>
+                              <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onScrollToReply={(replyToId) => { Keyboard.dismiss(); scrollToMessageWithRetry(replyToId, true); }}
+                                onRevealViewOnce={() => {
+                                  if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+                                  setRevealedMessageId(msg.id);
+                                  revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
+                                }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
+                                reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
+                                onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
+                                onInitiateDragSelect={() => setIsDragSelectLocked(true)}
+                                onAvatarPress={(author) => setSelectedAvatarMember(author)}
+                                replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
+                                replyToName={(() => {
+                                  if (!msg.reply_to_id) return null;
+                                  const original = messageMap?.[msg.reply_to_id];
+                                  if (!original) return "תגובה";
+                                  const authorId = original.sender_id;
+                                  if (!authorId) return "תגובה";
+                                  return contactNicknames?.[authorId]?.first_name || profiles?.[authorId]?.full_name || profiles?.[authorId]?.username || "משתתף/ת";
+                                })()}
+                                viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
+                            </Animated.View>
+                          ) : (
+                            <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onScrollToReply={(replyToId) => { Keyboard.dismiss(); scrollToMessageWithRetry(replyToId, true); }}
+                              onRevealViewOnce={() => {
+                                if (revealTimeoutRef.current) clearTimeout(revealTimeoutRef.current);
+                                setRevealedMessageId(msg.id);
+                                revealTimeoutRef.current = setTimeout(() => { void openViewOnceMessage(msg); setRevealedMessageId(c => c === msg.id ? null : c); }, 5000);
+                              }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
+                              reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
+                              onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
+                              onInitiateDragSelect={() => setIsDragSelectLocked(true)}
+                              onAvatarPress={(author) => setSelectedAvatarMember(author)}
+                              replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
+                              replyToName={(() => {
+                                if (!msg.reply_to_id) return null;
+                                const original = messageMap?.[msg.reply_to_id];
+                                if (!original) return "תגובה";
+                                const authorId = original.sender_id;
+                                if (!authorId) return "תגובה";
+                                return contactNicknames?.[authorId]?.first_name || profiles?.[authorId]?.full_name || profiles?.[authorId]?.username || "משתתף/ת";
+                              })()}
+                              viewOnceState={msg.message_kind === "view_once" && msg.sender_id !== profile?.id ? (revealedMessageId === msg.id ? "revealed" : openedViewOnceIds[msg.id] ? "opened" : "hidden") : undefined} />
+                          )}
                         </View>
                       );
                     })}

@@ -146,7 +146,7 @@ export function MessageBubble({
               .update({ body_ciphertext: "הודעה זו פגה תוקף", body_preview: "הודעה זו פגה תוקף" })
               .eq("id", message.id)
               .neq("body_ciphertext", "הודעה זו פגה תוקף")
-              .then(() => {});
+              .then(() => { });
           }
         }
       };
@@ -200,14 +200,14 @@ export function MessageBubble({
   const metaLabel = message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : null) : null;
   const hasReactions = reactions && Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:")).length > 0;
 
-  const handleLongPress = () => { 
+  const handleLongPress = () => {
     if (isSystem) return;
     onInitiateDragSelect?.();
     if (!isSelected) {
       onToggleSelection(message.id);
     }
     if (!isSelectionMode) {
-      onShowReactions(message.id); 
+      onShowReactions(message.id);
     }
   };
   const handlePress = () => {
@@ -228,6 +228,20 @@ export function MessageBubble({
     return getUserColor(author.username || author.id || "?");
   }, [author]);
 
+  // התיקון האמיתי: מפרק מילים ארוכות מ-10 תווים בלי להוסיף רווחים בין מילים תקינות!
+  const formatSpamSafeText = (text: string) => {
+    if (!text) return text;
+    return text.split(' ').map(word => {
+      // לא שוברים קישורים
+      if (word.startsWith('http://') || word.startsWith('https://')) return word;
+
+      // אם המילה ארוכה מ-10 תווים, אנחנו מכניסים רווח נסתר
+      if (word.length > 10) {
+        return word.match(/.{1,10}/g)?.join('\u200B') || word;
+      }
+      return word;
+    }).join(' '); // <-- רווח רגיל ונקי. בלי ZWSP פה!
+  };
 
   return (
     <View style={styles.rowWrapper}>
@@ -265,24 +279,24 @@ export function MessageBubble({
                       <TemporaryMessageTimer expiresAt={message.expires_at} theme={theme} />
                     )}
                     {message.message_kind === "view_once" && (
-                      <View style={{ 
-                        flexDirection: 'row', 
-                        alignItems: 'center', 
-                        backgroundColor: viewOnceState === "opened" ? theme.colors.surfaceMuted : theme.colors.accentStrong + "15", 
-                        paddingHorizontal: 8, 
-                        paddingVertical: 4, 
-                        borderRadius: 10 
+                      <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: viewOnceState === "opened" ? theme.colors.surfaceMuted : theme.colors.accentStrong + "15",
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 10
                       }}>
-                        <MaterialCommunityIcons 
-                          name={viewOnceState === "opened" ? "eye-off-outline" : "eye-outline"} 
-                          size={14} 
-                          color={viewOnceState === "opened" ? theme.colors.textMuted : theme.colors.accentStrong} 
+                        <MaterialCommunityIcons
+                          name={viewOnceState === "opened" ? "eye-off-outline" : "eye-outline"}
+                          size={14}
+                          color={viewOnceState === "opened" ? theme.colors.textMuted : theme.colors.accentStrong}
                         />
-                        <Text style={{ 
-                          fontSize: 11, 
-                          fontWeight: '700', 
-                          color: viewOnceState === "opened" ? theme.colors.textMuted : theme.colors.accentStrong, 
-                          marginLeft: 4 
+                        <Text style={{
+                          fontSize: 11,
+                          fontWeight: '700',
+                          color: viewOnceState === "opened" ? theme.colors.textMuted : theme.colors.accentStrong,
+                          marginLeft: 4
                         }}>
                           פעם אחת
                         </Text>
@@ -290,66 +304,72 @@ export function MessageBubble({
                     )}
                   </View>
                 ) : null}
-              {replyToText && !isTemporaryExpired && (
-                <Pressable
-                  style={styles.replyBlock}
-                  onPress={() => { if (message.reply_to_id && onScrollToReply) onScrollToReply(message.reply_to_id); }}
-                >
-                  <View style={styles.replyBlockContent}>
-                    <View style={[styles.replyBlockAccent, { backgroundColor: accentColor }]} />
-                    <View style={styles.replyBlockTextContainer}>
-                      <Text numberOfLines={1} style={[styles.replyLabel, { color: accentColor }]}>{replyToName || "תגובה"}</Text>
-                      <Text numberOfLines={2} style={styles.replyBlockText}>{getMessagePreview(replyToText)}</Text>
+                {replyToText && !isTemporaryExpired && (
+                  <Pressable
+                    style={styles.replyBlock}
+                    onPress={() => { if (message.reply_to_id && onScrollToReply) onScrollToReply(message.reply_to_id); }}
+                  >
+                    <View style={styles.replyBlockContent}>
+                      <View style={[styles.replyBlockAccent, { backgroundColor: accentColor }]} />
+                      <View style={styles.replyBlockTextContainer}>
+                        <Text numberOfLines={1} style={[styles.replyLabel, { color: accentColor }]}>{replyToName || "תגובה"}</Text>
+                        <Text numberOfLines={2} style={styles.replyBlockText}>{getMessagePreview(replyToText)}</Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                )}
+
+                {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles}
+                  approveRequest={(reqId) => {
+                    const scReq = allRequests[reqId];
+                    const nick = contactNicknames[currentUserId]?.first_name;
+                    const prof = profiles[currentUserId];
+                    const myName = nick || prof?.full_name || prof?.username || "משתתף/ת";
+                    approveRequest(reqId, message.chat_id, scReq?.requesterUsername || "מישהו", myName);
+                  }}
+                  denyRequest={denyRequest} /> :
+                  isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
+
+                    <Text
+                      textBreakStrategy="simple"
+                      style={[styles.body, isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' }]}
+                    >
+                      {formatSpamSafeText(body)}
+                    </Text>
+                }
+
+                <View style={styles.metaRow}>
+                  {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
+                  <View style={styles.timeRow}>
+                    {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
+                    <Text style={styles.meta}>{timeLabel}</Text>
+                  </View>
+                </View>
+
+                {showReactions && (
+                  <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
+                    <View style={styles.pickerInner}>
+                      {quickReactions.map((emoji) => (
+                        <Pressable key={emoji} onPress={() => { onToggleReaction(emoji); onShowReactions(null); if (isSelected) onToggleSelection(message.id); }} style={({ pressed }) => [styles.quickEmoji, pressed && styles.quickEmojiPressed]}>
+                          <Text style={styles.quickEmojiText}>{emoji}</Text>
+                        </Pressable>
+                      ))}
+                      <Pressable style={styles.quickEmoji} onPress={() => { onPlusExtra(message.id); onShowReactions(null); }}><MaterialCommunityIcons color={theme.colors.textMuted} name="plus" size={20} /></Pressable>
                     </View>
                   </View>
-                </Pressable>
-              )}
+                )}
 
-              {isScreenshotRequest ? <ScreenshotRequestBubble message={message} currentUserId={currentUserId} allRequests={allRequests} theme={theme} styles={styles}
-                approveRequest={(reqId) => {
-                  const scReq = allRequests[reqId];
-                  const nick = contactNicknames[currentUserId]?.first_name;
-                  const prof = profiles[currentUserId];
-                  const myName = nick || prof?.full_name || prof?.username || "משתתף/ת";
-                  approveRequest(reqId, message.chat_id, scReq?.requesterUsername || "מישהו", myName);
-                }}
-                denyRequest={denyRequest} /> :
-                isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
-                  <Text style={[styles.body, isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' }]}>{body + " "}</Text>}
-
-              <View style={styles.metaRow}>
-                <View style={{ flex: 1 }} />
-                {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
-                <View style={styles.timeRow}>
-                  {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
-                  <Text style={styles.meta}>{timeLabel}</Text>
-                </View>
-              </View>
-
-              {showReactions && (
-                <View ref={pickerRef} style={[styles.reactionPicker, mine ? styles.pickerMine : styles.pickerTheirs]}>
-                  <View style={styles.pickerInner}>
-                    {quickReactions.map((emoji) => (
-                      <Pressable key={emoji} onPress={() => { onToggleReaction(emoji); onShowReactions(null); if (isSelected) onToggleSelection(message.id); }} style={({ pressed }) => [styles.quickEmoji, pressed && styles.quickEmojiPressed]}>
-                        <Text style={styles.quickEmojiText}>{emoji}</Text>
-                      </Pressable>
-                    ))}
-                    <Pressable style={styles.quickEmoji} onPress={() => { onPlusExtra(message.id); onShowReactions(null); }}><MaterialCommunityIcons color={theme.colors.textMuted} name="plus" size={20} /></Pressable>
-                  </View>
-                </View>
-              )}
-
-              {reactions && (() => {
-                const entries = Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:"));
-                if (!entries.length) return null;
-                const total = entries.reduce((sum, [_, u]) => sum + (Array.isArray(u) ? u.length : 0), 0);
-                return (
-                  <Pressable onPress={() => onShowReactionsSheet(message.id)} style={[styles.reactionPill, mine ? styles.reactionPillMine : styles.reactionPillTheirs]}>
-                    <View style={styles.reactionPillEmojis}>{entries.slice(0, 3).map(([e], idx) => <Text key={e} style={[styles.reactionPillEmoji, idx > 0 && { marginLeft: -4 }]}>{e}</Text>)}</View>
-                    {total > 1 && <Text style={styles.reactionPillCount}>{total}</Text>}
-                  </Pressable>
-                );
-              })()}
+                {reactions && (() => {
+                  const entries = Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:"));
+                  if (!entries.length) return null;
+                  const total = entries.reduce((sum, [_, u]) => sum + (Array.isArray(u) ? u.length : 0), 0);
+                  return (
+                    <Pressable onPress={() => onShowReactionsSheet(message.id)} style={[styles.reactionPill, mine ? styles.reactionPillMine : styles.reactionPillTheirs]}>
+                      <View style={styles.reactionPillEmojis}>{entries.slice(0, 3).map(([e], idx) => <Text key={e} style={[styles.reactionPillEmoji, idx > 0 && { marginLeft: -4 }]}>{e}</Text>)}</View>
+                      {total > 1 && <Text style={styles.reactionPillCount}>{total}</Text>}
+                    </Pressable>
+                  );
+                })()}
               </View>
             </View>
           </Pressable>

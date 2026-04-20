@@ -1,5 +1,7 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, Dimensions } from "react-native";
 import { useAppTheme } from "@/lib/theme";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
@@ -45,9 +47,9 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     bubble: {
       borderRadius: 12,
-      maxWidth: "83%",
-      minWidth: 180,
-      paddingHorizontal: 9,
+      maxWidth: SCREEN_WIDTH * 0.83,
+      minWidth: 100,
+      paddingHorizontal: 10,
       paddingTop: 6,
       paddingBottom: 5,
       shadowColor: "#000000",
@@ -65,11 +67,13 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderTopLeftRadius: 4,
     },
     bubbleWrapperMine: {
+      width: "100%",
       flexDirection: "row",
       justifyContent: "flex-end",
       alignItems: "flex-start",
     },
     bubbleWrapperTheirs: {
+      width: "100%",
       flexDirection: "row",
       justifyContent: "flex-start",
       alignItems: "flex-start",
@@ -131,7 +135,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
       paddingVertical: 4,
       paddingHorizontal: 8,
-      alignItems: "flex-end", // Force Right alignment
+      alignItems: "flex-end",
     },
     replyBlockAccent: {
       width: 4,
@@ -146,13 +150,22 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 13,
       lineHeight: 18,
       textAlign: "right",
+      writingDirection: "rtl",
+    },
+    messageTextContainer: {
+      flexShrink: 1,
+      width: "100%",
+      // תוספת קריטית שמכריחה את הקונטיינר להבין שהוא צריך לעטוף שורות
+      flexWrap: "wrap",
     },
     body: {
       color: theme.colors.text,
       fontSize: 15,
-      lineHeight: 20,
-      textAlign: "auto",
-      flexShrink: 1,
+      lineHeight: 22,
+      textAlign: "right",
+      writingDirection: "rtl",
+      // תוספת חשובה! אומרת לטקסט שהוא לא יכול להיות רחב יותר מהקונטיינר שלו (שמוגבל ל-83% ממקודם)
+      width: "100%",
     },
     metaRow: {
       marginTop: 2,
@@ -282,7 +295,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       width: "100%",
     },
     pollOptionInner: {
-      flexDirection: "row", // Standard row, will flip in RTL
+      flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       width: "100%",
@@ -333,7 +346,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     pollProgressBar: {
       height: "100%",
-      backgroundColor: theme.colors.textMuted + "44", // Semi-transparent muted for general votes
+      backgroundColor: theme.colors.textMuted + "44",
       borderRadius: 3,
     },
     pollProgressBarChecked: {

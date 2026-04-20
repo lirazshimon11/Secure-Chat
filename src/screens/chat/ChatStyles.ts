@@ -363,14 +363,14 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       marginBottom: 12,
     },
     reactionTabsRow: {
-      flexDirection: "row", 
+      flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 16, 
+      paddingHorizontal: 16,
       paddingVertical: 12,
       width: "100%",
     },
     reactionTabPill: {
-      flexDirection: "row", 
+      flexDirection: "row",
       alignItems: "center",
       backgroundColor: theme.colors.surfaceAlt || "#f0f0f0",
       paddingHorizontal: 14,
@@ -422,7 +422,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
     reactionUserInfo: {
       flex: 1,
       marginRight: 35, // Significant space to prevent touching the avatar
-      alignItems: "flex-start", 
+      alignItems: "flex-start",
     },
     reactionUserName: {
       color: theme.colors.text,

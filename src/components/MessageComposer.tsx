@@ -55,6 +55,10 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     onSend(body, kind, expireSeconds);
     setBody("");
     setKind("standard");
+    if (Platform.OS === "web" && inputRef.current) {
+      const el = inputRef.current as any;
+      el.style.height = 'auto'; // Reset height on send
+    }
   }
 
   const handleSendRef = useRef(handleSend);
@@ -72,8 +76,18 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
           handleSendRef.current();
         }
       };
+      const inputHandler = (e: any) => {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+      };
       el.addEventListener("keydown", keydownHandler);
-      return () => el.removeEventListener("keydown", keydownHandler);
+      el.addEventListener("input", inputHandler);
+      // Init height
+      setTimeout(() => inputHandler({ target: el }), 100);
+      return () => {
+        el.removeEventListener("keydown", keydownHandler);
+        el.removeEventListener("input", inputHandler);
+      };
     }
   }, []);
 
@@ -127,8 +141,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
                   onFocus={onInputFocus}
                   returnKeyType="default"
                   blurOnSubmit={false}
-                  multiline
-                  numberOfLines={1}
+                  multiline={true}
                   style={[styles.input, webEmbeddedInputReset]}
                   value={body}
                 />
@@ -260,7 +273,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
     modeLabel: {
       color: theme.colors.textMuted,
       fontSize: 12,
-      fontWeight: "700",
+      fontWeight: "800",
     },
     modeLabelActive: {
       color: theme.colors.textOnAccent,
@@ -268,7 +281,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
     composerRow: {
       flexDirection: "row",
       alignItems: "flex-end",
-      gap: 6,
+      gap: 1,
     },
     micFab: {
       width: 46,
@@ -300,16 +313,17 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       paddingLeft: 4,
       paddingRight: 14,
       minHeight: 44,
-      justifyContent: "center",
+      justifyContent: "flex-end",
+      paddingVertical: Platform.OS === "ios" ? 4 : 0,
     },
     input: {
       color: theme.colors.text,
       fontSize: 16,
+      lineHeight: 22,
       minHeight: 22,
-      maxHeight: 120,
-      paddingVertical: Platform.OS === "web" ? 8 : (Platform.OS === "ios" ? 8 : 4),
+      maxHeight: 170, // 7 lines * 22 = 154 + 16 (padding)
+      paddingVertical: 8,
       textAlign: "right",
-      alignSelf: "center",
       width: "100%",
     },
     sendButton: {

@@ -340,8 +340,8 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       backgroundColor: theme.colors.surface,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
-      paddingBottom: 40,
-      minHeight: 400,
+      paddingBottom: insets.bottom + 20,
+      minHeight: 450,
       width: "100%",
     },
     sheetHandle: {
@@ -350,55 +350,91 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       backgroundColor: theme.colors.sheetHandle,
       borderRadius: 2,
       alignSelf: "center",
-      marginTop: 12,
+      marginTop: 10,
+      marginBottom: 8,
     },
     reactionsSheetHeader: {
       color: theme.colors.text,
-      fontSize: 16,
-      fontWeight: "700",
-      textAlign: "right",
-      padding: 24,
-    },
-    reactionTabs: {
-      flexDirection: "row",
+      fontSize: 20,
+      fontWeight: "800",
+      textAlign: "left",
       paddingHorizontal: 24,
-      marginBottom: 16,
-      borderBottomWidth: 1,
-      borderColor: theme.colors.separator,
+      marginTop: 8,
+      marginBottom: 12,
     },
-    reactionTabActive: {
-      paddingBottom: 12,
-      borderBottomWidth: 3,
-      borderColor: "#00A884",
+    reactionTabsRow: {
+      flexDirection: "row", 
+      alignItems: "center",
+      paddingHorizontal: 16, 
+      paddingVertical: 12,
+      width: "100%",
     },
-    reactionTabText: {
-      color: "#00A884",
+    reactionTabPill: {
+      flexDirection: "row", 
+      alignItems: "center",
+      backgroundColor: theme.colors.surfaceAlt || "#f0f0f0",
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      justifyContent: "center",
+    },
+    reactionTabPillActive: {
+      backgroundColor: "#D9FDD3", // WhatsApp green tint
+      borderColor: "#25D366",
+      borderWidth: 1,
+    },
+    reactionTabPillText: {
+      color: theme.colors.text,
       fontSize: 15,
       fontWeight: "700",
     },
+    reactionTabPillTextActive: {
+      color: "#00A884",
+    },
+    reactionTabPillEmoji: {
+      fontSize: 18,
+      marginRight: 4,
+    },
+    reactionTabPillIcon: {
+      backgroundColor: theme.colors.surfaceAlt || "#f0f0f0",
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     reactionUserList: {
-      paddingHorizontal: 24,
+      paddingHorizontal: 16,
+      paddingTop: 8,
     },
     reactionUserRow: {
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
-      gap: 16,
+      paddingVertical: 14,
+      width: "100%",
+      gap: 20, // Explicit gap between avatar, info, and emoji
+    },
+    reactionEmojiBadge: {
+      fontSize: 22,
+      width: 40,
+      textAlign: "left",
     },
     reactionUserInfo: {
       flex: 1,
+      marginRight: 35, // Significant space to prevent touching the avatar
+      alignItems: "flex-start", 
     },
     reactionUserName: {
       color: theme.colors.text,
       fontSize: 16,
-      fontWeight: "600",
-      textAlign: "right",
+      fontWeight: "700",
+      textAlign: "left",
     },
     reactionUserAction: {
       color: theme.colors.textMuted,
       fontSize: 13,
-    },
-    reactionEmoji: {
-      fontSize: 22,
+      textAlign: "left",
+      marginTop: 2,
     },
     emojiPickerSheet: {
       marginTop: "auto",

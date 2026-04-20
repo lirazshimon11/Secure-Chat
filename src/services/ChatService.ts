@@ -91,7 +91,9 @@ export const ChatService = {
     if (alreadyReacted) {
       return supabase.from("message_reactions").delete().match({ message_id: messageId, user_id: userId, emoji: emoji });
     }
-    return supabase.from("message_reactions").upsert({ message_id: messageId, user_id: userId, emoji: emoji });
+    // Delete any other reactions first to ensure one per user
+    await supabase.from("message_reactions").delete().match({ message_id: messageId, user_id: userId });
+    return supabase.from("message_reactions").insert({ message_id: messageId, user_id: userId, emoji: emoji });
   },
 
   async openViewOnce(messageId: string, viewerId: string) {

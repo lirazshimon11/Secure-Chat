@@ -151,9 +151,9 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
             ) : null}
 
             <View style={styles.inputContainer}>
-              {/* Emoji toggle - FIRST inside = rightmost visually */}
-              <Pressable onPress={() => onToggleEmojiKeyboard?.()} style={[styles.sideButton, webNoOutline]}>
-                <MaterialCommunityIcons color={theme.colors.headerIcon} name={emojiKeyboardOpen ? "keyboard-outline" : "emoticon-outline"} size={24} />
+              {/* Emoji toggle - Button remains visually but functionality is disabled as per user request */}
+              <Pressable onPress={() => { /* Disabled as requested */ }} style={[styles.sideButton, webNoOutline]}>
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="emoticon-outline" size={24} style={{ opacity: 0.6 }} />
               </Pressable>
               <View style={styles.inputShell}>
                 <TextInput

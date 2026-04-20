@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Alert, Pressable, Text, View, ScrollView, ImageBackground, Platform } from "react-native";
+import { Alert, Pressable, Text, View, ScrollView, ImageBackground, Platform, Image, Animated, PanResponder, Dimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { Chat, Message, Profile } from "@/lib/types";
@@ -16,7 +16,7 @@ type OverlayProps = {
   theme: any;
   styles: any;
   muteSetting: any;
-  
+
   showOverflowMenu: boolean;
   setShowOverflowMenu: (v: boolean) => void;
   showMoreMenu: boolean;
@@ -35,7 +35,7 @@ type OverlayProps = {
   setShowSelectionOverflowMenu: (v: boolean) => void;
   showDeleteModal: boolean;
   setShowDeleteModal: (v: boolean) => void;
-  
+
   muteSelection: "8_hours" | "1_week" | "always";
   setMuteSelection: (v: "8_hours" | "1_week" | "always") => void;
   clearSelection: "all" | "media";
@@ -44,26 +44,26 @@ type OverlayProps = {
   setClearStarred: (v: boolean) => void;
   reportExit: boolean;
   setReportExit: (v: boolean) => void;
-  
+
   selectedIds: string[];
   setSelectedIds: (v: string[]) => void;
   messageMap: Record<string, Message>;
   viewInfoMessage: Message | null;
   setViewInfoMessage: (m: Message | null) => void;
-  
+
   showReactionsSheetForId: string | null;
   setShowReactionsSheetForId: (v: string | null) => void;
   reactionsByMessage: Record<string, any>;
   contactNicknames: Record<string, any>;
-  
+
   showEmojiPickerForId: string | null;
   setShowEmojiPickerForId: (v: string | null) => void;
-  
+
   toastMessage: string | null;
-  
+
   activeSubScreen: string | null;
   setActiveSubScreen: (v: any) => void;
-  
+
   onOpenChatSettings: () => void;
   onCreateGroupWith?: (profile: Profile) => void;
   setChatMute: (chatId: string, duration: any) => void;
@@ -128,15 +128,15 @@ export const ChatOverlayManager = (props: OverlayProps) => {
   const isScreenshotRequestBlocked = useMemo(() => {
     // 1. If currently have permission, strict block
     if (hasScreenshotPerm) return true;
-    
+
     const req = myRequests[chat.id];
     if (!req) return false;
 
     // 2. If it's a pending/approved request, check its age
-    const baseTime = req.approved_at 
-      ? new Date(req.approved_at).getTime() 
+    const baseTime = req.approved_at
+      ? new Date(req.approved_at).getTime()
       : new Date(req.requested_at).getTime();
-    
+
     // If it's still within the "cooldown" window, block it
     if (Date.now() - baseTime < PERMISSION_DURATION_MS) return true;
 
@@ -161,8 +161,8 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                 <MenuItem label="ערכת הנושא של הצאט" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("theme"); }} />
                 <MenuDivider />
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                   <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
-                   <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
+                  <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
+                  <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
                 </View>
               </>
             ) : (
@@ -185,8 +185,8 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                 <MenuItem label="ערכת הנושא של הצ'אט" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("theme"); }} />
                 <MenuDivider />
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                   <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
-                   <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
+                  <MenuItem label="עוד" onPress={() => { setShowOverflowMenu(false); setShowMoreMenu(true); }} />
+                  <MaterialCommunityIcons name="menu-left" size={24} color={theme.colors.textMuted} style={{ position: "absolute", left: 10, top: 12 }} pointerEvents="none" />
                 </View>
               </>
             )}
@@ -206,7 +206,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                 <MenuItem label="הוספה לרשימה" onPress={() => { setShowMoreMenu(false); Alert.alert("רשימה", "בקרוב"); }} />
                 <MenuDivider />
                 <MenuItem label="דיווח" onPress={() => { setShowMoreMenu(false); setShowReportDialog(true); }} />
-                <MenuItem label="יציאה מהקבוצה" onPress={() => { setShowMoreMenu(false); Alert.alert("יציאה מהקבוצה", "האם לעזוב קבוצה זו?", [{text: "ביטול"}, {text: "עזוב", style: "destructive"}]) }} />
+                <MenuItem label="יציאה מהקבוצה" onPress={() => { setShowMoreMenu(false); Alert.alert("יציאה מהקבוצה", "האם לעזוב קבוצה זו?", [{ text: "ביטול" }, { text: "עזוב", style: "destructive" }]) }} />
               </>
             ) : (
               <>
@@ -421,15 +421,15 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                     theme={theme}
                     disabled={isScreenshotRequestBlocked}
                     onPress={async () => {
-                       if (isScreenshotRequestBlocked) return;
-                       setShowAttachmentMenu(false);
-                       const targetMemberIds = chat.is_group
-                         ? groupMembers.map((m) => m.id)
-                         : Object.keys(profiles).filter(id => id !== profile?.id);
-                       const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
-                       if (reqResult?.pollBody) {
-                         sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
-                       }
+                      if (isScreenshotRequestBlocked) return;
+                      setShowAttachmentMenu(false);
+                      const targetMemberIds = chat.is_group
+                        ? groupMembers.map((m) => m.id)
+                        : Object.keys(profiles).filter(id => id !== profile?.id);
+                      const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
+                      if (reqResult?.pollBody) {
+                        sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
+                      }
                     }}
                   />
                   <AttachmentItem
@@ -478,63 +478,33 @@ export const ChatOverlayManager = (props: OverlayProps) => {
         </View>
       ) : null}
 
-      {showReactionsSheetForId && reactionsByMessage[showReactionsSheetForId] ? (() => {
+      {showReactionsSheetForId ? (() => {
         const reactions = reactionsByMessage[showReactionsSheetForId] || {};
         const entries = Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:"));
         const total = entries.reduce((sum, [_, u]) => sum + (Array.isArray(u) ? u.length : 0), 0);
-
         return (
-          <View pointerEvents="box-none" style={styles.overlayRoot}>
-            <Pressable onPress={() => setShowReactionsSheetForId(null)} style={styles.backdrop} />
-            <View style={styles.reactionsSheet}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.reactionsSheetHeader}>{total === 1 ? "תגובה אחת" : `${total} תגובות`}</Text>
-              <ScrollView contentContainerStyle={styles.reactionUserList}>
-                {entries.map(([emoji, users]) => (users as string[]).map((uid) => {
-                  const uProfile = profiles[uid];
-                  const isMe = uid === profile?.id;
-                  const name = isMe ? "את/ה" : contactNicknames[uid]?.first_name || uProfile?.username || "משתמש";
-                  return (
-                    <Pressable key={`${uid}-${emoji}`} style={styles.reactionUserRow} onPress={() => { if (isMe) { toggleReaction(showReactionsSheetForId, emoji); setShowReactionsSheetForId(null); } }}>
-                      <View style={[styles.avatar, { width: 44, height: 44, backgroundColor: isMe ? "#00A884" : "#63472b" }]}>
-                        <Text style={styles.avatarText}>{(name || "?")[0].toUpperCase()}</Text>
-                      </View>
-                      <View style={styles.reactionUserInfo}>
-                        <Text style={styles.reactionUserName}>{name}</Text>
-                        {isMe && <Text style={styles.reactionUserAction}>הקשה להסרה</Text>}
-                      </View>
-                      <Text style={styles.reactionEmoji}>{emoji}</Text>
-                    </Pressable>
-                  );
-                }))}
-              </ScrollView>
-            </View>
-          </View>
+          <ReactionSheet 
+            messageId={showReactionsSheetForId}
+            reactions={reactions}
+            total={total}
+            profiles={profiles}
+            profile={profile}
+            contactNicknames={contactNicknames}
+            onClose={() => setShowReactionsSheetForId(null)}
+            onRemove={(emoji: string) => {
+              toggleReaction(showReactionsSheetForId, emoji);
+              setShowReactionsSheetForId(null);
+            }}
+            onAddMore={() => {
+              setShowReactionsSheetForId(null);
+              setShowEmojiPickerForId(showReactionsSheetForId);
+            }}
+            theme={theme}
+            styles={styles}
+          />
         );
       })() : null}
 
-      {showEmojiPickerForId ? (
-        <View pointerEvents="box-none" style={styles.overlayRoot}>
-          <Pressable onPress={() => setShowEmojiPickerForId(null)} style={styles.backdrop} />
-          <View style={styles.emojiPickerSheet}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.emojiPickerSearch}>
-              <MaterialCommunityIcons name="magnify" color={theme.colors.textMuted} size={24} />
-              <Text style={styles.emojiPickerSearchText}>חיפוש</Text>
-            </View>
-            <ScrollView>
-              <Text style={styles.emojiCategoryTitle}>בשימוש תדיר</Text>
-              <View style={styles.emojiGrid}>
-                {["👍", "❤️", "😂", "😮", "😢", "🙏", "😜", "🔥", "💯", "✅", "🙌", "✨", "🎉", "🎈", "🎂", "🚀", "🎸", "🍕", "🍔", "🍦"].map(e => (
-                  <Pressable key={e} onPress={() => { toggleReaction(showEmojiPickerForId, e); setShowEmojiPickerForId(null); if (selectedIds.includes(showEmojiPickerForId)) toggleSelection(showEmojiPickerForId); }} style={styles.emojiCell}>
-                    <Text style={styles.emojiCellText}>{e}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      ) : null}
 
       {toastMessage ? (
         <View pointerEvents="none" style={styles.toastContainer}>
@@ -547,6 +517,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
     </>
   );
 };
+
 
 function MenuDivider() {
   const theme = useAppTheme();
@@ -571,5 +542,150 @@ function AttachmentItem({ icon, label, color, theme, disabled, onPress }: { icon
       </View>
       <Text style={{ color: theme.colors.menuTextSecondary, fontSize: 13, textAlign: "center", fontWeight: "500" }}>{label}</Text>
     </Pressable>
+  );
+}
+
+function ReactionSheet({
+  messageId,
+  reactions,
+  profiles,
+  profile,
+  contactNicknames,
+  onClose,
+  onRemove,
+  onAddMore,
+  theme,
+  styles,
+  total
+}: any) {
+  const categories = React.useMemo(() => {
+    const entries = Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:"));
+    return entries.map(([e, u]) => ({ emoji: e, count: (u as any[]).length }));
+  }, [reactions]);
+
+  const [activeTab, setActiveTab] = React.useState(categories[0]?.emoji || "none");
+
+  // Sync active tab if it's no longer present
+  React.useEffect(() => {
+    if (activeTab === "none" && categories.length > 0) {
+      setActiveTab(categories[0].emoji);
+    }
+  }, [categories]);
+
+  const translateY = React.useRef(new Animated.Value(Dimensions.get("window").height)).current;
+
+  React.useEffect(() => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 65,
+      friction: 11
+    }).start();
+  }, []);
+
+  const closeSheet = () => {
+    Animated.timing(translateY, {
+      toValue: Dimensions.get("window").height,
+      duration: 200,
+      useNativeDriver: true
+    }).start(onClose);
+  };
+
+  const panResponder = React.useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 10,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 120 || gestureState.vy > 0.5) {
+          closeSheet();
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 65,
+            friction: 11
+          }).start();
+        }
+      }
+    })
+  ).current;
+
+  const filteredUsers = React.useMemo(() => {
+    return ((reactions[activeTab] as any[]) || []).map(u => ({ ...u, emoji: activeTab }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [reactions, activeTab]);
+
+  return (
+    <View pointerEvents="box-none" style={styles.overlayRoot}>
+      <Pressable onPress={closeSheet} style={styles.backdrop} />
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[styles.reactionsSheet, { transform: [{ translateY }] }]}
+      >
+        <View style={styles.sheetHandle} />
+        
+        <Text style={styles.reactionsSheetHeader}>{total === 1 ? "תגובה אחת" : `${total} תגובות`}</Text>
+
+        <View style={styles.reactionTabsRow}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            style={{ flexGrow: 0 }} 
+            contentContainerStyle={{ flexDirection: "row", gap: 12 }} 
+          >
+            <Pressable onPress={onAddMore} style={styles.reactionTabPillIcon}>
+              <MaterialCommunityIcons name="emoticon-plus-outline" size={24} color={theme.colors.textMuted} />
+            </Pressable>
+            {categories.map(({ emoji, count }) => (
+              <Pressable 
+                key={emoji} 
+                onPress={() => setActiveTab(emoji)} 
+                style={[styles.reactionTabPill, activeTab === emoji && styles.reactionTabPillActive]}
+              >
+                <Text style={styles.reactionTabPillEmoji}>{emoji}</Text>
+                <Text style={[styles.reactionTabPillText, activeTab === emoji && styles.reactionTabPillTextActive, { marginLeft: 6 }]}>{count}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.reactionUserList}>
+          {filteredUsers.map((item, idx) => {
+            const uid = item.userId;
+            const uProfile = profiles[uid];
+            const isMe = uid === profile?.id;
+            const name = isMe ? "התגובה שלך" : contactNicknames[uid]?.first_name || uProfile?.username || "משתמש";
+
+            return (
+              <Pressable
+                key={`${uid}-${item.emoji}-${idx}`}
+                style={styles.reactionUserRow}
+                onPress={() => { if (isMe) onRemove(item.emoji); }}
+              >
+                <Text style={styles.reactionEmojiBadge}>{item.emoji}</Text>
+
+                <View style={styles.reactionUserInfo}>
+                  <Text style={styles.reactionUserName}>{name}</Text>
+                  {isMe && <Text style={styles.reactionUserAction}>יש להקיש כדי להסיר</Text>}
+                </View>
+
+                <View style={[styles.avatar, { width: 44, height: 44, backgroundColor: isMe ? "#00A884" : "#63472b" }]}>
+                  {uProfile?.avatar_url ? (
+                    <Image source={{ uri: uProfile.avatar_url }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+                  ) : (
+                    <Text style={styles.avatarText}>{(name || "?")[0].toUpperCase()}</Text>
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </Animated.View>
+    </View>
   );
 }

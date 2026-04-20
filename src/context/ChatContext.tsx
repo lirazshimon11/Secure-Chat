@@ -392,14 +392,29 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const toggleReaction = async (messageId: string, emoji: string) => {
     if (!profile?.id) return;
-    const curUsers = reactionsByMessage[messageId]?.[emoji] ?? [];
-    const already = curUsers.some(r => r.userId === profile.id);
+    const reactions = reactionsByMessage[messageId] ?? {};
+    const curUsersForThisEmoji = reactions[emoji] ?? [];
+    const alreadySameEmoji = curUsersForThisEmoji.some(r => r.userId === profile.id);
+
     setReactionsByMessage(cur => {
-      const next = { ...cur }; const msgReactions = { ...(next[messageId] ?? {}) };
-      msgReactions[emoji] = already ? curUsers.filter(r => r.userId !== profile.id) : [...curUsers, { userId: profile.id, createdAt: new Date().toISOString() }];
-      next[messageId] = msgReactions; return next;
+      const next = { ...cur };
+      const msgReactions = { ...(next[messageId] ?? {}) };
+
+      // 1. Remove user from ALL existing emojis on this message
+      Object.keys(msgReactions).forEach(e => {
+        msgReactions[e] = (msgReactions[e] ?? []).filter(r => r.userId !== profile.id);
+      });
+
+      // 2. If it wasn't the SAME emoji, add the new one
+      if (!alreadySameEmoji) {
+        msgReactions[emoji] = [...(msgReactions[emoji] ?? []), { userId: profile.id, createdAt: new Date().toISOString() }];
+      }
+
+      next[messageId] = msgReactions;
+      return next;
     });
-    await ChatService.toggleReaction(messageId, profile.id, emoji, already);
+
+    await ChatService.toggleReaction(messageId, profile.id, emoji, alreadySameEmoji);
   };
 
   const openViewOnceMessage = async (msg: Message) => {

@@ -232,6 +232,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [pickerLayout, setPickerLayout] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [viewInfoMessage, setViewInfoMessage] = useState<Message | null>(null);
   const [showEmojiPickerForId, setShowEmojiPickerForId] = useState<string | null>(null);
+
+  // Sync showEmojiPickerForId with the bottom keyboard
+  useEffect(() => {
+    if (showEmojiPickerForId) {
+      // If we are opening the emoji picker for a reaction, show the bottom keyboard
+      setShowEmojiKeyboard(true);
+      Keyboard.dismiss();
+    }
+  }, [showEmojiPickerForId]);
   const [showReactionsSheetForId, setShowReactionsSheetForId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const viewHeightRef = useRef(0);
@@ -498,13 +507,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         // On Android, especially tablets, rawKbHeight might be reported 
         // relative to the navigation bar. Since we draw behind it, we need to add it.
         const targetValue = kh + insets.bottom;
-        
+
         console.log(`[KB-DEBUG] keyboardDidShow: rawKbHeight=${kh}, insets.bottom=${insets.bottom}, target=${targetValue}`);
         setRecordedKeyboardHeight(kh);
         setKeyboardHeight(kh);
         isKeyboardOpenRef.current = true;
         setShowEmojiKeyboard(false);
-        
+
         Animated.timing(keyboardHeightAnim, {
           toValue: targetValue,
           duration: 250,
@@ -621,7 +630,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const selectionPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponderCapture: () => false,
     onMoveShouldSetPanResponderCapture: (evt, gestureState) => {
-      if (isDragSelectLockedRef.current && Math.abs(gestureState.dy) > 8) {
+      // Improved threshold: Must move more than 25px vertically,
+      // and the movement must be primarily vertical (dy > dx) to distinguish from scroll/swipes.
+      if (isDragSelectLockedRef.current && 
+          Math.abs(gestureState.dy) > 25 && 
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx)) {
         return true;
       }
       return false;
@@ -843,7 +856,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   onScrollBeginDrag={() => { if (showReactionsForId) setShowReactionsForId(null); }}
                   onMomentumScrollEnd={() => checkVisibility()} onScrollEndDrag={() => checkVisibility()}
                 >
-                  <Pressable style={[{ flexGrow: 1 }, webDefaultCursor]} onPress={() => { if (showReactionsForId) setShowReactionsForId(null); }}>
+                  <Pressable style={[{ flexGrow: 1 }, webDefaultCursor]} onPress={() => { 
+                    if (showReactionsForId) setShowReactionsForId(null); 
+                    if (showEmojiKeyboard) setShowEmojiKeyboard(false);
+                    if (showEmojiPickerForId) setShowEmojiPickerForId(null);
+                  }}>
                     {groupedMessages.map((item, idx) => {
                       if (item.type === "date") return <View key={`date-${idx}`} style={styles.dateSeparator}><View style={styles.datePill}><Text style={styles.datePillText}>{item.dateLabel}</Text></View></View>;
                       if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
@@ -1001,15 +1018,49 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
                   })()}
                   emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
-                  onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+                  onToggleEmojiKeyboard={() => { 
+                    // No longer active from composer, but keeping the prop to avoid breaking MessageComposer type
+                  }} emojiEvent={composerEmojiEvent} />
               </View>
             </Animated.View>
           )}
         </KeyboardAvoidingView>
 
         {showEmojiKeyboard ? (
-          <View style={{ height: recordedKeyboardHeight || 300, width: "100%" }}>
-            <EmojiKeyboard height={recordedKeyboardHeight || 300} onEmojiSelected={(emoji) => setComposerEmojiEvent({ emoji, ts: Date.now() })} recents={emojiRecents} onRecentsUpdate={setEmojiRecents} bottomInset={insets.bottom} />
+          <View style={{ 
+            height: (recordedKeyboardHeight || 300) + insets.bottom, 
+            width: "100%", 
+            backgroundColor: theme.colors.surface,
+            ...(showEmojiPickerForId ? {
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              zIndex: 99999,
+            } : {})
+          }}>
+            <EmojiKeyboard 
+              height={recordedKeyboardHeight || 300} 
+              onEmojiSelected={(emoji) => {
+                if (showEmojiPickerForId) {
+                  // If in reaction mode, toggle reaction and close
+                  handleToggleReaction(showEmojiPickerForId, emoji);
+                  
+                  // Clear state
+                  setShowEmojiPickerForId(null);
+                  setShowEmojiKeyboard(false);
+                  
+                  // NEW: Clear selection after reacting
+                  setSelectedIds([]);
+                } else {
+                  // Fallback for any other case
+                  setComposerEmojiEvent({ emoji, ts: Date.now() });
+                }
+              }} 
+              recents={emojiRecents} 
+              onRecentsUpdate={setEmojiRecents} 
+              bottomInset={insets.bottom} 
+            />
           </View>
         ) : null}
       </SafeAreaView>

@@ -35,7 +35,6 @@ export function ChatPollVotesScreen({ message, reactions, onBack, currentUserId 
           <Text style={styles.headerTitle}>הצבעות בסקרים</Text>
         </View>
       </SafeAreaView>
-
       <ScrollView style={styles.content}>
         <View style={styles.questionSection}>
           <Text style={styles.questionText}>{pollData.question}</Text>
@@ -43,54 +42,71 @@ export function ChatPollVotesScreen({ message, reactions, onBack, currentUserId 
 
         {pollData.options.map((opt: string, i: number) => {
           const voterIds = reactions?.[`poll:${i}`] || [];
+          
           return (
             <View key={i}>
               <View style={styles.optionHeader}>
                 <Text style={styles.optionHeaderText}>{opt}</Text>
                 {voterIds.length > 0 ? (
-                  <View style={styles.voteCountRow}>
-                    <Text style={styles.voteCountText}>{voterIds.length}</Text>
-                    <Text style={styles.voteStar}>★</Text>
+                  <View style={styles.voteCountBadge}>
+                    <Text style={styles.voteCountTextBadge}>{voterIds.length}</Text>
                   </View>
                 ) : (
                   <Text style={styles.voteCountZero}>0</Text>
                 )}
               </View>
 
-              {Array.isArray(voterIds) && voterIds.map((voter) => {
-                const uid = voter.userId;
-                const userProfile = profiles[uid];
-                const isMe = uid === currentUserId;
-                const displayName = isMe ? "את/ה" : userProfile?.username || "משתמש אנונימי";
+              {voterIds.length === 0 ? (
+                <View style={styles.noVotesRow}>
+                  <Text style={styles.noVotesText}>אין הצבעות עדיין</Text>
+                </View>
+              ) : (
+                Array.isArray(voterIds) && voterIds.map((voter) => {
+                  const uid = voter.userId;
+                  const userProfile = profiles[uid];
+                  const isMe = uid === currentUserId;
+                  const rawName = userProfile?.full_name || userProfile?.username || "משתתף/ת";
+                  const displayName = isMe ? "את/ה" : rawName;
+                  
+                  const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63", "#F28C28", "#8E44AD"];
+                  let hash = 0;
+                  const keyForColor = userProfile?.username || userProfile?.id || "?";
+                  for (let k = 0; k < (keyForColor?.length || 0); k++) hash = keyForColor.charCodeAt(k) + ((hash << 5) - hash);
+                  const bgColor = colors[Math.abs(hash) % colors.length];
+                  const initial = rawName.slice(0, 1).toUpperCase();
 
-                // Format the relative time
-                let timeLabel = "";
-                if (voter.createdAt) {
-                   const diff = Date.now() - new Date(voter.createdAt).getTime();
-                   if (diff < 60000) timeLabel = "ממש עכשיו";
-                   else {
-                      const mins = Math.floor(diff / 60000);
-                      if (mins < 60) timeLabel = `לפני ${mins} דקות`;
-                      else {
-                         const hours = Math.floor(mins / 60);
-                         if (hours < 24) timeLabel = `לפני ${hours} שעות`;
-                         else timeLabel = new Date(voter.createdAt).toLocaleDateString("he-IL");
-                      }
-                   }
-                }
+                  let timeLabel = "";
+                  if (voter.createdAt) {
+                     const diff = Date.now() - new Date(voter.createdAt).getTime();
+                     if (diff < 60000) timeLabel = "ממש עכשיו";
+                     else {
+                        const mins = Math.floor(diff / 60000);
+                        if (mins < 60) timeLabel = `לפני ${mins} דקות`;
+                        else {
+                           const hours = Math.floor(mins / 60);
+                           if (hours < 24) timeLabel = `לפני ${hours} שעות`;
+                           else timeLabel = new Date(voter.createdAt).toLocaleDateString("he-IL");
+                        }
+                     }
+                  }
 
-                return (
-                  <View key={uid} style={styles.voterRow}>
-                    <View style={styles.avatarEmpty}>
-                      <MaterialCommunityIcons name="account" size={30} color={theme.colors.border} style={styles.avatarIcon} />
+                  return (
+                    <View key={uid} style={styles.voterRow}>
+                      <View style={[styles.avatarCircle, { backgroundColor: bgColor }]}>
+                        {(userProfile as any)?.avatar_url ? (
+                          <Image source={{ uri: (userProfile as any).avatar_url }} style={styles.avatarImage} />
+                        ) : (
+                          <Text style={styles.avatarInitial}>{initial}</Text>
+                        )}
+                      </View>
+                      <View style={styles.voterInfo}>
+                        <Text style={styles.voterName}>{displayName}</Text>
+                        {timeLabel ? <Text style={styles.voterSub}>{timeLabel}</Text> : null}
+                      </View>
                     </View>
-                    <View style={styles.voterInfo}>
-                      <Text style={styles.voterName}>{displayName}</Text>
-                      {timeLabel ? <Text style={styles.voterSub}>{timeLabel}</Text> : null}
-                    </View>
-                  </View>
-                );
-              })}
+                  );
+                })
+              )}
               <View style={styles.divider} />
             </View>
           );
@@ -144,7 +160,7 @@ const createStyles = (theme: any) =>
       textAlign: "left",
     },
     optionHeader: {
-      flexDirection: "row", // שונה ל-row כדי שהטקסט יהיה בשמאל
+      flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
       padding: 16,
@@ -153,42 +169,67 @@ const createStyles = (theme: any) =>
       backgroundColor: theme.colors.surface,
     },
     optionHeaderText: {
-      fontSize: 16,
-      fontWeight: "bold",
-      color: theme.colors.text,
+      fontSize: 15,
+      fontWeight: "700",
+      color: theme.colors.accent,
     },
-    voteCountRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
+    voteCountBadge: {
+      backgroundColor: theme.colors.accent + "20",
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 12,
     },
-    voteCountText: {
+    voteCountTextBadge: {
       fontSize: 14,
-      color: theme.colors.textMuted,
-      fontWeight: "600",
+      color: theme.colors.accent,
+      fontWeight: "700",
     },
     voteCountZero: {
       fontSize: 14,
       color: theme.colors.textMuted,
-    },
-    voteStar: {
-      color: theme.colors.textMuted,
-      fontSize: 14,
+      fontWeight: "600",
     },
     voterRow: {
-      flexDirection: "row", // שונה ל-row
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "flex-start", // מיושר לשמאל
+      justifyContent: "flex-start",
       paddingHorizontal: 16,
       paddingVertical: 12,
     },
+    noVotesRow: {
+      paddingHorizontal: 16,
+      paddingVertical: 20,
+      alignItems: "center",
+    },
+    noVotesText: {
+      color: theme.colors.textMuted,
+      fontSize: 14,
+    },
+    avatarCircle: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      overflow: "hidden",
+      marginRight: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarImage: {
+      width: "100%",
+      height: "100%",
+    },
+    avatarInitial: {
+      color: "#FFF",
+      fontSize: 20,
+      fontWeight: "600",
+    },
     voterInfo: {
       flex: 1,
-      alignItems: "flex-start", // מיושר לשמאל
+      alignItems: "flex-start",
     },
     voterName: {
       fontSize: 16,
-      fontWeight: "bold",
+      fontWeight: "600",
       color: theme.colors.text,
       textAlign: "left",
     },
@@ -197,21 +238,8 @@ const createStyles = (theme: any) =>
       color: theme.colors.textMuted,
       marginTop: 2,
     },
-    avatarEmpty: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      overflow: "hidden",
-      marginRight: 14, // שונה ל-marginRight כדי להרחיק את הטקסט
-      backgroundColor: theme.colors.surface,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarIcon: {
-      marginTop: 4,
-    },
     divider: {
       height: 8,
-      backgroundColor: theme.colors.border,
+      backgroundColor: theme.colors.chatBackdrop,
     },
   });

@@ -231,15 +231,13 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
           <SettingRow icon="cellphone-lock" title="נעילת הצ'אט" subtitle="נעילה והסתרה של הצ'אט הזה במכשיר" actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("נעילת צ'אט", "ניתן לנעול צ'אטים ממסך הבית (לחיצה ארוכה).")); }} />
           <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="כבה" onPress={() => setActiveScreen("advanced")} theme={theme} />
           <SettingRow icon="palette-outline" title="ערכת הנושא של הצאט" subtitle="ברירת מחדל" onPress={() => setActiveScreen("theme")} theme={theme} />
-          {liveChat.is_group && (
-            <SettingRow
-              icon="fish"
-              title="תוכן פיתיון"
-              subtitle="ערוך את הצאט שיוצג למוגנים"
-              onPress={() => setActiveScreen("decoyContent")}
-              theme={theme}
-            />
-          )}
+          <SettingRow
+            icon="fish"
+            title="תוכן פיתיון"
+            subtitle="ערוך את הצאט שיוצג למוגנים"
+            onPress={() => setActiveScreen("decoyContent")}
+            theme={theme}
+          />
         </View>
 
         <View style={styles.thickSeparator} />

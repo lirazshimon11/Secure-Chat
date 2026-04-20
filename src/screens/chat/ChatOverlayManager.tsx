@@ -82,6 +82,7 @@ type OverlayProps = {
   showDecoyManager: boolean;
   setShowDecoyManager: (v: boolean) => void;
   onSendSystemMessage: (body: string) => Promise<void>;
+  decoyMode?: boolean;
 };
 
 export const ChatOverlayManager = (props: OverlayProps) => {
@@ -115,6 +116,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
     hasScreenshotPerm, myRequests, groupMembers,
     setSearchOpen, keyboardHeight,
     showDecoyManager, setShowDecoyManager, onSendSystemMessage,
+    decoyMode,
   } = props;
 
   const [tick, setTick] = React.useState(0);
@@ -361,14 +363,22 @@ export const ChatOverlayManager = (props: OverlayProps) => {
           <View style={styles.deleteModalCard}>
             <Text style={styles.deleteModalTitle}>האם למחוק את ההודעה?</Text>
             <View style={styles.deleteModalActions}>
-              {selectedIds.every((id) => messageMap[id]?.sender_id === profile?.id) && (
+              {decoyMode ? (
                 <Pressable style={styles.deleteModalAction} onPress={() => performDelete(true)}>
-                  <Text style={styles.deleteModalActionText}>למחוק אצל כולם</Text>
+                  <Text style={styles.deleteModalActionText}>למחוק לכולם</Text>
                 </Pressable>
+              ) : (
+                <>
+                  {selectedIds.every((id) => messageMap[id]?.sender_id === profile?.id) && (
+                    <Pressable style={styles.deleteModalAction} onPress={() => performDelete(true)}>
+                      <Text style={styles.deleteModalActionText}>למחוק אצל כולם</Text>
+                    </Pressable>
+                  )}
+                  <Pressable style={styles.deleteModalAction} onPress={() => performDelete(false)}>
+                    <Text style={styles.deleteModalActionText}>למחוק אצלי</Text>
+                  </Pressable>
+                </>
               )}
-              <Pressable style={styles.deleteModalAction} onPress={() => performDelete(false)}>
-                <Text style={styles.deleteModalActionText}>למחוק אצלי</Text>
-              </Pressable>
               <Pressable style={styles.deleteModalAction} onPress={() => setShowDeleteModal(false)}>
                 <Text style={styles.deleteModalActionText}>ביטול</Text>
               </Pressable>
@@ -422,15 +432,13 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                        }
                     }}
                   />
-                  {chat.is_group ? (
-                    <AttachmentItem
-                      icon="shield-check"
-                      label="מגן הגנה"
-                      color="#5C6BC0"
-                      theme={theme}
-                      onPress={() => setShowDecoyManager(true)}
-                    />
-                  ) : <View style={{ width: 70 }} />}
+                  <AttachmentItem
+                    icon="shield-check"
+                    label="מגן הגנה"
+                    color="#5C6BC0"
+                    theme={theme}
+                    onPress={() => setShowDecoyManager(true)}
+                  />
                 </View>
               </>
             )}

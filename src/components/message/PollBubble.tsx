@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Pressable, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, ReactionSummary } from "@/lib/types";
+import { useChats } from "@/context/ChatContext";
 
 type PollBubbleProps = {
   message: Message;
@@ -22,6 +23,7 @@ export const PollBubble = ({
   onToggleReaction,
   onOpenPollVotes,
 }: PollBubbleProps) => {
+  const { profiles, contactNicknames } = useChats();
   const [timeLeft, setTimeLeft] = useState<string | null>(null);
   const [isExpired, setIsExpired] = useState(false);
 
@@ -165,8 +167,39 @@ export const PollBubble = ({
             <View style={[styles.pollOptionInner, { flexDirection: 'row', direction: 'ltr', justifyContent: 'space-between', alignItems: 'center' }]}>
 
               {/* צד שמאל: המספר יהיה תמיד הכי שמאלי */}
-              <View style={{ minWidth: 24, alignItems: 'flex-start' }}>
-                <Text style={[styles.pollVoteCount, { textAlign: 'left' }]}>{optionVotes}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ minWidth: 24, alignItems: 'flex-start' }}>
+                  <Text style={[styles.pollVoteCount, { textAlign: 'left' }]}>{optionVotes}</Text>
+                </View>
+                
+                {/* Avatars of voters (up to 3) */}
+                {optionVotes > 0 && (
+                  <View style={{ flexDirection: 'row', marginLeft: 4 }}>
+                    {(reactions?.[`poll:${i}`] || []).slice(0, 3).map((voter: any, idx: number) => {
+                      const voterId = voter.userId;
+                      const profile = profiles?.[voterId];
+                      const nick = contactNicknames?.[voterId];
+                      const initial = (nick?.first_name || profile?.full_name || profile?.username || "?")
+                        .slice(0, 1).toUpperCase();
+                      
+                      const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63", "#F28C28", "#8E44AD"];
+                      let hash = 0;
+                      const key = profile?.username || profile?.id || "?";
+                      for (let k = 0; k < (key?.length || 0); k++) hash = key.charCodeAt(k) + ((hash << 5) - hash);
+                      const bgColor = colors[Math.abs(hash) % colors.length];
+                      
+                      return (
+                        <View key={voterId} style={{
+                          width: 16, height: 16, borderRadius: 8, backgroundColor: bgColor,
+                          marginLeft: idx > 0 ? -6 : 0, alignItems: 'center', justifyContent: 'center',
+                          borderWidth: 1, borderColor: theme.colors.chatBackdrop, zIndex: 3 - idx
+                        }}>
+                          <Text style={{ fontSize: 8, fontWeight: '700', color: "#FFF" }}>{initial}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </View>
 
               {/* צד ימין: הטקסט והעיגול נדחפים לימין בכוח */}

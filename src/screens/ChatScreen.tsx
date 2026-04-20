@@ -902,12 +902,30 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           chat, profile, profiles, theme, styles, showOverflowMenu, setShowOverflowMenu, showMoreMenu, setShowMoreMenu, showMuteMenu, setShowMuteMenu, showClearDialog, setShowClearDialog, showExportDialog, setShowExportDialog, showReportDialog, setShowReportDialog, showAttachmentMenu, setShowAttachmentMenu, showSelectionOverflowMenu, setShowSelectionOverflowMenu, showDeleteModal, setShowDeleteModal,
           muteSelection, setMuteSelection, clearSelection, setClearSelection, clearStarred, setClearStarred, reportExit, setReportExit, selectedIds, setSelectedIds, messageMap, viewInfoMessage, setViewInfoMessage, showReactionsSheetForId, setShowReactionsSheetForId, reactionsByMessage, contactNicknames, showEmojiPickerForId, setShowEmojiPickerForId, toastMessage, activeSubScreen, setActiveSubScreen, onOpenChatSettings, onCreateGroupWith, setChatMute, clearChatsLocally, showToast, toggleReaction, toggleSelection: (id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id]), requestScreenshotPermission, sendMessage, hasScreenshotPerm, myRequests, groupMembers, setSearchOpen,
           muteSetting: (muteSettings && chat) ? muteSettings[chat.id] : undefined,
-          performDelete: async (everyone) => { await deleteMessages(selectedIds, everyone); setSelectedIds([]); setShowDeleteModal(false); },
+          performDelete: async (everyone) => {
+            if (decoyMode) {
+              const rowIds = selectedIds.map(id => {
+                const msg = decoyDbMessages.find(m => m.id === id);
+                return (msg as any)?._decoy_row_id;
+              }).filter(Boolean);
+              if (rowIds.length > 0) {
+                await supabase.from("chat_decoy_messages").delete().in("id", rowIds);
+                setDecoyDbMessages((prev) => prev.filter((m) => !selectedIds.includes(m.id)));
+              }
+              setSelectedIds([]);
+              setShowDeleteModal(false);
+            } else {
+              await deleteMessages(selectedIds, everyone);
+              setSelectedIds([]);
+              setShowDeleteModal(false);
+            }
+          },
           keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight,
           showDecoyManager, setShowDecoyManager,
           onSendSystemMessage: async (body: string) => {
             await sendMessage({ chatId: chat.id, body, messageKind: "system" });
           },
+          decoyMode,
         }}
       />
 

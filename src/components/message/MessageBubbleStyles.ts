@@ -112,7 +112,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     author: {
       color: "#8b5cf6",
-      fontSize: 12,
+      fontSize: 14,
       fontWeight: "700",
       marginBottom: 3,
     },

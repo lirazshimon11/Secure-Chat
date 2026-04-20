@@ -290,6 +290,27 @@ export function ChatProvider({ children }: PropsWithChildren) {
           if (loadedChatIdsRef.current.includes(n.chat_id)) loadMessages(n.chat_id);
         }
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (p) => {
+        console.log("[DEBUG-Realtime] REACTION EVENT RECEIVED:", p.eventType);
+        const rn = p.new as any;
+        const ro = p.old as any;
+        const msgId = rn?.message_id || ro?.message_id;
+        if (msgId) {
+          void ChatService.fetchReactions([msgId]).then(({ data }) => {
+            if (data) {
+              setReactionsByMessage(cur => {
+                const next = { ...cur };
+                next[msgId] = {};
+                (data as any[]).forEach((r) => {
+                  next[msgId][r.emoji] ??= [];
+                  next[msgId][r.emoji].push({ userId: r.user_id, createdAt: r.created_at });
+                });
+                return next;
+              });
+            }
+          });
+        }
+      })
       .subscribe((status, err) => {
         console.log(`[DEBUG-Realtime] Status update: ${status}`);
         if (err) console.error("[DEBUG-Realtime] ERROR:", err);

@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "com.secureapp.app",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./public/images/icon.png",
         "backgroundColor": "#f4efe6"

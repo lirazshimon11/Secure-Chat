@@ -234,16 +234,23 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [showEmojiPickerForId, setShowEmojiPickerForId] = useState<string | null>(null);
   const [showReactionsSheetForId, setShowReactionsSheetForId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [spacerHeight, setSpacerHeight] = useState(0);
   const viewHeightRef = useRef(0);
   const maxViewHeightRef = useRef(0);
+  const rootViewHeightRef = useRef(0);       // ref mirror of rootViewHeight for async callbacks
+  const preKeyboardHeightRef = useRef(0);    // height captured BEFORE keyboard opened (orientation-safe)
+  const isKeyboardOpenRef = useRef(false);   // true while Android software keyboard is visible
+  const composerWrapperRef = useRef<View>(null); // for measureInWindow ground-truth debugging
   const [showEmojiKeyboard, setShowEmojiKeyboard] = useState(false);
   const [composerEmojiEvent, setComposerEmojiEvent] = useState<{ emoji: string; ts: number } | null>(null);
-  const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
+  const [rootViewHeight, setRootViewHeight] = useState(0);
   const [emojiRecents, setEmojiRecents] = useState<string[]>([]);
   const [composerFocusTrigger, setComposerFocusTrigger] = useState(0);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [savedMessageIds, setSavedMessageIds] = useState<Set<string>>(new Set());
+
+  // ── Keyboard spacer: Animated approach (as requested) ──────────────────────────────
+  const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
+  const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
   const [isRevealingChat, setIsRevealingChat] = useState(false);
@@ -323,21 +330,22 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   };
 
   const handleDetailsAction = async (member: Profile) => {
-     setSelectedAvatarMember(null);
-     const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
-     if (existing && onOpenChatSettings) {
-       onOpenChatSettings(existing);
-     } else if (onOpenChatSettings) {
-       const { chat: newChat } = await createChat(member.username, [member.username]);
-       if (newChat) onOpenChatSettings(newChat);
-     }
+    setSelectedAvatarMember(null);
+    const existing = chats.find(c => !c.is_group && (c.title === member.username || c.title === contactNicknames[member.id]?.first_name));
+    if (existing && onOpenChatSettings) {
+      onOpenChatSettings(existing);
+    } else if (onOpenChatSettings) {
+      const { chat: newChat } = await createChat(member.username, [member.username]);
+      if (newChat) onOpenChatSettings(newChat);
+    }
   };
 
   const handleSetAdmin = (memberId: string) => {
     setSelectedAvatarMember(null);
     Alert.alert("הגדרה כמנהל/ת", "האם להפוך משתתף זה למנהל הקבוצה?", [
       { text: "ביטול", style: "cancel" },
-      { text: "אישור", onPress: async () => {
+      {
+        text: "אישור", onPress: async () => {
           await setChatMemberRole(chat.id, memberId, "admin");
           void loadChatMembers(chat.id).then(setGroupMembers);
         }
@@ -350,7 +358,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const displayName = contactNicknames[member.id]?.first_name || member.full_name || member.username;
     Alert.alert("הסרה", `האם להסיר את ${displayName} מהקבוצה "${chat.title}"?`, [
       { text: "ביטול", style: "cancel" },
-      { text: "הסרה", style: "destructive", onPress: async () => {
+      {
+        text: "הסרה", style: "destructive", onPress: async () => {
           await removeChatMember(chat.id, member, chat.title);
           void loadChatMembers(chat.id).then(setGroupMembers);
         }
@@ -465,27 +474,56 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   useEffect(() => {
     if (Platform.OS !== "android") {
-      const s1 = Keyboard.addListener("keyboardWillShow", (e) => setKeyboardHeight(e.endCoordinates.height));
-      const s2 = Keyboard.addListener("keyboardWillHide", () => setKeyboardHeight(0));
+      const s1 = Keyboard.addListener("keyboardWillShow", (e) => {
+        const kh = e.endCoordinates.height;
+        setKeyboardHeight(kh);
+        Animated.timing(keyboardHeightAnim, {
+          toValue: kh,
+          duration: e.duration || 250,
+          useNativeDriver: false,
+        }).start();
+      });
+      const s2 = Keyboard.addListener("keyboardWillHide", (e) => {
+        setKeyboardHeight(0);
+        Animated.timing(keyboardHeightAnim, {
+          toValue: 0,
+          duration: e.duration || 250,
+          useNativeDriver: false,
+        }).start();
+      });
       return () => { s1.remove(); s2.remove(); };
     } else {
       const s1 = Keyboard.addListener("keyboardDidShow", (e) => {
         const kh = e.endCoordinates.height;
+        console.log(`[KB-DEBUG] keyboardDidShow: rawKbHeight=${kh}`);
         setRecordedKeyboardHeight(kh);
         setKeyboardHeight(kh);
+        isKeyboardOpenRef.current = true;
         setShowEmojiKeyboard(false);
-        // React Native kh includes nav bar area (insets.bottom).
-        // Kotlin imeHeight = kh - navBarHeight. Subtract to get true keyboard height above nav bar.
+        
+        Animated.timing(keyboardHeightAnim, {
+          toValue: kh,
+          duration: 250,
+          useNativeDriver: false,
+        }).start();
+
+        // Measure actual position for debugging
         setTimeout(() => {
-          const shrinkage = Math.max(0, maxViewHeightRef.current - viewHeightRef.current);
-          const imeHeight = Math.max(0, kh - insets.bottom);
-          const needed = Math.max(0, imeHeight - shrinkage);
-          setSpacerHeight(needed);
-        }, 60);
+          composerWrapperRef.current?.measureInWindow((x, y, width, height) => {
+            const composerBottom = y + height;
+            const keyboardTop = rootViewHeightRef.current - kh;
+            console.log(`[KB-DEBUG] measureInWindow: composerBottom=${composerBottom.toFixed(1)} keyboardTop=${keyboardTop.toFixed(1)} overlap=${(composerBottom - keyboardTop).toFixed(1)}px`);
+          });
+        }, 150);
       });
       const s2 = Keyboard.addListener("keyboardDidHide", () => {
+        isKeyboardOpenRef.current = false;
         setKeyboardHeight(0);
-        setSpacerHeight(0);
+        Animated.timing(keyboardHeightAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: false,
+        }).start();
       });
       return () => { s1.remove(); s2.remove(); };
     }
@@ -572,7 +610,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const threadHeightRef = useRef(0);
   const isDragSelectingRef = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  
+
   const dragPivotIdRef = useRef<string | null>(null);
   const dragInitialIdsRef = useRef<Set<string>>(new Set());
 
@@ -593,7 +631,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       const topOffset = insets.top + 58 + (searchOpen ? 52 : 0);
       const viewportY = gestureState.moveY - topOffset;
       const contentY = viewportY + scrollMetricsRef.current.y;
-      
+
       let targetId: string | null = null;
       for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
         if (contentY >= layout.y && contentY <= layout.y + layout.h) {
@@ -652,13 +690,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       if (viewportY < 50) {
         if (!scrollTimerRef.current) {
           scrollTimerRef.current = setInterval(() => {
-             scrollRef.current?.scrollTo({ y: Math.max(0, scrollMetricsRef.current.y - 25), animated: false });
+            scrollRef.current?.scrollTo({ y: Math.max(0, scrollMetricsRef.current.y - 25), animated: false });
           }, 16);
         }
       } else if (viewportY > threadHeightRef.current - 50) {
-         if (!scrollTimerRef.current) {
+        if (!scrollTimerRef.current) {
           scrollTimerRef.current = setInterval(() => {
-             scrollRef.current?.scrollTo({ y: scrollMetricsRef.current.y + 25, animated: false });
+            scrollRef.current?.scrollTo({ y: scrollMetricsRef.current.y + 25, animated: false });
           }, 16);
         }
       } else {
@@ -700,17 +738,25 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       onLayout={(e) => {
         const h = e.nativeEvent.layout.height;
         viewHeightRef.current = h;
+        rootViewHeightRef.current = h; // keep ref in sync for use in keyboard callbacks
+        setRootViewHeight(h);           // triggers re-renders if needed
         if (h > maxViewHeightRef.current) maxViewHeightRef.current = h;
+        // Only update pre-keyboard baseline when keyboard is NOT open.
+        // This makes the baseline orientation-safe: portrait ↔ landscape switches
+        // correctly update the reference height for the NEXT keyboard open event.
+        if (!isKeyboardOpenRef.current) {
+          preKeyboardHeightRef.current = h;
+        }
       }}
       onStartShouldSetResponderCapture={(e) => {
-      if (showReactionsForId) {
-        if (!pickerLayout) { setShowReactionsForId(null); return false; }
-        const { pageX, pageY } = e.nativeEvent;
-        const { x, y, width: w, height: h } = pickerLayout;
-        if (pageX < x - 30 || pageX > x + w + 30 || pageY < y - 30 || pageY > y + h + 30) setShowReactionsForId(null);
-      }
-      return false;
-    }}>
+        if (showReactionsForId) {
+          if (!pickerLayout) { setShowReactionsForId(null); return false; }
+          const { pageX, pageY } = e.nativeEvent;
+          const { x, y, width: w, height: h } = pickerLayout;
+          if (pageX < x - 30 || pageX > x + w + 30 || pageY < y - 30 || pageY > y + h + 30) setShowReactionsForId(null);
+        }
+        return false;
+      }}>
       <ChatBackground colorScheme={colorScheme} />
       <SafeAreaView edges={["top"]} style={{ backgroundColor: theme.colors.header, zIndex: 10 }}>
         <ChatHeader
@@ -761,7 +807,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             )}
 
             <View style={{ flex: 1 }}>
-              <Animated.View 
+              <Animated.View
                 ref={threadContainerRef}
                 style={[styles.thread, { opacity: fadeAnim }]}
                 {...selectionPanResponder.panHandlers}
@@ -826,7 +872,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 </ScrollView>
 
                 {showScrollToBottom && (
-                  <Pressable 
+                  <Pressable
                     onPress={() => scrollToBottom(true)}
                     style={{
                       position: "absolute",
@@ -876,76 +922,84 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           </View>
           {/* Composer — always visible for members (decoy users can still send real messages) */}
           {(isMember || decoyMode) && (
-            <View style={{ paddingBottom: (showEmojiKeyboard || keyboardHeight > 0) ? 16 : insets.bottom }}>
-              <MessageComposer
-                onInputFocus={() => {
-                  setShowReactionsForId(null);
-                  if (showEmojiKeyboard) {
-                    setTimeout(() => setShowEmojiKeyboard(false), 300);
-                  }
-                }}
-                onCancelReply={() => setReplyTo(null)}
-                onSend={(body, kind, expireSeconds) => {
-                  scrollToBottom(true);
-                  setReplyTo(null);
-                  if (decoyMode && profile?.id) {
-                    // Decoy mode: write to chat_decoy_messages
-                    void supabase
-                      .from("chat_decoy_messages")
-                      .insert([{ chat_id: chat.id, sender_id: profile.id, body, is_me: true }])
-                      .select("id, body, is_me, created_at, sender_id")
-                      .single()
-                      .then(({ data }) => {
-                        if (data) {
-                          setDecoyDbMessages((prev) => [
-                            ...prev,
-                            {
-                              id: `decoy-${data.id}`,
-                              chat_id: chat.id,
-                              sender_id: profile.id,
-                              body_ciphertext: data.body,
-                              body_preview: data.body,
-                              message_kind: "standard" as const,
-                              reply_to_id: null,
-                              expires_at: null,
-                              created_at: data.created_at,
-                              deleted_at: null,
-                            } as any,
-                          ]);
-                        }
-                      });
-                  } else {
-                    // Real mode: send to real chat
-                    void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds });
-                    // While decoy guard is active, also append to fake chat view (client-side)
-                    if (isDecoyActive && profile?.id) {
-                      setLocalDecoyMessages((prev) => [
-                        ...prev,
-                        {
-                          id: `local-decoy-${Date.now()}`,
-                          chat_id: chat.id,
-                          sender_id: profile.id,
-                          body_ciphertext: body,
-                          body_preview: body,
-                          message_kind: kind,
-                          reply_to_id: replyTo?.id ?? null,
-                          expires_at: null,
-                          created_at: new Date().toISOString(),
-                          deleted_at: null,
-                        },
-                      ]);
+            <Animated.View style={{ paddingBottom: keyboardHeightAnim }}>
+              <View
+                ref={composerWrapperRef}
+                onLayout={(e) =>
+                  console.log(`[KB-DEBUG] composerWrapper onLayout: height=${e.nativeEvent.layout.height.toFixed(1)}`)
+                }
+                style={{ paddingBottom: (showEmojiKeyboard || keyboardHeight > 0) ? 16 : insets.bottom }}
+              >
+                <MessageComposer
+                  onInputFocus={() => {
+                    setShowReactionsForId(null);
+                    if (showEmojiKeyboard) {
+                      setTimeout(() => setShowEmojiKeyboard(false), 300);
                     }
-                  }
-                }}
-                replyToText={replyTo?.body_preview ?? null}
-                replyToName={(() => {
-                  if (!replyTo) return null;
-                  const authorId = replyTo.sender_id;
-                  return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
-                })()}
-                emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
-                onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
-            </View>
+                  }}
+                  onCancelReply={() => setReplyTo(null)}
+                  onSend={(body, kind, expireSeconds) => {
+                    scrollToBottom(true);
+                    setReplyTo(null);
+                    if (decoyMode && profile?.id) {
+                      // Decoy mode: write to chat_decoy_messages
+                      void supabase
+                        .from("chat_decoy_messages")
+                        .insert([{ chat_id: chat.id, sender_id: profile.id, body, is_me: true }])
+                        .select("id, body, is_me, created_at, sender_id")
+                        .single()
+                        .then(({ data }) => {
+                          if (data) {
+                            setDecoyDbMessages((prev) => [
+                              ...prev,
+                              {
+                                id: `decoy-${data.id}`,
+                                chat_id: chat.id,
+                                sender_id: profile.id,
+                                body_ciphertext: data.body,
+                                body_preview: data.body,
+                                message_kind: "standard" as const,
+                                reply_to_id: null,
+                                expires_at: null,
+                                created_at: data.created_at,
+                                deleted_at: null,
+                              } as any,
+                            ]);
+                          }
+                        });
+                    } else {
+                      // Real mode: send to real chat
+                      void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds });
+                      // While decoy guard is active, also append to fake chat view (client-side)
+                      if (isDecoyActive && profile?.id) {
+                        setLocalDecoyMessages((prev) => [
+                          ...prev,
+                          {
+                            id: `local-decoy-${Date.now()}`,
+                            chat_id: chat.id,
+                            sender_id: profile.id,
+                            body_ciphertext: body,
+                            body_preview: body,
+                            message_kind: kind,
+                            reply_to_id: replyTo?.id ?? null,
+                            expires_at: null,
+                            created_at: new Date().toISOString(),
+                            deleted_at: null,
+                          },
+                        ]);
+                      }
+                    }
+                  }}
+                  replyToText={replyTo?.body_preview ?? null}
+                  replyToName={(() => {
+                    if (!replyTo) return null;
+                    const authorId = replyTo.sender_id;
+                    return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
+                  })()}
+                  emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
+                  onToggleEmojiKeyboard={() => { if (showEmojiKeyboard) setComposerFocusTrigger(n => n + 1); else { setShowEmojiKeyboard(true); Keyboard.dismiss(); } }} emojiEvent={composerEmojiEvent} />
+              </View>
+            </Animated.View>
           )}
         </KeyboardAvoidingView>
 
@@ -953,9 +1007,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           <View style={{ height: recordedKeyboardHeight || 300, width: "100%" }}>
             <EmojiKeyboard height={recordedKeyboardHeight || 300} onEmojiSelected={(emoji) => setComposerEmojiEvent({ emoji, ts: Date.now() })} recents={emojiRecents} onRecentsUpdate={setEmojiRecents} bottomInset={insets.bottom} />
           </View>
-        ) : (spacerHeight > 0 ? (
-          <View style={{ height: spacerHeight, width: "100%" }} />
-        ) : null)}
+        ) : null}
       </SafeAreaView>
 
       <ChatOverlayManager
@@ -990,9 +1042,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         }}
       />
 
-      <ChatMemberActionModal 
-        visible={!!selectedAvatarMember} 
-        onClose={() => setSelectedAvatarMember(null)} 
+      <ChatMemberActionModal
+        visible={!!selectedAvatarMember}
+        onClose={() => setSelectedAvatarMember(null)}
         member={selectedAvatarMember}
         nickname={selectedAvatarMember ? contactNicknames?.[selectedAvatarMember.id]?.first_name : undefined}
         onMessage={handleMemberAction}

@@ -192,7 +192,7 @@ export function MessageBubble({
 
   const d = new Date(message.created_at);
   const timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")} `;
-  const metaLabel = message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : "פעם אחת") : null;
+  const metaLabel = message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : null) : null;
   const hasReactions = reactions && Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:")).length > 0;
 
   const handleLongPress = () => { 
@@ -260,7 +260,7 @@ export function MessageBubble({
                 </Pressable>
               )}
               <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
-                {(!mine && author) || (message.message_kind === "temporary" && message.expires_at) ? (
+                {(!mine && author) || (message.message_kind === "temporary" && message.expires_at) || (message.message_kind === "view_once") ? (
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                     {!mine && author ? (
                       <Text style={[styles.author, { color: authorColor, marginBottom: 0 }]}>
@@ -269,6 +269,30 @@ export function MessageBubble({
                     ) : <View />}
                     {message.message_kind === "temporary" && message.expires_at && (
                       <TemporaryMessageTimer expiresAt={message.expires_at} theme={theme} />
+                    )}
+                    {message.message_kind === "view_once" && (
+                      <View style={{ 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        backgroundColor: viewOnceState === "opened" ? theme.colors.surfaceMuted : theme.colors.accentStrong + "15", 
+                        paddingHorizontal: 8, 
+                        paddingVertical: 4, 
+                        borderRadius: 10 
+                      }}>
+                        <MaterialCommunityIcons 
+                          name={viewOnceState === "opened" ? "eye-off-outline" : "eye-outline"} 
+                          size={14} 
+                          color={viewOnceState === "opened" ? theme.colors.textMuted : theme.colors.accentStrong} 
+                        />
+                        <Text style={{ 
+                          fontSize: 11, 
+                          fontWeight: '700', 
+                          color: viewOnceState === "opened" ? theme.colors.textMuted : theme.colors.accentStrong, 
+                          marginLeft: 4 
+                        }}>
+                          פעם אחת
+                        </Text>
+                      </View>
                     )}
                   </View>
                 ) : null}
@@ -300,7 +324,6 @@ export function MessageBubble({
                 <View style={{ flex: 1 }} />
                 {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
                 <View style={styles.timeRow}>
-                  {message.message_kind === "view_once" && <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />}
                   {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
                   <Text style={styles.meta}>{timeLabel}</Text>
                 </View>

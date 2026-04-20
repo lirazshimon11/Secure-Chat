@@ -131,7 +131,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
       paddingVertical: 4,
       paddingHorizontal: 8,
-      alignItems: "flex-end",
+      alignItems: "flex-end", // Force Right alignment
     },
     replyBlockAccent: {
       width: 4,
@@ -282,16 +282,16 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       width: "100%",
     },
     pollOptionInner: {
-      flexDirection: "row-reverse", // Hebrew: Text right, count left
+      flexDirection: "row", // Standard row, will flip in RTL
       alignItems: "center",
       justifyContent: "space-between",
       width: "100%",
     },
     pollOptionTextWrapper: {
-      flexDirection: "row-reverse",
+      flexDirection: "row",
       alignItems: "center",
       flex: 1,
-      justifyContent: "flex-start",
+      justifyContent: "flex-end",
       gap: 12,
     },
     pollOptionText: {

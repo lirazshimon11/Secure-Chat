@@ -12,6 +12,7 @@ import {
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAppTheme } from "@/lib/theme";
 import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
+import { getUserColor, getMessagePreview } from "@/screens/chat/ChatUtils";
 
 type Props = {
   replyToText?: string | null;
@@ -39,24 +40,18 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     }
   }, [emojiEvent]);
 
-  // When parent asks us to focus (e.g. switching from emoji panel back to keyboard)
   useEffect(() => {
     if (focusTrigger) {
-      // Short delay to let the emoji panel unmount first
       const t = setTimeout(() => inputRef.current?.focus(), 50);
       return () => clearTimeout(t);
     }
   }, [focusTrigger]);
 
   const expireSeconds = kind === "temporary" ? 60 : null;
-
   const placeholder = "הקלידו הודעה";
 
   function handleSend() {
-    if (!body.trim()) {
-      return;
-    }
-
+    if (!body.trim()) return;
     onSend(body, kind, expireSeconds);
     setBody("");
     setKind("standard");
@@ -77,53 +72,28 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
           handleSendRef.current();
         }
       };
-      // For textarea in React Native Web we must catch it directly
       el.addEventListener("keydown", keydownHandler);
       return () => el.removeEventListener("keydown", keydownHandler);
     }
   }, []);
 
   function handleSubmit(event: NativeSyntheticEvent<TextInputSubmitEditingEventData>) {
-    if (Platform.OS === "web") return; // Handled by DOM event
+    if (Platform.OS === "web") return;
     handleSend();
   }
 
   const accentColor = useMemo(() => {
     if (!replyToName) return "#00A884";
-    const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63"];
-    let hash = 0;
-    for (let i = 0; i < replyToName.length; i++) hash = replyToName.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
+    return getUserColor(replyToName);
   }, [replyToName]);
 
   return (
     <View style={styles.safeAreaWrapper}>
       <View style={styles.wrapper}>
         <View style={styles.modeRow}>
-          <ModeChip
-            active={kind === "standard"}
-            activeColor={theme.colors.mine}
-            textColor={theme.colors.text}
-            icon="message-text-outline"
-            label="הודעה"
-            onPress={() => setKind("standard")}
-          />
-          <ModeChip
-            active={kind === "temporary"}
-            activeColor="#8b5cf6" // Elegant Purple
-            textColor="#ffffff"
-            icon="timer-sand"
-            label="דקה 1"
-            onPress={() => setKind("temporary")}
-          />
-          <ModeChip
-            active={kind === "view_once"}
-            activeColor="#ff4444" // True Red
-            textColor="#ffffff"
-            icon="eye-outline"
-            label="צפייה חד-פעמית"
-            onPress={() => setKind("view_once")}
-          />
+          <ModeChip active={kind === "standard"} activeColor={theme.colors.mine} textColor={theme.colors.text} icon="message-text-outline" label="הודעה" onPress={() => setKind("standard")} />
+          <ModeChip active={kind === "temporary"} activeColor="#8b5cf6" textColor="#ffffff" icon="timer-sand" label="דקה 1" onPress={() => setKind("temporary")} />
+          <ModeChip active={kind === "view_once"} activeColor="#ff4444" textColor="#ffffff" icon="eye-outline" label="צפייה חד-פעמית" onPress={() => setKind("view_once")} />
         </View>
 
         <View style={styles.composerRow}>
@@ -131,18 +101,11 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
             {replyToText ? (
               <View style={styles.replyBanner}>
                 <View style={styles.replyContent}>
-                  {/* Accent bar on the RIGHT in RTL */}
                   <View style={[styles.replyAccent, { backgroundColor: accentColor }]} />
-
-                  {/* Body taking full MIDDLE space */}
                   <View style={styles.replyText}>
                     <Text numberOfLines={1} style={[styles.replyLabel, { color: accentColor }]}>{replyToName || "תשובה להודעה"}</Text>
-                    <Text numberOfLines={1} style={styles.replyPreview}>
-                      {replyToText}
-                    </Text>
+                    <Text numberOfLines={1} style={styles.replyPreview}>{getMessagePreview(replyToText)}</Text>
                   </View>
-
-                  {/* Close button on the LEFT in RTL */}
                   <Pressable onPress={onCancelReply} style={styles.closeButton}>
                     <Feather color={theme.colors.headerIcon} name="x" size={18} />
                   </Pressable>
@@ -151,8 +114,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
             ) : null}
 
             <View style={styles.inputContainer}>
-              {/* Emoji toggle - Button remains visually but functionality is disabled as per user request */}
-              <Pressable onPress={() => { /* Disabled as requested */ }} style={[styles.sideButton, webNoOutline]}>
+              <Pressable onPress={() => { }} style={[styles.sideButton, webNoOutline]}>
                 <MaterialCommunityIcons color={theme.colors.headerIcon} name="emoticon-outline" size={24} style={{ opacity: 0.6 }} />
               </Pressable>
               <View style={styles.inputShell}>
@@ -171,7 +133,6 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
                   value={body}
                 />
               </View>
-              {/* Camera & Paperclip - LAST inside = leftmost visually in RTL */}
               <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
                 <Feather color={theme.colors.headerIcon} name="paperclip" size={20} />
               </Pressable>
@@ -181,14 +142,12 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
             </View>
           </View>
 
-          {/* Send button when typing */}
           {body.trim().length > 0 && (
             <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
               <Feather color={theme.colors.textOnAccent} name="send" size={18} />
             </Pressable>
           )}
 
-          {/* Mic FAB - LAST in JSX = leftmost visually in RTL */}
           {body.trim().length === 0 && (
             <Pressable onPress={() => { }} style={[styles.micFab, webNoOutline]}>
               <MaterialCommunityIcons color={theme.colors.textOnAccent} name="microphone" size={22} />
@@ -199,31 +158,9 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     </View>
   );
 
-  function ModeChip({
-    active,
-    activeColor,
-    textColor,
-    icon,
-    label,
-    onPress,
-  }: {
-    active: boolean;
-    activeColor: string;
-    textColor: string;
-    icon: keyof typeof MaterialCommunityIcons.glyphMap;
-    label: string;
-    onPress: () => void;
-  }) {
+  function ModeChip({ active, activeColor, textColor, icon, label, onPress }: { active: boolean; activeColor: string; textColor: string; icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string; onPress: () => void; }) {
     return (
-      <Pressable
-        onPress={onPress}
-        style={[
-          styles.modeChip,
-          active && { backgroundColor: activeColor, borderColor: activeColor },
-          active && styles.modeChipActive,
-          webNoOutline
-        ]}
-      >
+      <Pressable onPress={onPress} style={[styles.modeChip, active && { backgroundColor: activeColor, borderColor: activeColor }, active && styles.modeChipActive, webNoOutline]}>
         <MaterialCommunityIcons color={active ? (theme.colors.background === "#0b141a" ? "#ffffff" : textColor) : theme.colors.headerIcon} name={icon} size={15} />
         <Text style={[styles.modeLabel, active && { color: theme.colors.background === "#0b141a" ? "#ffffff" : textColor }]}>{label}</Text>
       </Pressable>
@@ -249,18 +186,20 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       backgroundColor: theme.colors.surface,
       borderRadius: 24,
       overflow: "hidden",
-      borderWidth: 0,
+      borderWidth: 1,
+      borderColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
     },
     replyBanner: {
-      backgroundColor: theme.colors.background === "#0b141a" ? "#1d272d" : "#e0e0e0",
+      backgroundColor: 'transparent',
       paddingVertical: 8,
       paddingHorizontal: 8,
       borderBottomWidth: 1,
-      borderBottomColor: theme.colors.background === "#0b141a" ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.05)",
+      borderBottomColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
     },
     replyContent: {
-      flexDirection: "row", // RTL: 1st is Right, LAST is Left
+      flexDirection: "row",
       alignItems: "stretch",
+      width: "100%",
       backgroundColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
       borderRadius: 8,
       overflow: "hidden",
@@ -269,23 +208,23 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       width: 4,
     },
     replyText: {
-      flex: 1, // Fills space between Accent (Right) and Close (Left)
+      flex: 1,
       paddingVertical: 6,
       paddingHorizontal: 10,
       justifyContent: "center",
-      alignItems: "flex-start", // Hebrew Right
+      alignItems: "flex-end", // Force Move to Right
     },
     replyLabel: {
       fontSize: 12,
       fontWeight: "800",
       marginBottom: 2,
-      textAlign: "right",
+      textAlign: "left",
       width: "100%",
     },
     replyPreview: {
       color: theme.colors.textMuted,
       fontSize: 13,
-      textAlign: "right",
+      textAlign: "left",
       width: "100%",
     },
     closeButton: {
@@ -296,7 +235,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
     modeRow: {
       flexDirection: "row",
       gap: 8,
-      alignSelf: "flex-start", // Hebrew Right
+      alignSelf: "flex-start",
       marginBottom: -1,
       marginTop: 0,
     },
@@ -326,25 +265,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
     modeLabelActive: {
       color: theme.colors.textOnAccent,
     },
-    emojiRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: theme.spacing.xs,
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.md,
-      padding: 10,
-    },
-    emojiChip: {
-      width: 36,
-      height: 36,
-      borderRadius: theme.radius.pill,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: theme.colors.surfaceAlt,
-    },
-    emojiText: {
-      fontSize: 18,
-    },
     composerRow: {
       flexDirection: "row",
       alignItems: "flex-end",
@@ -355,12 +275,6 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       height: 46,
       borderRadius: 23,
       backgroundColor: theme.colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    outerSideButton: {
-      width: 36,
-      height: 44,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -394,8 +308,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       minHeight: 22,
       maxHeight: 120,
       paddingVertical: Platform.OS === "web" ? 8 : (Platform.OS === "ios" ? 8 : 4),
-      textAlign: "right", // Hebrew Support
-      alignSelf: "center", // This prevents the textarea from stretching vertically in the flex container
+      textAlign: "right",
+      alignSelf: "center",
       width: "100%",
     },
     sendButton: {

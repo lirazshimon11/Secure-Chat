@@ -3,6 +3,7 @@ import { Pressable, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, ReactionSummary } from "@/lib/types";
 import { useChats } from "@/context/ChatContext";
+import { getUserColor } from "@/screens/chat/ChatUtils";
 
 type PollBubbleProps = {
   message: Message;
@@ -182,11 +183,7 @@ export const PollBubble = ({
                       const initial = (nick?.first_name || profile?.full_name || profile?.username || "?")
                         .slice(0, 1).toUpperCase();
                       
-                      const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63", "#F28C28", "#8E44AD"];
-                      let hash = 0;
-                      const key = profile?.username || profile?.id || "?";
-                      for (let k = 0; k < (key?.length || 0); k++) hash = key.charCodeAt(k) + ((hash << 5) - hash);
-                      const bgColor = colors[Math.abs(hash) % colors.length];
+                      const bgColor = getUserColor(profile?.username || profile?.id || "?");
                       
                       return (
                         <View key={voterId} style={{

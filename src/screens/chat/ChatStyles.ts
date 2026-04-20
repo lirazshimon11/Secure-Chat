@@ -171,8 +171,8 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       ...StyleSheet.absoluteFillObject,
       zIndex: 100, // Increased z-index
       justifyContent: "flex-start",
-      alignItems: "flex-end",
-      paddingEnd: 8,
+      alignItems: "flex-start",
+      paddingStart: 8,
     },
     overlayRootCenter: {
       ...StyleSheet.absoluteFillObject,
@@ -408,7 +408,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       paddingTop: 8,
     },
     reactionUserRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row",
       alignItems: "center",
       paddingVertical: 14,
       width: "100%",
@@ -521,7 +521,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       lineHeight: 24,
     },
     radioRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row",
       alignItems: "center",
       paddingVertical: theme.spacing.md,
       gap: theme.spacing.md,
@@ -551,7 +551,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       textAlign: "right",
     },
     checkRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row",
       alignItems: "flex-start",
       paddingVertical: theme.spacing.md,
       gap: theme.spacing.md,
@@ -622,7 +622,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       elevation: 20,
     },
     attachmentRow: {
-      flexDirection: "row-reverse",
+      flexDirection: "row",
       justifyContent: "space-around",
       alignItems: "flex-start",
       marginBottom: 20,

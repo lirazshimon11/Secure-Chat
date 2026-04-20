@@ -8,6 +8,7 @@ import { webDefaultCursor } from "@/lib/webStyles";
 import { useChats } from "@/context/ChatContext";
 import { useScreenshots } from "@/context/ScreenshotContext";
 import { supabase } from "@/lib/supabase";
+import { getUserColor, getMessagePreview } from "@/screens/chat/ChatUtils";
 
 // Extracted modules
 import { createStyles } from "./message/MessageBubbleStyles";
@@ -215,19 +216,12 @@ export function MessageBubble({
 
   const accentColor = useMemo(() => {
     if (!replyToName) return "#00A884";
-    const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63"];
-    let hash = 0;
-    for (let i = 0; i < (replyToName?.length || 0); i++) hash = replyToName!.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
+    return getUserColor(replyToName);
   }, [replyToName]);
 
   const authorColor = useMemo(() => {
     if (!author) return "#00A884";
-    const colors = ["#34B7F1", "#53D669", "#FFBC2E", "#FF5B5B", "#A529E7", "#E91E63", "#F28C28", "#8E44AD"];
-    let hash = 0;
-    const key = author.username || author.id || "?";
-    for (let i = 0; i < (key?.length || 0); i++) hash = key.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
+    return getUserColor(author.username || author.id || "?");
   }, [author]);
 
 
@@ -299,11 +293,11 @@ export function MessageBubble({
               {replyToText && !isTemporaryExpired && (
                 <View style={styles.replyBlock}>
                   <View style={styles.replyBlockContent}>
+                    <View style={[styles.replyBlockAccent, { backgroundColor: accentColor }]} />
                     <View style={styles.replyBlockTextContainer}>
                       <Text numberOfLines={1} style={[styles.replyLabel, { color: accentColor }]}>{replyToName || "תגובה"}</Text>
-                      <Text numberOfLines={2} style={styles.replyBlockText}>{replyToText}</Text>
+                      <Text numberOfLines={2} style={styles.replyBlockText}>{getMessagePreview(replyToText)}</Text>
                     </View>
-                    <View style={[styles.replyBlockAccent, { backgroundColor: accentColor }]} />
                   </View>
                 </View>
               )}

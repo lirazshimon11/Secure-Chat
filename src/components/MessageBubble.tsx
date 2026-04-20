@@ -232,15 +232,15 @@ export function MessageBubble({
   const formatSpamSafeText = (text: string) => {
     if (!text) return text;
     return text.split(' ').map(word => {
-      // לא שוברים קישורים
+      // 1. הגנה על קישורים
       if (word.startsWith('http://') || word.startsWith('https://')) return word;
 
-      // אם המילה ארוכה מ-10 תווים, אנחנו מכניסים רווח נסתר
-      if (word.length > 10) {
-        return word.match(/.{1,10}/g)?.join('\u200B') || word;
+      // 2. הורדנו את הרף ל-8 תווים. זה יתפוס בוודאות מילים כמו "האםהאמהאמהאם"
+      if (word.length > 8) {
+        return word.match(/.{1,8}/g)?.join('\n') || word; // <-- כאן השינוי
       }
       return word;
-    }).join(' '); // <-- רווח רגיל ונקי. בלי ZWSP פה!
+    }).join(' ');
   };
 
   return (

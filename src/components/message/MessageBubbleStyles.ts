@@ -155,17 +155,18 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     messageTextContainer: {
       flexShrink: 1,
       width: "100%",
-      // תוספת קריטית שמכריחה את הקונטיינר להבין שהוא צריך לעטוף שורות
       flexWrap: "wrap",
     },
     body: {
       color: theme.colors.text,
       fontSize: 15,
       lineHeight: 22,
-      textAlign: "right",
+      textAlign: "left",
       writingDirection: "rtl",
-      // תוספת חשובה! אומרת לטקסט שהוא לא יכול להיות רחב יותר מהקונטיינר שלו (שמוגבל ל-83% ממקודם)
       width: "100%",
+      flexShrink: 1, // מבטיח שהטקסט יתכווץ לתוך הקונטיינר
+      paddingLeft: 8, // כרית אוויר גדולה יותר משמאל כדי להציל את האות האחרונה!
+      paddingRight: 4,
     },
     metaRow: {
       marginTop: 2,

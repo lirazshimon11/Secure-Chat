@@ -113,18 +113,11 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
     <Screen>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.searchShell}>
+        <View style={styles.headerRight}>
           <Pressable onPress={onBack} style={styles.backBtn}>
             <Feather name="arrow-right" size={24} color={theme.colors.headerIcon} />
           </Pressable>
-          <TextInput
-            style={[styles.searchInput, webEmbeddedInputReset]}
-            placeholder="אפשר לחפש שם או שם משתמש..."
-            placeholderTextColor={theme.colors.textMuted}
-            value={query}
-            onChangeText={setQuery}
-            autoFocus
-          />
+          <Text style={styles.title}>צ'אט חדש</Text>
         </View>
         <Pressable style={styles.gridBtn}>
           <MaterialCommunityIcons name="dots-grid" size={24} color={theme.colors.headerIcon} />
@@ -211,7 +204,7 @@ export function CreateChatScreen({ onBack, onOpenChat, initialSelectedUsers }: P
       {/* FAB */}
       {selectedUsers.length > 0 && (
         <Pressable style={styles.fabBtn} onPress={() => void handleFabPress()} disabled={creating}>
-          <Feather name="arrow-left" size={24} color={theme.colors.textOnAccent} />
+          <Feather name="arrow-right" size={24} color={theme.colors.textOnAccent} />
         </Pressable>
       )}
 
@@ -255,8 +248,19 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingVertical: theme.spacing.sm,
       justifyContent: "space-between",
     },
+    headerRight: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 12,
+    },
     backBtn: {
       padding: theme.spacing.xs,
+    },
+    title: {
+      color: theme.colors.headerText,
+      fontSize: 19,
+      fontWeight: "800",
+      textAlign: "right",
     },
     gridBtn: {
       padding: theme.spacing.xs,

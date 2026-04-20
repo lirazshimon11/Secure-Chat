@@ -66,6 +66,7 @@ const lightColors = {
   unreadBand: "rgba(0, 0, 0, 0.06)",
   unreadPill: "#ffffff",
   unreadText: "#54656f",
+  chatCard: "#ffffff",
 };
 
 const darkColors = {
@@ -117,6 +118,7 @@ const darkColors = {
   unreadBand: "rgba(0, 0, 0, 0.3)",
   unreadPill: "#182229",
   unreadText: "#ffffff",
+  chatCard: "#1f2c34",
 };
 
 export type AppTheme = typeof lightTheme;

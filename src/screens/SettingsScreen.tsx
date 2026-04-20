@@ -53,7 +53,7 @@ export function SettingsScreen({ onBack }: Props) {
     <Screen scroll>
       <View style={styles.header}>
         <Pressable onPress={onBack} style={styles.backButton}>
-          <Feather color={theme.colors.textOnAccent} name="arrow-left" size={22} />
+          <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
         </Pressable>
         <Text style={styles.title}>הגדרות</Text>
       </View>
@@ -113,8 +113,14 @@ export function SettingsScreen({ onBack }: Props) {
             }}
             tone="soft"
           />
-          <PrimaryButton label="חזרה לצ'אטים" onPress={onBack} tone="soft" />
-          <PrimaryButton label="התנתקות" onPress={() => void signOut()} />
+          <PrimaryButton label="חזר לצ'אטים" onPress={onBack} tone="soft" />
+          <View style={{ marginTop: 8 }}>
+            <PrimaryButton
+              label="התנתקות מהמערכת"
+              onPress={() => void signOut()}
+              style={{ backgroundColor: 'red' }}
+            />
+          </View>
         </View>
       </View>
     </Screen>
@@ -164,7 +170,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: "center",
     },
     title: {
-      color: theme.colors.textOnAccent,
+      color: theme.colors.headerText,
       fontSize: 21,
       fontWeight: "800",
     },

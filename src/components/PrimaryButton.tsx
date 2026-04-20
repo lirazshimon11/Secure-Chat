@@ -6,7 +6,7 @@ type Props = {
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  tone?: "primary" | "soft";
+  tone?: "primary" | "soft" | "danger";
   style?: ViewStyle;
 };
 
@@ -27,7 +27,12 @@ export function PrimaryButton({ label, onPress, disabled, tone = "primary", styl
         style,
       ]}
     >
-      <Text style={[styles.label, tone === "primary" ? styles.primaryLabel : styles.softLabel]}>{label}</Text>
+      <Text style={[
+        styles.label, 
+        tone === "primary" ? styles.primaryLabel : 
+        tone === "danger" ? styles.dangerLabel : 
+        styles.softLabel
+      ]}>{label}</Text>
     </Pressable>
   );
 }
@@ -50,6 +55,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       borderColor: theme.colors.border,
       borderWidth: 1,
     },
+    danger: {
+      backgroundColor: theme.colors.danger,
+    },
     disabled: {
       opacity: 0.45,
     },
@@ -65,5 +73,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     softLabel: {
       color: theme.colors.text,
+    },
+    dangerLabel: {
+      color: "#ffffff",
     },
   });

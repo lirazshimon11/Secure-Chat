@@ -478,7 +478,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         const kh = e.endCoordinates.height;
         setKeyboardHeight(kh);
         Animated.timing(keyboardHeightAnim, {
-          toValue: kh,
+          toValue: kh, // iOS KAV handles insets differently, usually kh is enough
           duration: e.duration || 250,
           useNativeDriver: false,
         }).start();
@@ -495,14 +495,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     } else {
       const s1 = Keyboard.addListener("keyboardDidShow", (e) => {
         const kh = e.endCoordinates.height;
-        console.log(`[KB-DEBUG] keyboardDidShow: rawKbHeight=${kh}`);
+        // On Android, especially tablets, rawKbHeight might be reported 
+        // relative to the navigation bar. Since we draw behind it, we need to add it.
+        const targetValue = kh + insets.bottom;
+        
+        console.log(`[KB-DEBUG] keyboardDidShow: rawKbHeight=${kh}, insets.bottom=${insets.bottom}, target=${targetValue}`);
         setRecordedKeyboardHeight(kh);
         setKeyboardHeight(kh);
         isKeyboardOpenRef.current = true;
         setShowEmojiKeyboard(false);
         
         Animated.timing(keyboardHeightAnim, {
-          toValue: kh,
+          toValue: targetValue,
           duration: 250,
           useNativeDriver: false,
         }).start();

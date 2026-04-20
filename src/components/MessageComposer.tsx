@@ -297,7 +297,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       flexDirection: "row",
       gap: 8,
       alignSelf: "flex-start", // Hebrew Right
-      marginBottom: 10,
+      marginBottom: -1,
+      marginTop: 0,
     },
     modeChip: {
       flexDirection: "row",

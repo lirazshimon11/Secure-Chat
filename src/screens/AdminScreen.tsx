@@ -316,7 +316,7 @@ function createStyles(theme: any) {
     headerTitle: {
       color: theme.colors.text,
       fontSize: 20,
-      fontWeight: "900",
+      fontWeight: "bold",
       textAlign: "left",
     },
     content: {
@@ -409,7 +409,7 @@ function createStyles(theme: any) {
     modalTitle: {
       color: theme.colors.text,
       fontSize: 22,
-      fontWeight: "900",
+      fontWeight: "bold",
       textAlign: "center",
     },
     modalSub: {

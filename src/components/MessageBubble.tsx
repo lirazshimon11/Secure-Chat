@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, Platform, Pressable, Text, View, Image } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
@@ -7,6 +7,7 @@ import { useAppTheme } from "@/lib/theme";
 import { webDefaultCursor } from "@/lib/webStyles";
 import { useChats } from "@/context/ChatContext";
 import { useScreenshots } from "@/context/ScreenshotContext";
+import { supabase } from "@/lib/supabase";
 
 // Extracted modules
 import { createStyles } from "./message/MessageBubbleStyles";
@@ -41,6 +42,39 @@ type Props = {
 };
 
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
+
+const TemporaryMessageTimer = ({ expiresAt, theme }: { expiresAt: string; theme: any }) => {
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+  const [isExpired, setIsExpired] = useState(false);
+
+  useEffect(() => {
+    if (!expiresAt) return;
+    const updateTimer = () => {
+      const diff = new Date(expiresAt).getTime() - new Date().getTime();
+      if (diff <= 0) {
+        setTimeLeft("פג תוקף");
+        setIsExpired(true);
+        return;
+      }
+      const seconds = Math.floor(diff / 1000);
+      setTimeLeft(`00:${seconds < 10 ? '0' : ''}${seconds}`);
+    };
+    updateTimer();
+    const iv = setInterval(updateTimer, 1000);
+    return () => clearInterval(iv);
+  }, [expiresAt]);
+
+  if (!timeLeft) return null;
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isExpired ? theme.colors.surfaceMuted : theme.colors.accentStrong + "15", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 }}>
+      <MaterialCommunityIcons name="timer-sand" size={14} color={isExpired ? theme.colors.textMuted : theme.colors.accentStrong} />
+      <Text style={{ fontSize: 11, fontWeight: '700', color: isExpired ? theme.colors.textMuted : theme.colors.accentStrong, marginLeft: 4 }}>
+        {isExpired ? timeLeft : `נותרו: ${timeLeft}`}
+      </Text>
+    </View>
+  );
+};
 
 export function MessageBubble({
   currentUserId, message, author, replyToText, replyToName, reactions, viewOnceState,
@@ -89,11 +123,43 @@ export function MessageBubble({
       }
     }), [message, onReply, translateX]);
 
+  const isTemporary = message.message_kind === "temporary";
+  const [isTemporaryExpired, setIsTemporaryExpired] = useState(() => {
+    if (!isTemporary || !message.expires_at) return false;
+    return new Date(message.expires_at).getTime() <= new Date().getTime();
+  });
+
+  useEffect(() => {
+    if (isTemporary && message.expires_at) {
+      if (isTemporaryExpired) return;
+      const checkAndSet = () => {
+        const diff = new Date(message.expires_at!).getTime() - new Date().getTime();
+        if (diff <= 0) {
+          setIsTemporaryExpired(true);
+          if (message.body_ciphertext !== "הודעה זו פגה תוקף") {
+            supabase.from("messages")
+              .update({ body_ciphertext: "הודעה זו פגה תוקף", body_preview: "הודעה זו פגה תוקף" })
+              .eq("id", message.id)
+              .neq("body_ciphertext", "הודעה זו פגה תוקף")
+              .then(() => {});
+          }
+        }
+      };
+      checkAndSet();
+      const iv = setInterval(checkAndSet, 1000);
+      return () => clearInterval(iv);
+    }
+  }, [message.expires_at, isTemporary, isTemporaryExpired]);
+
   const isScreenshotRequest = message.body_ciphertext.startsWith("[SCREENSHOT_REQUEST]:");
   const isPoll = message.body_ciphertext.startsWith("[POLL]:");
   const isSystem = message.message_kind === "system";
 
   let body = isScreenshotRequest || isPoll ? "" : message.message_kind === "view_once" ? (viewOnceState === "hidden" ? "הקש/י לקריאה. ההודעה תיעלם לאחר הפתיחה." : viewOnceState === "opened" ? "נפתח פעם אחת. התוכן אינו זמין יותר." : message.body_ciphertext) : message.body_ciphertext;
+
+  if (isTemporaryExpired) {
+    body = "הודעה זו פגה תוקף";
+  }
 
   if (isSystem && body.startsWith("[SYSTEM_USER_REMOVED]:")) {
     const targetId = body.split(":")[1];
@@ -126,7 +192,7 @@ export function MessageBubble({
 
   const d = new Date(message.created_at);
   const timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")} `;
-  const metaLabel = message.message_kind === "temporary" ? "1 דק'" : message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : "פעם אחת") : null;
+  const metaLabel = message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : "פעם אחת") : null;
   const hasReactions = reactions && Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:")).length > 0;
 
   const handleLongPress = () => { 
@@ -180,7 +246,7 @@ export function MessageBubble({
             </View>
           </View>
         ) : (
-          <Pressable delayLongPress={220} onLongPress={handleLongPress} onPress={handlePress} style={[styles.fullWidthSelection, webDefaultCursor]}>
+          <Pressable delayLongPress={450} onLongPress={handleLongPress} onPress={handlePress} style={[styles.fullWidthSelection, webDefaultCursor]}>
             <View style={[mine ? styles.bubbleWrapperMine : styles.bubbleWrapperTheirs]}>
               {!mine && author && (
                 <Pressable onPress={() => onAvatarPress && onAvatarPress(author)} style={[styles.messageAvatarWrap, { backgroundColor: authorColor }]}>
@@ -194,8 +260,19 @@ export function MessageBubble({
                 </Pressable>
               )}
               <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
-                {!mine && author && <Text style={[styles.author, { color: authorColor }]}>{contactNicknames?.[author.id]?.first_name || author.full_name || author.username}</Text>}
-              {replyToText && (
+                {(!mine && author) || (message.message_kind === "temporary" && message.expires_at) ? (
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    {!mine && author ? (
+                      <Text style={[styles.author, { color: authorColor, marginBottom: 0 }]}>
+                        {contactNicknames?.[author.id]?.first_name || author.full_name || author.username}
+                      </Text>
+                    ) : <View />}
+                    {message.message_kind === "temporary" && message.expires_at && (
+                      <TemporaryMessageTimer expiresAt={message.expires_at} theme={theme} />
+                    )}
+                  </View>
+                ) : null}
+              {replyToText && !isTemporaryExpired && (
                 <View style={styles.replyBlock}>
                   <View style={styles.replyBlockContent}>
                     <View style={styles.replyBlockTextContainer}>
@@ -217,14 +294,13 @@ export function MessageBubble({
                 }}
                 denyRequest={denyRequest} /> :
                 isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
-                  <Text style={styles.body}>{body + " "}</Text>}
+                  <Text style={[styles.body, isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' }]}>{body + " "}</Text>}
 
               <View style={styles.metaRow}>
                 <View style={{ flex: 1 }} />
                 {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
                 <View style={styles.timeRow}>
                   {message.message_kind === "view_once" && <MaterialCommunityIcons name="eye-outline" size={13} color={theme.colors.textMuted} />}
-                  {message.message_kind === "temporary" && <MaterialCommunityIcons name="timer-sand" size={13} color={theme.colors.textMuted} />}
                   {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
                   <Text style={styles.meta}>{timeLabel}</Text>
                 </View>

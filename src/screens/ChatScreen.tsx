@@ -251,6 +251,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const isDragSelectLockedRef = useRef(false);
   useEffect(() => { isDragSelectLockedRef.current = isDragSelectLocked; }, [isDragSelectLocked]);
 
+  const showScrollToBottomRef = useRef(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+
 
   const scrollRef = useRef<ScrollView | null>(null);
   const threadContainerRef = useRef<any>(null);
@@ -772,9 +775,20 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
                   onContentSizeChange={(w, h) => scrollMetricsRef.current.contentHeight = h}
                   onScroll={(e) => {
-                    scrollMetricsRef.current.y = e.nativeEvent.contentOffset.y;
-                    scrollMetricsRef.current.height = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
-                    scrollMetricsRef.current.contentHeight = e.nativeEvent.contentSize.height || scrollMetricsRef.current.contentHeight;
+                    const y = e.nativeEvent.contentOffset.y;
+                    const h = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
+                    const ch = e.nativeEvent.contentSize.height || scrollMetricsRef.current.contentHeight;
+                    scrollMetricsRef.current.y = y;
+                    scrollMetricsRef.current.height = h;
+                    scrollMetricsRef.current.contentHeight = ch;
+
+                    // Show the button when we are more than 200px away from the bottom.
+                    const distFromBottom = ch - (y + h);
+                    const shouldShow = distFromBottom > 200;
+                    if (shouldShow !== showScrollToBottomRef.current) {
+                      showScrollToBottomRef.current = shouldShow;
+                      setShowScrollToBottom(shouldShow);
+                    }
                   }}
                   onScrollBeginDrag={() => { if (showReactionsForId) setShowReactionsForId(null); }}
                   onMomentumScrollEnd={() => checkVisibility()} onScrollEndDrag={() => checkVisibility()}
@@ -810,6 +824,53 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     })}
                   </Pressable>
                 </ScrollView>
+
+                {showScrollToBottom && (
+                  <Pressable 
+                    onPress={() => scrollToBottom(true)}
+                    style={{
+                      position: "absolute",
+                      right: 16,
+                      bottom: 16,
+                      width: 42,
+                      height: 42,
+                      borderRadius: 21,
+                      backgroundColor: theme.colors.surfaceAlt || "#202c33",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      elevation: 8,
+                      shadowColor: "#000",
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.35,
+                      shadowRadius: 5,
+                      zIndex: 50,
+                    }}
+                  >
+                    <Feather name="chevron-down" size={24} color={theme.colors.textMuted} />
+                    {((unreadCounts && chat && unreadCounts[chat.id]) || 0) > 0 && (
+                      <View style={{
+                        position: "absolute",
+                        top: -4,
+                        right: -4,
+                        backgroundColor: "#00A884",
+                        borderRadius: 10,
+                        minWidth: 20,
+                        height: 20,
+                        justifyContent: "center",
+                        alignItems: "center",
+                        paddingHorizontal: 4,
+                      }}>
+                        <Text style={{
+                          color: "#fff",
+                          fontSize: 12,
+                          fontWeight: "700",
+                        }}>
+                          {(unreadCounts && chat && unreadCounts[chat.id]) || 0}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
+                )}
               </Animated.View>
             </View>
           </View>

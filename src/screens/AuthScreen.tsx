@@ -203,7 +203,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     title: {
       color: theme.colors.text,
       fontSize: 32,
-      fontWeight: "900",
+      fontWeight: "bold",
       letterSpacing: -0.8,
     },
     subtitle: {

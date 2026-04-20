@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Text, View, TouchableHighlight } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { DisplayChat, parsePollPreview } from "./ChatsUtils";
@@ -10,6 +10,36 @@ type ChatRowProps = {
   selected: boolean;
   onPress: () => void;
   onLongPress: () => void;
+};
+
+const PreviewTimer = ({ lastMessageAt, styles, theme, unread }: { lastMessageAt: string | null, styles: any, theme: any, unread: boolean }) => {
+  const [timeLeft, setTimeLeft] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!lastMessageAt) return;
+    const expiresAt = new Date(new Date(lastMessageAt).getTime() + 60000).toISOString();
+    const updateTimer = () => {
+      const diff = new Date(expiresAt).getTime() - new Date().getTime();
+      if (diff <= 0) {
+        setTimeLeft(null);
+        return;
+      }
+      const seconds = Math.floor(diff / 1000);
+      setTimeLeft(`00:${seconds < 10 ? '0' : ''}${seconds}`);
+    };
+    updateTimer();
+    const iv = setInterval(updateTimer, 1000);
+    return () => clearInterval(iv);
+  }, [lastMessageAt]);
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: "flex-start" }}>
+      <MaterialCommunityIcons name="timer-sand" size={15} color={theme.colors.textMuted} style={{ marginHorizontal: 2 }} />
+      <Text numberOfLines={1} style={[styles.chatPreview, { marginTop: 0, flex: 1, textAlign: "left" }, unread && styles.chatPreviewUnread]}>
+        {timeLeft ? `הודעה זמנית (נותרו: ${timeLeft})` : 'הודעה זמנית'}
+      </Text>
+    </View>
+  );
 };
 
 export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }: ChatRowProps) => {
@@ -81,6 +111,16 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
                       {question}
                     </Text>
                   </View>
+                );
+              }
+              if (item.preview === "[TEMP_TIMER]") {
+                return (
+                  <PreviewTimer 
+                    lastMessageAt={item.chat.last_message_at} 
+                    styles={styles} 
+                    theme={theme} 
+                    unread={item.unreadCount > 0} 
+                  />
                 );
               }
               return (

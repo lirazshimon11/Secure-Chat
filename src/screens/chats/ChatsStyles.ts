@@ -358,7 +358,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     tabLabelActive: {
       color: scheme === "dark" ? "#FFFFFF" : "#008069",
-      fontWeight: "900",
+      fontWeight: "bold",
     },
     tabBadge: {
       position: "absolute",

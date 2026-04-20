@@ -85,6 +85,13 @@ export function ChatProvider({ children }: PropsWithChildren) {
         if (active) {
           setLocalPreferencesReady(true);
           void refreshChats();
+          // Global sweep: scrub expired temporary messages from DB
+          void supabase.from("messages")
+            .update({ body_ciphertext: "הודעה זו פגה תוקף", body_preview: "הודעה זו פגה תוקף" })
+            .eq("message_kind", "temporary")
+            .lte("expires_at", new Date().toISOString())
+            .neq("body_ciphertext", "הודעה זו פגה תוקף")
+            .then(() => {});
         }
       }
     })();
@@ -111,6 +118,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
   const formatMessagePreview = (body: string | null, messageKind: string, _senderId: string) => {
     if (!body || typeof body !== 'string') return "";
     if (messageKind === "view_once") return "הודעה לצפייה חד-פעמית";
+    if (messageKind === "temporary") return body === "הודעה זו פגה תוקף" ? body : "[TEMP_TIMER]";
     
     if (body && body.startsWith("[POLL]:")) {
       try {
@@ -285,9 +293,18 @@ export function ChatProvider({ children }: PropsWithChildren) {
           setRawChats(cur => cur.map(c => 
             c.id === n.chat_id ? { ...c, last_message_preview: formatMessagePreview(n.body_preview || n.body_ciphertext, n.message_kind, n.sender_id), last_message_at: n.created_at } : c
           ));
-        } else {
-          // Handle update/delete
-          if (loadedChatIdsRef.current.includes(n.chat_id)) loadMessages(n.chat_id);
+        } else if (p.eventType === 'UPDATE') {
+          if (loadedChatIdsRef.current.includes(n.chat_id)) {
+            loadMessages(n.chat_id);
+            setRawChats(cur => cur.map(c => {
+               if (c.id === n.chat_id && c.last_message_at === n.created_at) {
+                  return { ...c, last_message_preview: formatMessagePreview(n.body_preview || n.body_ciphertext, n.message_kind, n.sender_id) };
+               }
+               return c;
+            }));
+          }
+        } else if (p.eventType === 'DELETE') {
+          if (n && loadedChatIdsRef.current.includes(n.chat_id)) loadMessages(n.chat_id);
         }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (p) => {

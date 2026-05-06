@@ -31,8 +31,10 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   const theme = useAppTheme();
   const styles = createStyles(theme, !!replyToText);
   const [body, setBody] = useState("");
+  const [inputHeight, setInputHeight] = useState(42);
   const [kind, setKind] = useState<"standard" | "temporary" | "view_once">("standard");
   const inputRef = useRef<TextInput | null>(null);
+  const resizeInputRef = useRef<(nextBody?: string) => void>(() => {});
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -56,7 +58,11 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
 
   useEffect(() => {
     if (emojiEvent) {
-      setBody((prev) => prev + emojiEvent.emoji);
+      setBody((prev) => {
+        const nextBody = prev + emojiEvent.emoji;
+        resizeInputRef.current(nextBody);
+        return nextBody;
+      });
     }
   }, [emojiEvent]);
 
@@ -70,14 +76,22 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   const expireSeconds = kind === "temporary" ? 60 : null;
   const placeholder = "הקלידו הודעה";
 
+  function handleChangeText(nextBody: string) {
+    setBody(nextBody);
+    resizeInputRef.current(nextBody);
+  }
+
   function handleSend() {
     if (!body.trim()) return;
     onSend(body, kind, expireSeconds);
     setBody("");
     setKind("standard");
+    setInputHeight(42);
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
       el.style.height = '42px';
+      el.style.overflowY = "hidden";
+      el.scrollTop = 0;
     }
   }
 
@@ -89,8 +103,37 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   useEffect(() => {
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
-      let singleLineScrollHeight = 0;
       const collapsedHeight = 42;
+      const lineHeight = 22;
+      const maxComposerHeight = 170;
+      const measureCanvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
+      const measureContext = measureCanvas?.getContext("2d") ?? null;
+      const estimateLineCount = (nextBody?: string) => {
+        const value = String(nextBody ?? el.value ?? "");
+        const availableWidth = Math.max(1, (el.clientWidth || 0) - 8);
+        if (!measureContext || !value || availableWidth <= 1) return 1;
+
+        const computedStyle = window.getComputedStyle(el);
+        measureContext.font = computedStyle.font || `${computedStyle.fontSize || "16px"} ${computedStyle.fontFamily || "sans-serif"}`;
+
+        return value.split("\n").reduce((totalLines, paragraph) => {
+          if (!paragraph) return totalLines + 1;
+          let paragraphLines = 1;
+          let currentLineWidth = 0;
+
+          for (const char of Array.from(paragraph)) {
+            const charWidth = measureContext.measureText(char).width;
+            if (currentLineWidth > 0 && currentLineWidth + charWidth > availableWidth) {
+              paragraphLines += 1;
+              currentLineWidth = charWidth;
+            } else {
+              currentLineWidth += charWidth;
+            }
+          }
+
+          return totalLines + paragraphLines;
+        }, 0);
+      };
       const keydownHandler = (e: any) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -98,29 +141,42 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
           handleSendRef.current();
         }
       };
-      const inputHandler = (e: any) => {
-        const hasText = Boolean(String(el.value ?? "").trim());
+      const inputHandler = (nextBody?: string) => {
+        const value = String(nextBody ?? el.value ?? "");
+        const hasText = Boolean(value.trim());
         el.style.height = 'auto';
-        if (!singleLineScrollHeight) singleLineScrollHeight = el.scrollHeight;
-        const shouldGrow = hasText && el.scrollHeight > singleLineScrollHeight + 2;
-        el.style.height = shouldGrow ? `${el.scrollHeight}px` : `${collapsedHeight}px`;
+        const lineCount = estimateLineCount(value);
+        const nextHeight = hasText && lineCount > 1
+          ? Math.min(maxComposerHeight, collapsedHeight + (lineCount - 1) * lineHeight)
+          : collapsedHeight;
+        el.style.height = `${nextHeight}px`;
+        el.style.overflowY = nextHeight >= maxComposerHeight ? "auto" : "hidden";
+        if (nextHeight < maxComposerHeight) el.scrollTop = 0;
+        setInputHeight(nextHeight);
       };
+      resizeInputRef.current = inputHandler;
       el.setAttribute("data-secureapp-composer", "true");
+      el.style.overflowY = "hidden";
       el.addEventListener("keydown", keydownHandler);
-      el.addEventListener("input", inputHandler);
       // Init height
       setTimeout(() => {
         el.style.height = 'auto';
-        singleLineScrollHeight = el.scrollHeight;
-        inputHandler({ target: el });
+        inputHandler();
       }, 100);
       return () => {
         el.removeAttribute("data-secureapp-composer");
+        el.style.removeProperty("overflow-y");
+        resizeInputRef.current = () => {};
         el.removeEventListener("keydown", keydownHandler);
-        el.removeEventListener("input", inputHandler);
       };
     }
   }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const frame = requestAnimationFrame(() => resizeInputRef.current());
+    return () => cancelAnimationFrame(frame);
+  }, [body]);
 
   function handleSubmit(event: NativeSyntheticEvent<TextInputSubmitEditingEventData>) {
     if (Platform.OS === "web") return;
@@ -164,7 +220,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
               </Pressable>
               <View style={styles.inputShell}>
                 <TextInput
-                  onChangeText={setBody}
+                  onChangeText={handleChangeText}
                   onSubmitEditing={handleSubmit}
                   placeholder={placeholder}
                   placeholderTextColor={theme.colors.textMuted + "80"}
@@ -173,7 +229,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
                   returnKeyType="default"
                   blurOnSubmit={false}
                   multiline={true}
-                  style={[styles.input, webEmbeddedInputReset]}
+                  style={[styles.input, Platform.OS === "web" ? { height: inputHeight, overflow: inputHeight >= 170 ? "auto" : "hidden" } : null, webEmbeddedInputReset]}
                   value={body}
                 />
               </View>

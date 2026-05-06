@@ -58,6 +58,9 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       shadowOffset: { width: 0, height: 1 },
       elevation: 1,
     },
+    bubbleWide: {
+      width: "83%",
+    },
     bubbleMine: {
       backgroundColor: theme.colors.mine,
       borderTopRightRadius: Platform.OS === "web" ? 12 : 4,
@@ -159,20 +162,38 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     messageTextContainer: {
       flexShrink: 1,
-      alignSelf: "stretch",
       flexWrap: "wrap",
       minWidth: 0,
       maxWidth: "100%",
+    },
+    messageTextContainerWide: {
+      alignSelf: "stretch",
     },
     body: {
       color: theme.colors.text,
       fontSize: 15,
       lineHeight: 22,
-      textAlign: "right",
-      writingDirection: "rtl",
-      alignSelf: "stretch",
       flexShrink: 1,
       maxWidth: "100%",
+      ...(Platform.OS === "web"
+        ? ({
+            direction: "inherit",
+            overflowWrap: "anywhere",
+            wordBreak: "break-word",
+          } as any)
+        : null),
+    },
+    bodyRtl: {
+      textAlign: "right",
+      writingDirection: "rtl",
+      alignSelf: "flex-end",
+      ...(Platform.OS === "web" ? ({ direction: "rtl" } as any) : null),
+    },
+    bodyLtr: {
+      textAlign: "left",
+      writingDirection: "ltr",
+      alignSelf: "flex-start",
+      ...(Platform.OS === "web" ? ({ direction: "ltr" } as any) : null),
     },
     metaRow: {
       marginTop: 2,

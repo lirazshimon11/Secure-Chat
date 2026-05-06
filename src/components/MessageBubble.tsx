@@ -228,20 +228,40 @@ export function MessageBubble({
     return getUserColor(author.username || author.id || "?");
   }, [author]);
 
-  // התיקון האמיתי: מפרק מילים ארוכות מ-10 תווים בלי להוסיף רווחים בין מילים תקינות!
+  const longestUnbrokenTextLength = useMemo(() => {
+    return (body || "")
+      .split(/\s+/)
+      .reduce((maxLength, part) => Math.max(maxLength, part.length), 0);
+  }, [body]);
+  const bubbleWidthStyle = longestUnbrokenTextLength >= 72
+    ? styles.bubbleWide
+    : null;
+  const messageStartsLtr = useMemo(() => {
+    const firstStrongChar = (body || "").match(/[A-Za-z\u0590-\u05FF]/)?.[0];
+    return !!firstStrongChar && /[A-Za-z]/.test(firstStrongChar);
+  }, [body]);
+
+  // Long unbroken runs need soft breakpoints without forcing visible new lines.
   const formatSpamSafeText = (text: string) => {
     if (!text) return text;
-    return text.split(' ').map(word => {
-      // 1. הגנה על קישורים
-      if (word.startsWith('http://') || word.startsWith('https://')) return word;
+    return text.split(/(\s+)/).map(part => {
+      if (/^\s+$/.test(part)) return part;
+      if (part.startsWith('http://') || part.startsWith('https://')) return part;
 
-      // 2. הורדנו את הרף ל-8 תווים. זה יתפוס בוודאות מילים כמו "האםהאמהאמהאם"
-      if (word.length > 8) {
-        return word.match(/.{1,8}/g)?.join('\n') || word; // <-- כאן השינוי
+      const hasLongOppositeDirectionRun = messageStartsLtr
+        ? /[\u0590-\u05FF]{10,}/.test(part)
+        : /[A-Za-z]{10,}/.test(part);
+
+      if (part.length > 36 || hasLongOppositeDirectionRun) {
+        return part.split('').join('\u200B');
       }
-      return word;
-    }).join(' ');
+      return part;
+    }).join('');
   };
+  const displayBody = useMemo(() => {
+    const formattedBody = formatSpamSafeText(body);
+    return messageStartsLtr ? `\u202A${formattedBody}\u202C` : `\u202B${formattedBody}\u202C`;
+  }, [body, messageStartsLtr]);
 
   return (
     <View style={styles.rowWrapper}>
@@ -267,7 +287,7 @@ export function MessageBubble({
                   )}
                 </Pressable>
               )}
-              <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
+              <View style={[styles.bubble, bubbleWidthStyle, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
                 {(!mine && author) || (message.message_kind === "temporary" && message.expires_at) || (message.message_kind === "view_once") ? (
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                     {!mine && author ? (
@@ -330,12 +350,17 @@ export function MessageBubble({
                   denyRequest={denyRequest} /> :
                   isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
 
-                    <View style={styles.messageTextContainer}>
+                    <View style={[styles.messageTextContainer, bubbleWidthStyle && styles.messageTextContainerWide]}>
                       <Text
+                        {...(Platform.OS === "web" ? ({ dir: messageStartsLtr ? "ltr" : "rtl" } as any) : null)}
                         textBreakStrategy="simple"
-                        style={[styles.body, isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' }]}
+                        style={[
+                          styles.body,
+                          messageStartsLtr ? styles.bodyLtr : styles.bodyRtl,
+                          isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' },
+                        ]}
                       >
-                        {formatSpamSafeText(body)}
+                        {displayBody}
                       </Text>
                     </View>
                 }

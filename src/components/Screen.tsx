@@ -51,7 +51,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: Platform.OS === "web" ? theme.colors.appBackground : theme.colors.background,
       alignItems: Platform.OS === "web" ? "center" : undefined,
       justifyContent: Platform.OS === "web" ? "center" : undefined,
-      paddingVertical: Platform.OS === "web" ? 20 : 0,
+      paddingVertical: 0,
     },
     safeArea: {
       flex: 1,
@@ -59,7 +59,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       maxWidth: Platform.OS === "web" ? 430 : undefined,
       backgroundColor: theme.colors.background,
       overflow: Platform.OS === "web" ? "hidden" : undefined,
-      borderRadius: Platform.OS === "web" ? 28 : 0,
+      borderRadius: 0,
       shadowColor: "#000000",
       shadowOpacity: Platform.OS === "web" ? 0.22 : 0,
       shadowRadius: Platform.OS === "web" ? 28 : 0,

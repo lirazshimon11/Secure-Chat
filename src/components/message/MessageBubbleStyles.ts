@@ -1,7 +1,5 @@
-import { StyleSheet, Dimensions } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { useAppTheme } from "@/lib/theme";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
   StyleSheet.create({
@@ -30,10 +28,10 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingVertical: 2,
     },
     rowMine: {
-      justifyContent: "flex-end",
+      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-end",
     },
     rowTheirs: {
-      justifyContent: "flex-start",
+      justifyContent: Platform.OS === "web" ? "flex-end" : "flex-start",
     },
     rowSystem: {
       justifyContent: "center",
@@ -42,13 +40,15 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: "rgba(0,168,132,0.38)",
     },
     fullWidthSelection: {
-      width: "100%",
+      flex: 1,
       paddingHorizontal: 12,
+      minWidth: 0,
     },
     bubble: {
       borderRadius: 12,
-      maxWidth: SCREEN_WIDTH * 0.83,
+      maxWidth: "83%",
       minWidth: 100,
+      flexShrink: 1,
       paddingHorizontal: 10,
       paddingTop: 6,
       paddingBottom: 5,
@@ -60,23 +60,27 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     bubbleMine: {
       backgroundColor: theme.colors.mine,
-      borderTopRightRadius: 4,
+      borderTopRightRadius: Platform.OS === "web" ? 12 : 4,
+      borderTopLeftRadius: Platform.OS === "web" ? 4 : 12,
     },
     bubbleTheirs: {
       backgroundColor: theme.colors.theirs,
-      borderTopLeftRadius: 4,
+      borderTopLeftRadius: Platform.OS === "web" ? 12 : 4,
+      borderTopRightRadius: Platform.OS === "web" ? 4 : 12,
     },
     bubbleWrapperMine: {
-      width: "100%",
+      flex: 1,
       flexDirection: "row",
-      justifyContent: "flex-end",
+      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-end",
       alignItems: "flex-start",
+      minWidth: 0,
     },
     bubbleWrapperTheirs: {
-      width: "100%",
-      flexDirection: "row",
-      justifyContent: "flex-start",
+      flex: 1,
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
+      justifyContent: Platform.OS === "web" ? "flex-end" : "flex-start",
       alignItems: "flex-start",
+      minWidth: 0,
     },
     messageAvatarWrap: {
       width: 28,
@@ -133,6 +137,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     replyBlockTextContainer: {
       flex: 1,
+      minWidth: 0,
       paddingVertical: 4,
       paddingHorizontal: 8,
       alignItems: "flex-end",
@@ -154,24 +159,26 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     messageTextContainer: {
       flexShrink: 1,
-      width: "100%",
+      alignSelf: "stretch",
       flexWrap: "wrap",
+      minWidth: 0,
+      maxWidth: "100%",
     },
     body: {
       color: theme.colors.text,
       fontSize: 15,
       lineHeight: 22,
-      textAlign: "left",
+      textAlign: "right",
       writingDirection: "rtl",
-      width: "100%",
-      flexShrink: 1, // מבטיח שהטקסט יתכווץ לתוך הקונטיינר
-      paddingLeft: 8, // כרית אוויר גדולה יותר משמאל כדי להציל את האות האחרונה!
-      paddingRight: 4,
+      alignSelf: "stretch",
+      flexShrink: 1,
+      maxWidth: "100%",
     },
     metaRow: {
       marginTop: 2,
       flexDirection: "row",
       alignItems: "center",
+      alignSelf: Platform.OS === "web" ? "flex-start" : "flex-end",
       gap: 6,
     },
     kindChip: {

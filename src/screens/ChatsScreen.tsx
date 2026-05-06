@@ -127,7 +127,7 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
             {viewMode === "home" ? (
               <>
                 <Text style={styles.brand}>SecureApp</Text>
-                <View style={{ flexDirection: "row", gap: 2 }}>
+                <View style={styles.headerActions}>
                   <Pressable style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="camera-outline" size={24} /></Pressable>
                   <Pressable onPress={() => setShowGeneralMenu(true)} style={styles.iconButton}><MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={24} /></Pressable>
                 </View>

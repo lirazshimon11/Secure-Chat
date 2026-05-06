@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Text, View, TouchableHighlight } from "react-native";
+import { Platform, Text, View, TouchableHighlight } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { DisplayChat, parsePollPreview } from "./ChatsUtils";
 
@@ -33,9 +33,9 @@ const PreviewTimer = ({ lastMessageAt, styles, theme, unread }: { lastMessageAt:
   }, [lastMessageAt]);
 
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, justifyContent: "flex-start" }}>
+    <View style={{ flexDirection: Platform.OS === "web" ? "row-reverse" : "row", alignItems: 'center', flex: 1, justifyContent: "flex-start", minWidth: 0 }}>
       <MaterialCommunityIcons name="timer-sand" size={15} color={theme.colors.textMuted} style={{ marginHorizontal: 2 }} />
-      <Text numberOfLines={1} style={[styles.chatPreview, { marginTop: 0, flex: 1, textAlign: "left" }, unread && styles.chatPreviewUnread]}>
+      <Text numberOfLines={1} style={[styles.chatPreview, { marginTop: 0, flex: 1, textAlign: "right", writingDirection: "rtl" }, unread && styles.chatPreviewUnread]}>
         {timeLeft ? `הודעה זמנית (נותרו: ${timeLeft})` : 'הודעה זמנית'}
       </Text>
     </View>
@@ -52,7 +52,7 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
       onPress={onPress}
       style={[styles.chatRow, selected && styles.chatRowSelected]}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", width: "100%", gap: 12 }}>
+      <View style={{ flexDirection: Platform.OS === "web" ? "row-reverse" : "row", alignItems: "center", width: "100%", gap: 12 }}>
         <View style={styles.avatarWrap}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{(item.chat.title || "?").slice(0, 1).toUpperCase()}</Text>
@@ -84,12 +84,12 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
               ) : null}
             </View>
           </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, flex: 1 }}>
+          <View style={{ flexDirection: Platform.OS === "web" ? "row-reverse" : "row", alignItems: "center", gap: 4, flex: 1, minWidth: 0 }}>
             {(() => {
               const { isPoll, isScreenshot, question } = parsePollPreview(item.preview);
               if (isPoll) {
                 return (
-                  <View style={{ flexDirection: "row", alignItems: "center", flex: 1, justifyContent: "flex-start" }}>
+                  <View style={{ flexDirection: Platform.OS === "web" ? "row-reverse" : "row", alignItems: "center", flex: 1, justifyContent: "flex-start", minWidth: 0 }}>
                     <MaterialCommunityIcons 
                       name="poll" 
                       size={18} 
@@ -106,7 +106,7 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
                     )}
                     <Text 
                       numberOfLines={1} 
-                      style={[styles.chatPreview, { marginTop: 0, flex: 1, textAlign: "left" }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}
+                      style={[styles.chatPreview, { marginTop: 0, flex: 1, textAlign: "right", writingDirection: "rtl" }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}
                     >
                       {question}
                     </Text>
@@ -124,7 +124,7 @@ export const ChatRow = ({ item, theme, styles, selected, onPress, onLongPress }:
                 );
               }
               return (
-                <Text numberOfLines={1} style={[styles.chatPreview, { flex: 1, textAlign: "left" }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
+                <Text numberOfLines={1} style={[styles.chatPreview, { flex: 1, textAlign: "right", writingDirection: "rtl" }, item.unreadCount > 0 && styles.chatPreviewUnread, item.hiddenByClear && styles.chatPreviewCleared]}>
                   {item.preview}
                 </Text>
               );

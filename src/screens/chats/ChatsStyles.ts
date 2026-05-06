@@ -1,4 +1,4 @@
-import { StyleSheet } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 import { useAppTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -16,12 +16,26 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     headerInner: {
       flex: 1,
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: theme.spacing.md,
       paddingTop: 4,
       paddingBottom: 10,
+      position: "relative",
+    },
+    headerActions: {
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
+      gap: 2,
+      ...(Platform.OS !== "web"
+        ? ({
+            position: "absolute",
+            right: theme.spacing.md,
+            top: 4,
+            bottom: 10,
+            alignItems: "center",
+          } as any)
+        : null),
     },
     selectionHeader: {
       position: "absolute",
@@ -30,7 +44,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       right: 0,
       bottom: 0,
       backgroundColor: theme.colors.homeHeader,
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       paddingHorizontal: theme.spacing.md,
       zIndex: 5,
@@ -38,10 +52,21 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       paddingBottom: 10,
     },
     brand: {
-      flex: 1,
+      flex: Platform.OS === "web" ? 1 : 0,
       color: scheme === "dark" ? "#F3F4F6" : "#1EA860",
       fontSize: 22,
       fontWeight: "700",
+      textAlign: "right",
+      writingDirection: "rtl",
+      ...(Platform.OS !== "web"
+        ? ({
+            position: "absolute",
+            left: theme.spacing.md,
+            top: 0,
+            bottom: 6,
+            textAlignVertical: "center",
+          } as any)
+        : null),
     },
     selectionTitle: {
       color: theme.colors.text,
@@ -50,8 +75,9 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       marginLeft: 10,
     },
     selectionActions: {
-      marginLeft: "auto",
-      flexDirection: "row",
+      marginLeft: Platform.OS === "web" ? 0 : "auto",
+      marginRight: Platform.OS === "web" ? "auto" : 0,
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 2,
     },
@@ -70,7 +96,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       borderRadius: theme.radius.xl,
       minHeight: 46,
       paddingHorizontal: 16,
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 10,
     },
@@ -80,8 +106,11 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     filterScroll: {
       paddingHorizontal: theme.spacing.md,
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
+      flexGrow: 1,
+      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-start",
+      minWidth: "100%",
     },
     addFilterBtn: {
       width: 32,
@@ -97,12 +126,14 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       color: theme.colors.text,
       fontSize: 15,
       paddingVertical: 10,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     scrollContent: {
       paddingBottom: 90,
     },
     sectionButton: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: theme.spacing.md,
@@ -110,7 +141,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       backgroundColor: theme.colors.homeRow,
     },
     sectionLeft: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 12,
     },
@@ -131,9 +162,11 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       color: scheme === "dark" ? theme.colors.text : "#5E676A",
       fontSize: 17,
       fontWeight: "700",
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     sectionRight: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 8,
     },
@@ -148,7 +181,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       paddingVertical: 10,
     },
     chatRow: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 12,
       paddingLeft: theme.spacing.md,
@@ -191,26 +224,31 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     chatMain: {
       flex: 1,
       justifyContent: "center",
+      minWidth: 0,
     },
     chatTopRow: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       justifyContent: "space-between",
       gap: theme.spacing.sm,
     },
     titleWrap: {
       flex: 1,
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
+      justifyContent: "flex-start",
       gap: 6,
+      minWidth: 0,
     },
     chatTitle: {
       flexShrink: 1,
       color: theme.colors.text,
       fontSize: 17,
       fontWeight: "700",
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     trailingWrap: {
-      alignItems: "flex-end",
+      alignItems: Platform.OS === "web" ? "flex-start" : "flex-end",
       gap: 6,
     },
     chatTime: {
@@ -239,6 +277,8 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       color: theme.colors.textMuted,
       fontSize: 14,
       marginTop: 4,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     chatPreviewUnread: {
       color: theme.colors.text,
@@ -297,7 +337,8 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       color: theme.colors.text,
       fontSize: 15,
       fontWeight: "700",
-      textAlign: "left",
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     menuItemDanger: {
       color: theme.colors.danger,
@@ -305,7 +346,8 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     fab: {
       position: "absolute",
       bottom: 95 + insets.bottom,
-      right: 20,
+      right: Platform.OS === "web" ? undefined : 20,
+      left: Platform.OS === "web" ? 20 : undefined,
       width: 56,
       height: 56,
       borderRadius: 16,
@@ -319,7 +361,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       elevation: 5,
     },
     tabBar: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       backgroundColor: theme.colors.homeHeader,
       borderTopWidth: 0.5,
       borderTopColor: theme.colors.border,
@@ -379,7 +421,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     // Screenshot request cards in Updates tab
     screenshotCard: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "flex-start",
       gap: 12,
       paddingHorizontal: 16,
@@ -415,12 +457,12 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       fontSize: 12,
     },
     screenshotCardActions: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       gap: 10,
       marginTop: 4,
     },
     screenshotBtn: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 5,
       paddingVertical: 7,
@@ -439,7 +481,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
       fontSize: 14,
     },
     screenshotMyCard: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 12,
       paddingHorizontal: 16,

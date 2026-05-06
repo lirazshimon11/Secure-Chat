@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Message, ReactionSummary } from "@/lib/types";
 import { useChats } from "@/context/ChatContext";
@@ -137,18 +137,18 @@ export const PollBubble = ({
 
   return (
     <View style={[styles.pollCard, isExpired && { opacity: 0.6 }]}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <Text style={[styles.pollTitle, { flex: 1, marginRight: 8, textAlign: 'left' }]}>{pollData.question}</Text>
+      <View style={{ flexDirection: Platform.OS === "web" ? 'row-reverse' : 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <Text style={[styles.pollTitle, { flex: 1, marginLeft: Platform.OS === "web" ? 8 : 0, marginRight: Platform.OS === "web" ? 0 : 8, textAlign: Platform.OS === "web" ? 'right' : 'left', writingDirection: 'rtl' }]}>{pollData.question}</Text>
         {timeLeft && (
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isExpired ? theme.colors.surfaceMuted : theme.colors.accentStrong + "15", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 }}>
+          <View style={{ flexDirection: Platform.OS === "web" ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: isExpired ? theme.colors.surfaceMuted : theme.colors.accentStrong + "15", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 }}>
             <MaterialCommunityIcons name="clock-outline" size={14} color={isExpired ? theme.colors.textMuted : theme.colors.accentStrong} />
-            <Text style={{ fontSize: 11, fontWeight: '700', color: isExpired ? theme.colors.textMuted : theme.colors.accentStrong, marginLeft: 4 }}>{isExpired ? timeLeft : `נותרו: ${timeLeft}`}</Text>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: isExpired ? theme.colors.textMuted : theme.colors.accentStrong, marginLeft: Platform.OS === "web" ? 0 : 4, marginRight: Platform.OS === "web" ? 4 : 0, writingDirection: 'rtl' }}>{isExpired ? timeLeft : `נותרו: ${timeLeft}`}</Text>
           </View>
         )}
       </View>
 
-      <View style={[styles.pollSubtitleWrapper, { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }]}>
-        <Text style={[styles.pollSubtitle, { textAlign: 'left', marginRight: 6 }]}>
+      <View style={[styles.pollSubtitleWrapper, { flexDirection: Platform.OS === "web" ? 'row-reverse' : 'row', justifyContent: Platform.OS === "web" ? 'flex-start' : 'flex-end', alignItems: 'center' }]}>
+        <Text style={[styles.pollSubtitle, { textAlign: Platform.OS === "web" ? 'right' : 'left', writingDirection: 'rtl', marginLeft: Platform.OS === "web" ? 6 : 0, marginRight: Platform.OS === "web" ? 0 : 6 }]}>
           {pollData.isScreenshotRequest
             ? "יש לבחור כדי לאפשר צילום מסך זמני"
             : (pollData.multipleAnswers ? "צריך לבחור אפשרות אחת או יותר" : "יש לבחור אפשרות אחת")}
@@ -172,7 +172,7 @@ export const PollBubble = ({
                 <View style={{ minWidth: 24, alignItems: 'flex-start' }}>
                   <Text style={[styles.pollVoteCount, { textAlign: 'left' }]}>{optionVotes}</Text>
                 </View>
-                
+
                 {/* Avatars of voters (up to 3) */}
                 {optionVotes > 0 && (
                   <View style={{ flexDirection: 'row', marginLeft: 4 }}>
@@ -182,9 +182,9 @@ export const PollBubble = ({
                       const nick = contactNicknames?.[voterId];
                       const initial = (nick?.first_name || profile?.full_name || profile?.username || "?")
                         .slice(0, 1).toUpperCase();
-                      
+
                       const bgColor = getUserColor(profile?.username || profile?.id || "?");
-                      
+
                       return (
                         <View key={voterId} style={{
                           width: 16, height: 16, borderRadius: 8, backgroundColor: bgColor,

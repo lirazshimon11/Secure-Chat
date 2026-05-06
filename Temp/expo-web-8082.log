@@ -1,0 +1,12 @@
+
+> secureapp@1.0.0 web
+> expo start --web --port 8082
+
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY
+Starting project at C:\COMPUTERS\PROJECTS\Apps\SecureApp
+Starting Metro Bundler
+Waiting on http://localhost:8082
+Logs for your project will appear below.
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 949ms node_modules\expo\AppEntry.js (874 modules)

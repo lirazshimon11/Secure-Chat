@@ -278,6 +278,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const highlightAnim = useRef(new Animated.Value(0)).current;
   const initialScrollDone = useRef(false);
+  const pendingSelfSendScrollRef = useRef(false);
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -314,6 +315,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const scrollToBottom = (animated = true) => {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated }));
+  };
+
+  const scrollToBottomAfterSelfSend = () => {
+    pendingSelfSendScrollRef.current = true;
+    setShowScrollToBottom(false);
+    showScrollToBottomRef.current = false;
+    scrollToBottom(true);
+    setTimeout(() => scrollToBottom(true), 80);
+    setTimeout(() => scrollToBottom(true), 220);
   };
 
   const scrollToMessageWithRetry = (msgId: string, highlight = true, attempts = 6) => {
@@ -602,7 +612,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     if (!lastMsg) return;
 
     // System messages (guard, group events, etc.) → always scroll to bottom
-    if (lastMsg.message_kind === "system") {
+    if (lastMsg.sender_id === profile?.id) {
+      pendingSelfSendScrollRef.current = false;
+      scrollToBottom(true);
+    } else if (lastMsg.message_kind === "system") {
       scrollToBottom(true);
     } else if (lastMsg.sender_id !== profile?.id) {
       // Someone else's regular message — only scroll if already near bottom
@@ -848,7 +861,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
-                  onContentSizeChange={(w, h) => scrollMetricsRef.current.contentHeight = h}
+                  onContentSizeChange={(w, h) => {
+                    scrollMetricsRef.current.contentHeight = h;
+                    if (pendingSelfSendScrollRef.current) {
+                      scrollToBottom(true);
+                    }
+                  }}
                   onScroll={(e) => {
                     const y = e.nativeEvent.contentOffset.y;
                     const h = e.nativeEvent.layoutMeasurement.height || scrollMetricsRef.current.height;
@@ -998,7 +1016,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   }}
                   onCancelReply={() => setReplyTo(null)}
                   onSend={(body, kind, expireSeconds) => {
-                    scrollToBottom(true);
+                    scrollToBottomAfterSelfSend();
                     setReplyTo(null);
                     if (decoyMode && profile?.id) {
                       // Decoy mode: write to chat_decoy_messages

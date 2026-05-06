@@ -8,7 +8,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
     },
     header: {
       backgroundColor: theme.colors.header,
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 16,
       paddingHorizontal: 12,
@@ -42,16 +42,22 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
     },
     headerCopy: {
       flex: 1,
+      alignItems: "flex-end",
+      minWidth: 0,
     },
     title: {
       color: theme.colors.headerText,
       fontSize: 18,
       fontWeight: "700",
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     subtitle: {
       color: theme.colors.headerSubtitle,
       fontSize: 12,
       marginTop: 1,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     selectionCount: {
       color: theme.colors.headerText,
@@ -60,9 +66,10 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: { to
       marginLeft: 4,
     },
     selectionActions: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
-      marginLeft: "auto",
+      marginLeft: Platform.OS === "web" ? 0 : "auto",
+      marginRight: Platform.OS === "web" ? "auto" : 0,
       gap: 2,
     },
     searchBar: {

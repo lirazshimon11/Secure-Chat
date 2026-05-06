@@ -330,12 +330,14 @@ export function MessageBubble({
                   denyRequest={denyRequest} /> :
                   isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
 
-                    <Text
-                      textBreakStrategy="simple"
-                      style={[styles.body, isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' }]}
-                    >
-                      {formatSpamSafeText(body)}
-                    </Text>
+                    <View style={styles.messageTextContainer}>
+                      <Text
+                        textBreakStrategy="simple"
+                        style={[styles.body, isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' }]}
+                      >
+                        {formatSpamSafeText(body)}
+                      </Text>
+                    </View>
                 }
 
                 <View style={styles.metaRow}>

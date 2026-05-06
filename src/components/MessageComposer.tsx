@@ -35,6 +35,26 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   const inputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const styleId = "secureapp-message-composer-scrollbar";
+    if (document.getElementById(styleId)) return;
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      textarea[data-secureapp-composer="true"] {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      textarea[data-secureapp-composer="true"]::-webkit-scrollbar {
+        display: none;
+        width: 0;
+        height: 0;
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
+
+  useEffect(() => {
     if (emojiEvent) {
       setBody((prev) => prev + emojiEvent.emoji);
     }
@@ -57,7 +77,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     setKind("standard");
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
-      el.style.height = 'auto'; // Reset height on send
+      el.style.height = '42px';
     }
   }
 
@@ -69,6 +89,8 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   useEffect(() => {
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
+      let singleLineScrollHeight = 0;
+      const collapsedHeight = 42;
       const keydownHandler = (e: any) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -77,14 +99,23 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
         }
       };
       const inputHandler = (e: any) => {
+        const hasText = Boolean(String(el.value ?? "").trim());
         el.style.height = 'auto';
-        el.style.height = `${el.scrollHeight}px`;
+        if (!singleLineScrollHeight) singleLineScrollHeight = el.scrollHeight;
+        const shouldGrow = hasText && el.scrollHeight > singleLineScrollHeight + 2;
+        el.style.height = shouldGrow ? `${el.scrollHeight}px` : `${collapsedHeight}px`;
       };
+      el.setAttribute("data-secureapp-composer", "true");
       el.addEventListener("keydown", keydownHandler);
       el.addEventListener("input", inputHandler);
       // Init height
-      setTimeout(() => inputHandler({ target: el }), 100);
+      setTimeout(() => {
+        el.style.height = 'auto';
+        singleLineScrollHeight = el.scrollHeight;
+        inputHandler({ target: el });
+      }, 100);
       return () => {
+        el.removeAttribute("data-secureapp-composer");
         el.removeEventListener("keydown", keydownHandler);
         el.removeEventListener("input", inputHandler);
       };
@@ -157,7 +188,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
 
           {body.trim().length > 0 && (
             <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
-              <Feather color={theme.colors.textOnAccent} name="send" size={18} />
+              <Feather color={theme.colors.textOnAccent} name="send" size={18} style={styles.sendIcon} />
             </Pressable>
           )}
 
@@ -185,9 +216,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
   StyleSheet.create({
     wrapper: {
       backgroundColor: 'transparent',
-      paddingHorizontal: theme.spacing.sm,
+      paddingHorizontal: Platform.OS === "web" ? 12 : theme.spacing.sm,
       paddingTop: theme.spacing.xs,
-      paddingBottom: theme.spacing.xs,
+      paddingBottom: Platform.OS === "web" ? 8 : theme.spacing.xs,
       gap: theme.spacing.xs,
     },
     safeAreaWrapper: {
@@ -201,6 +232,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       overflow: "hidden",
       borderWidth: 1,
       borderColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
+      minWidth: 0,
     },
     replyBanner: {
       backgroundColor: 'transparent',
@@ -210,7 +242,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       borderBottomColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.05)",
     },
     replyContent: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "stretch",
       width: "100%",
       backgroundColor: theme.colors.background === "#0b141a" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)",
@@ -222,6 +254,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
     },
     replyText: {
       flex: 1,
+      minWidth: 0,
       paddingVertical: 6,
       paddingHorizontal: 10,
       justifyContent: "center",
@@ -231,13 +264,15 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       fontSize: 12,
       fontWeight: "800",
       marginBottom: 2,
-      textAlign: "left",
+      textAlign: "right",
+      writingDirection: "rtl",
       width: "100%",
     },
     replyPreview: {
       color: theme.colors.textMuted,
       fontSize: 13,
-      textAlign: "left",
+      textAlign: "right",
+      writingDirection: "rtl",
       width: "100%",
     },
     closeButton: {
@@ -246,14 +281,14 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       alignItems: "center",
     },
     modeRow: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       gap: 8,
-      alignSelf: "flex-start",
+      alignSelf: Platform.OS === "web" ? "flex-end" : "flex-start",
       marginBottom: -1,
       marginTop: 0,
     },
     modeChip: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "center",
       gap: 5,
       borderRadius: 18,
@@ -279,9 +314,9 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       color: theme.colors.textOnAccent,
     },
     composerRow: {
-      flexDirection: "row",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
       alignItems: "flex-end",
-      gap: 1,
+      gap: Platform.OS === "web" ? 6 : 1,
     },
     micFab: {
       width: 46,
@@ -292,9 +327,10 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       justifyContent: "center",
     },
     inputContainer: {
-      flexDirection: "row",
-      alignItems: "flex-end",
+      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
+      alignItems: "center",
       backgroundColor: "transparent",
+      minHeight: 46,
     },
     sideButton: {
       width: 42,
@@ -310,21 +346,26 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
     },
     inputShell: {
       flex: 1,
+      minWidth: 0,
       paddingLeft: 4,
       paddingRight: 14,
-      minHeight: 44,
-      justifyContent: "flex-end",
+      minHeight: Platform.OS === "web" ? 42 : 44,
+      justifyContent: "center",
       paddingVertical: Platform.OS === "ios" ? 4 : 0,
     },
     input: {
       color: theme.colors.text,
       fontSize: 16,
       lineHeight: 22,
-      minHeight: 22,
+      minHeight: Platform.OS === "web" ? 42 : 22,
       maxHeight: 170, // 7 lines * 22 = 154 + 16 (padding)
-      paddingVertical: 8,
+      paddingTop: Platform.OS === "web" ? 10 : 8,
+      paddingBottom: Platform.OS === "web" ? 10 : 8,
       textAlign: "right",
+      writingDirection: "rtl",
       width: "100%",
+      textAlignVertical: "center",
+      ...(Platform.OS === "web" ? ({ resize: "none", direction: "rtl" } as any) : null),
     },
     sendButton: {
       width: 46,
@@ -333,5 +374,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       backgroundColor: theme.colors.accentStrong,
       alignItems: "center",
       justifyContent: "center",
+    },
+    sendIcon: {
+      transform: Platform.OS === "web" ? [{ scaleX: -1 }] : undefined,
     },
   });

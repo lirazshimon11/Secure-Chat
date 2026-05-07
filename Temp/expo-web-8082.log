@@ -47,3 +47,65 @@ Web Bundled 62ms node_modules\expo\AppEntry.js (1 module)
 Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
 Web Bundled 62ms node_modules\expo\AppEntry.js (1 module)
  LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 73ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Unable to resolve "expo-modules-core" from "node_modules\expo-constants\build\Constants.js"
+[0m[31m[1m>[22m[39m[90m 1 |[39m [36mimport[39m { [33mCodedError[39m[33m,[39m requireOptionalNativeModule } [36mfrom[39m [32m'expo-modules-core'[39m[33m;[39m
+ [90m   |[39m                                                          [31m[1m^[22m[39m
+ [90m 2 |[39m [36mimport[39m { [33mPlatform[39m[33m,[39m [33mNativeModules[39m } [36mfrom[39m [32m'react-native'[39m[33m;[39m
+ [90m 3 |[39m [36mimport[39m { [33mAppOwnership[39m[33m,[39m [33mExecutionEnvironment[39m[33m,[39m [33mUserInterfaceIdiom[39m[33m,[39m } [36mfrom[39m [32m'./Constants.types'[39m[33m;[39m
+ [90m 4 |[39m [36mimport[39m [33mExponentConstants[39m [36mfrom[39m [32m'./ExponentConstants'[39m[33m;[39m[0m
+
+Import stack:
+
+ node_modules\expo-constants\build\Constants.js
+ | import "expo-modules-core"
+
+ src\lib\env.ts
+ | import "expo-constants"
+
+ src\lib\supabase.ts
+ | import "./env"
+
+ src\context\ChatContext.tsx
+ | import "../lib/supabase"
+
+ App.tsx
+ | import "./src/context/ChatContext"
+
+ node_modules\expo\AppEntry.js
+ | import "../../App"
+
+ 
+ | import "./node_modules/expo/AppEntry"
+
+ ERROR  Error: Failed to get the SHA-1 for: C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\expo\AppEntry.js.
+      Potential causes:
+        1) The file is not watched. Ensure it is under the configured `projectRoot` or `watchFolders`.
+        2) Check `blockList` in your metro.config.js and make sure it isn't excluding the file path.
+        3) The file may have been deleted since it was resolved - try refreshing your app.
+        4) Otherwise, this is a bug in Metro or the configured resolver - please report it.
+    at DependencyGraph.getOrComputeSha1 (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@expo\metro\node_modules\metro\src\node-haste\DependencyGraph.js:191:13)
+    at Transformer.transformFile (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@expo\metro\node_modules\metro\src\DeltaBundler\Transformer.js:102:22)
+C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\expo\node_modules\@expo\cli\build\src\utils\errors.js:130
+    throw error;
+    ^
+
+Error: ENOENT: no such file or directory, watch 'C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\.expo-modules-autolinking-9b6VCIHq\android\expo-gradle-plugin\expo-autolinking-plugin-shared\build\classes\kotlin\main\expo'
+    at FSWatcher.<computed> (node:internal/fs/watchers:254:19)
+    at Object.watch (node:fs:2539:36)
+    at FallbackWatcher._watchdir (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@expo\metro\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:119:33)
+    at C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@expo\metro\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:219:22
+    at Walker.<anonymous> (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@expo\metro\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:358:5)
+    at Walker.emit (node:events:508:28)
+    at C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\walker\lib\walker.js:69:16
+    at FSReqCallback.oncomplete (node:fs:185:23) {
+  errno: -4058,
+  syscall: 'watch',
+  code: 'ENOENT',
+  path: 'C:\\COMPUTERS\\PROJECTS\\Apps\\SecureApp\\node_modules\\.expo-modules-autolinking-9b6VCIHq\\android\\expo-gradle-plugin\\expo-autolinking-plugin-shared\\build\\classes\\kotlin\\main\\expo',
+  filename: 'C:\\COMPUTERS\\PROJECTS\\Apps\\SecureApp\\node_modules\\.expo-modules-autolinking-9b6VCIHq\\android\\expo-gradle-plugin\\expo-autolinking-plugin-shared\\build\\classes\\kotlin\\main\\expo'
+}
+
+Node.js v24.12.0

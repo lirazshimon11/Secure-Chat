@@ -165,7 +165,7 @@ export const PollBubble = ({
           <Pressable key={i} style={styles.pollOptionRow} onPress={() => handleOptionPress(i)}>
 
             {/* כופה כיווניות LTR מוחלטת כדי לחסום את ההיפוכים האוטומטיים של המכשיר */}
-            <View style={[styles.pollOptionInner, { flexDirection: 'row', direction: 'ltr', justifyContent: 'space-between', alignItems: 'center' }]}>
+            <View style={[styles.pollOptionInner, { flexDirection: 'row', writingDirection: 'ltr', justifyContent: 'space-between', alignItems: 'center' }]}>
 
               {/* צד שמאל: המספר יהיה תמיד הכי שמאלי */}
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -200,7 +200,7 @@ export const PollBubble = ({
               </View>
 
               {/* צד ימין: הטקסט והעיגול נדחפים לימין בכוח */}
-              <View style={[styles.pollOptionTextWrapper, { flexDirection: 'row', direction: 'ltr', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }]}>
+              <View style={[styles.pollOptionTextWrapper, { flexDirection: 'row', writingDirection: 'ltr', alignItems: 'center', flex: 1, justifyContent: 'flex-end' }]}>
 
                 {/* טקסט (מופיע לפני העיגול) */}
                 <Text style={[styles.pollOptionText, { marginRight: 12, textAlign: 'right', flexShrink: 1 }]}>{opt}</Text>

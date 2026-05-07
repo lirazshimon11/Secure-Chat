@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder } from "react-native";
+import { PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder, Easing, useWindowDimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,7 @@ import { useAppTheme } from "@/lib/theme";
 import { Chat, Message, Profile } from "@/lib/types";
 import { webEmbeddedInputReset, webDefaultCursor } from "@/lib/webStyles";
 import { supabase } from "@/lib/supabase";
+import { useMessages, useMessagesSubscription, useSendMessage } from "@/hooks/useChatMessages";
 
 // Sub-screens
 import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
@@ -46,6 +47,7 @@ type Props = {
 
 export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId, onForward, onCreateGroupWith, onOpenChat, decoyMode }: Props) {
   const insets = useSafeAreaInsets() || { top: 0, bottom: 0, left: 0, right: 0 };
+  const { width } = useWindowDimensions();
   const theme = useAppTheme();
   const colorScheme = useColorScheme();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
@@ -54,12 +56,40 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [initialUnreadStartIndex, setInitialUnreadStartIndex] = useState<number>(-1);
 
   const {
-    loadMessages, markChatSeen, unreadCounts, messagesByChat, profiles, chats,
+    loadMessages, markChatSeen, refreshChats, unreadCounts, messagesByChat, profiles, chats,
     contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings,
-    chatPreferences, setChatMute, clearChatMute, sendMessage, openViewOnceMessage,
+    chatPreferences, setChatMute, clearChatMute, openViewOnceMessage,
     toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember,
     createChat, setChatMemberRole, removeChatMember
   } = useChats();
+
+  const {
+    messages: cachedMessages,
+    fetchNextPage: fetchNextMessagesPage,
+    hasNextPage: hasOlderMessages,
+    isFetchingNextPage: isFetchingOlderMessages,
+  } = useMessages(chat.id, !decoyMode);
+  const sendMessageMutation = useSendMessage();
+  useMessagesSubscription(chat.id, profile?.id, !decoyMode);
+
+  const sendCachedMessage = useCallback(async (input: { chatId: string; body: string; messageKind: Message["message_kind"]; replyToId?: string | null; expireSeconds?: number | null }) => {
+    if (!profile?.id || !input.body.trim()) return "Message empty.";
+
+    try {
+      await sendMessageMutation.sendMessageAsync({
+        chatId: input.chatId,
+        senderId: profile.id,
+        body: input.body,
+        messageKind: input.messageKind,
+        replyToId: input.replyToId,
+        expireSeconds: input.expireSeconds,
+      });
+      void refreshChats(true);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : "Could not send message.";
+    }
+  }, [profile?.id, refreshChats, sendMessageMutation]);
 
   const [isMember, setIsMember] = useState(false);
   const [selectedAvatarMember, setSelectedAvatarMember] = useState<Profile | null>(null);
@@ -110,13 +140,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const visibleMessages = useMemo(() => {
     if (decoyMode) return decoyDbMessages;
-    const allMessages = (messagesByChat && chat && messagesByChat[chat.id]) ?? [];
+    const allMessages = cachedMessages.length ? cachedMessages : ((messagesByChat && chat && messagesByChat[chat.id]) ?? []);
     const prefs = chatPreferences && chat && chatPreferences[chat.id];
     const clearedAt = prefs?.cleared_at;
     if (!clearedAt) return allMessages;
     const clearedAtMs = new Date(clearedAt).getTime();
     return allMessages.filter((m) => new Date(m.created_at).getTime() > clearedAtMs);
-  }, [decoyMode, decoyDbMessages, chat?.id, chatPreferences, messagesByChat]);
+  }, [cachedMessages, decoyMode, decoyDbMessages, chat?.id, chatPreferences, messagesByChat]);
 
   const messageMap = useMemo(() => Object.fromEntries((visibleMessages || []).map((msg) => [msg.id, msg])), [visibleMessages]);
 
@@ -399,7 +429,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   };
 
   const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } =
-    useChatPermissions(chat, groupMembers, (p) => sendMessage(p), activeSubScreen !== null);
+    useChatPermissions(chat, groupMembers, (p) => sendCachedMessage(p), activeSubScreen !== null);
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
     const msg = visibleMessages.find(m => m.id === messageId);
@@ -631,16 +661,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     return () => clearTimeout(timer);
   }, [visibleMessages]);
 
-  const [fadeAnim] = useState(new Animated.Value(0));
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 300,
-      delay: 200, // Wait for transition animation to be mostly done
-      useNativeDriver: true,
-    }).start();
-  }, []);
-
   // ── Drag to Select Setup ───────────────────────────────────────────────
   const selectedIdsRef = useRef<string[]>([]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -648,9 +668,135 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const threadHeightRef = useRef(0);
   const isDragSelectingRef = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastDragPageYRef = useRef<number | null>(null);
 
   const dragPivotIdRef = useRef<string | null>(null);
   const dragInitialIdsRef = useRef<Set<string>>(new Set());
+
+  const stopDragSelect = useCallback(() => {
+    isDragSelectingRef.current = false;
+    lastDragPageYRef.current = null;
+    setIsDragSelectLocked(false);
+    if (scrollTimerRef.current) {
+      clearInterval(scrollTimerRef.current);
+      scrollTimerRef.current = null;
+    }
+  }, []);
+
+  const updateDragSelection = useCallback((pageY: number) => {
+    const topOffset = insets.top + 58 + (searchOpen ? 52 : 0);
+    const viewportY = pageY - topOffset;
+    const contentY = viewportY + scrollMetricsRef.current.y;
+    lastDragPageYRef.current = pageY;
+
+    let targetId: string | null = null;
+    for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
+      if (contentY >= layout.y && contentY <= layout.y + layout.h) {
+        if (messageMap[id]?.message_kind !== "system") {
+          targetId = id;
+          break;
+        }
+      }
+    }
+
+    if (targetId) {
+      if (!dragPivotIdRef.current) {
+        dragPivotIdRef.current = targetId;
+        dragInitialIdsRef.current.add(targetId);
+      }
+
+      const pivotLayout = messageLayoutsRef.current[dragPivotIdRef.current];
+      const targetLayout = messageLayoutsRef.current[targetId];
+
+      if (pivotLayout && targetLayout) {
+        const minY = Math.min(pivotLayout.y, targetLayout.y);
+        const maxY = Math.max(pivotLayout.y, targetLayout.y);
+
+        const dragRangeIds = new Set<string>();
+        for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
+          if (layout.y >= minY && layout.y <= maxY) {
+            if (messageMap[id]?.message_kind !== "system") {
+              dragRangeIds.add(id);
+            }
+          }
+        }
+
+        const nextSelectedSet = new Set(dragInitialIdsRef.current);
+        for (const id of dragRangeIds) {
+          nextSelectedSet.add(id);
+        }
+
+        let changed = false;
+        if (nextSelectedSet.size !== selectedIdsRef.current.length) {
+          changed = true;
+        } else {
+          for (const id of selectedIdsRef.current) {
+            if (!nextSelectedSet.has(id)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+
+        if (changed) {
+          setSelectedIds(Array.from(nextSelectedSet));
+        }
+      }
+    }
+
+    const edgeSize = 50;
+    if (viewportY < edgeSize || viewportY > threadHeightRef.current - edgeSize) {
+      if (!scrollTimerRef.current) {
+        scrollTimerRef.current = setInterval(() => {
+          const lastPageY = lastDragPageYRef.current;
+          if (lastPageY === null) return;
+
+          const currentViewportY = lastPageY - topOffset;
+          const direction = currentViewportY < edgeSize ? -1 : 1;
+          const nextY = Math.max(0, scrollMetricsRef.current.y + direction * 25);
+          scrollMetricsRef.current.y = nextY;
+          scrollRef.current?.scrollTo({ y: nextY, animated: false });
+          updateDragSelection(lastPageY);
+        }, 16);
+      }
+    } else if (scrollTimerRef.current) {
+      clearInterval(scrollTimerRef.current);
+      scrollTimerRef.current = null;
+    }
+  }, [insets.top, messageMap, searchOpen]);
+
+  const beginDragSelect = useCallback((pageY: number) => {
+    if (!isDragSelectingRef.current) {
+      isDragSelectingRef.current = true;
+      dragPivotIdRef.current = null;
+      dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+    }
+    updateDragSelection(pageY);
+  }, [updateDragSelection]);
+
+  const webDragHandlers = useMemo(() => {
+    if (Platform.OS !== "web") return {};
+
+    return {
+      onPointerMove: (event: any) => {
+        if (!isDragSelectLockedRef.current && !isDragSelectingRef.current) return;
+        if (event?.nativeEvent?.buttons !== undefined && event.nativeEvent.buttons !== 1) {
+          stopDragSelect();
+          return;
+        }
+
+        event?.preventDefault?.();
+        beginDragSelect(event.nativeEvent.pageY);
+      },
+      onPointerUp: stopDragSelect,
+      onPointerCancel: stopDragSelect,
+      onPointerLeave: (event: any) => {
+        if (isDragSelectingRef.current && event?.nativeEvent?.buttons !== 1) {
+          stopDragSelect();
+        }
+      },
+    } as any;
+  }, [beginDragSelect, stopDragSelect]);
 
   const selectionPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponderCapture: () => false,
@@ -670,113 +816,37 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       dragInitialIdsRef.current = new Set(selectedIdsRef.current);
     },
     onPanResponderMove: (evt, gestureState) => {
-      const topOffset = insets.top + 58 + (searchOpen ? 52 : 0);
-      const viewportY = gestureState.moveY - topOffset;
-      const contentY = viewportY + scrollMetricsRef.current.y;
-
-      let targetId: string | null = null;
-      for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
-        if (contentY >= layout.y && contentY <= layout.y + layout.h) {
-          if (messageMap[id]?.message_kind !== "system") {
-            targetId = id;
-            break;
-          }
-        }
-      }
-
-      if (targetId) {
-        if (!dragPivotIdRef.current) {
-          dragPivotIdRef.current = targetId;
-          dragInitialIdsRef.current.add(targetId);
-        }
-
-        const pivotLayout = messageLayoutsRef.current[dragPivotIdRef.current];
-        const targetLayout = messageLayoutsRef.current[targetId];
-
-        if (pivotLayout && targetLayout) {
-          const minY = Math.min(pivotLayout.y, targetLayout.y);
-          const maxY = Math.max(pivotLayout.y, targetLayout.y);
-
-          const dragRangeIds = new Set<string>();
-          for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
-            if (layout.y >= minY && layout.y <= maxY) {
-              if (messageMap[id]?.message_kind !== "system") {
-                dragRangeIds.add(id);
-              }
-            }
-          }
-
-          const nextSelectedSet = new Set(dragInitialIdsRef.current);
-          for (const id of dragRangeIds) {
-            nextSelectedSet.add(id);
-          }
-
-          let changed = false;
-          if (nextSelectedSet.size !== selectedIdsRef.current.length) {
-            changed = true;
-          } else {
-            for (const id of selectedIdsRef.current) {
-              if (!nextSelectedSet.has(id)) {
-                changed = true;
-                break;
-              }
-            }
-          }
-
-          if (changed) {
-            setSelectedIds(Array.from(nextSelectedSet));
-          }
-        }
-      }
-
-      if (viewportY < 50) {
-        if (!scrollTimerRef.current) {
-          scrollTimerRef.current = setInterval(() => {
-            scrollRef.current?.scrollTo({ y: Math.max(0, scrollMetricsRef.current.y - 25), animated: false });
-          }, 16);
-        }
-      } else if (viewportY > threadHeightRef.current - 50) {
-        if (!scrollTimerRef.current) {
-          scrollTimerRef.current = setInterval(() => {
-            scrollRef.current?.scrollTo({ y: scrollMetricsRef.current.y + 25, animated: false });
-          }, 16);
-        }
-      } else {
-        if (scrollTimerRef.current) {
-          clearInterval(scrollTimerRef.current);
-          scrollTimerRef.current = null;
-        }
-      }
+      updateDragSelection(gestureState.moveY);
     },
-    onPanResponderRelease: () => {
-      isDragSelectingRef.current = false;
-      setIsDragSelectLocked(false);
-      if (scrollTimerRef.current) {
-        clearInterval(scrollTimerRef.current);
-        scrollTimerRef.current = null;
-      }
-    },
-    onPanResponderTerminate: () => {
-      isDragSelectingRef.current = false;
-      setIsDragSelectLocked(false);
-      if (scrollTimerRef.current) {
-        clearInterval(scrollTimerRef.current);
-        scrollTimerRef.current = null;
-      }
-    }
-  }), [insets.top, searchOpen, messageMap]);
+    onPanResponderRelease: stopDragSelect,
+    onPanResponderTerminate: stopDragSelect,
+  }), [beginDragSelect, stopDragSelect, updateDragSelection]);
 
 
   // ── 4. Render ──────────────────────────────────────────────────────────
-  if (activeSubScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
-  if (activeSubScreen === "media") return <ChatMediaScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
-  if (activeSubScreen === "disappearing") return <ChatDisappearingMessagesScreen onBack={() => setActiveSubScreen(null)} />;
-  if (activeSubScreen === "theme") return <ChatThemeScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
-  if (activeSubScreen === "createPoll") return <CreatePollScreen chat={chat} onBack={() => setActiveSubScreen(null)} />;
-  if (activeSubScreen === "pollVotes" && viewPollVotesMessage) return <ChatPollVotesScreen message={viewPollVotesMessage} reactions={reactionsByMessage ? reactionsByMessage[viewPollVotesMessage.id] : undefined} currentUserId={profile?.id || ""} onBack={() => setActiveSubScreen(null)} />;
+  const closeActiveSubScreen = () => setActiveSubScreen(null);
+  const slideDistance = Math.min(width, 430);
+  const activeSubScreenContent = useMemo(() => {
+    if (activeSubScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={closeActiveSubScreen} />;
+    if (activeSubScreen === "media") return <ChatMediaScreen chat={chat} onBack={closeActiveSubScreen} />;
+    if (activeSubScreen === "disappearing") return <ChatDisappearingMessagesScreen onBack={closeActiveSubScreen} />;
+    if (activeSubScreen === "theme") return <ChatThemeScreen chat={chat} onBack={closeActiveSubScreen} />;
+    if (activeSubScreen === "createPoll") return <CreatePollScreen chat={chat} onBack={closeActiveSubScreen} />;
+    if (activeSubScreen === "pollVotes" && viewPollVotesMessage) {
+      return (
+        <ChatPollVotesScreen
+          message={viewPollVotesMessage}
+          reactions={reactionsByMessage ? reactionsByMessage[viewPollVotesMessage.id] : undefined}
+          currentUserId={profile?.id || ""}
+          onBack={closeActiveSubScreen}
+        />
+      );
+    }
+    return null;
+  }, [activeSubScreen, chat, profile?.id, reactionsByMessage, viewPollVotesMessage]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.colors.chatBackdrop }}
+    <View style={{ flex: 1, backgroundColor: theme.colors.chatBackdrop, overflow: "hidden" }}
       onLayout={(e) => {
         const h = e.nativeEvent.layout.height;
         viewHeightRef.current = h;
@@ -851,8 +921,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <View style={{ flex: 1 }}>
               <Animated.View
                 ref={threadContainerRef}
-                style={[styles.thread, { opacity: fadeAnim }]}
+                style={styles.thread}
                 {...selectionPanResponder.panHandlers}
+                {...webDragHandlers}
                 onLayout={(e) => {
                   threadHeightRef.current = e.nativeEvent.layout.height;
                 }}
@@ -874,6 +945,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     scrollMetricsRef.current.y = y;
                     scrollMetricsRef.current.height = h;
                     scrollMetricsRef.current.contentHeight = ch;
+
+                    if (!decoyMode && y < 80 && hasOlderMessages && !isFetchingOlderMessages) {
+                      void fetchNextMessagesPage();
+                    }
 
                     // Show the button when we are more than 200px away from the bottom.
                     const distFromBottom = ch - (y + h);
@@ -1046,7 +1121,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                         });
                     } else {
                       // Real mode: send to real chat
-                      void sendMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds });
+                      void sendCachedMessage({ chatId: chat.id, body, messageKind: kind, replyToId: replyTo?.id ?? null, expireSeconds });
                       // While decoy guard is active, also append to fake chat view (client-side)
                       if (isDecoyActive && profile?.id) {
                         setLocalDecoyMessages((prev) => [
@@ -1124,7 +1199,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       <ChatOverlayManager
         {...{
           chat, profile, profiles, theme, styles, showOverflowMenu, setShowOverflowMenu, showMoreMenu, setShowMoreMenu, showMuteMenu, setShowMuteMenu, showClearDialog, setShowClearDialog, showExportDialog, setShowExportDialog, showReportDialog, setShowReportDialog, showAttachmentMenu, setShowAttachmentMenu, showSelectionOverflowMenu, setShowSelectionOverflowMenu, showDeleteModal, setShowDeleteModal,
-          muteSelection, setMuteSelection, clearSelection, setClearSelection, clearStarred, setClearStarred, reportExit, setReportExit, selectedIds, setSelectedIds, messageMap, viewInfoMessage, setViewInfoMessage, showReactionsSheetForId, setShowReactionsSheetForId, reactionsByMessage, contactNicknames, showEmojiPickerForId, setShowEmojiPickerForId, toastMessage, activeSubScreen, setActiveSubScreen, onOpenChatSettings, onCreateGroupWith, setChatMute, clearChatsLocally, showToast, toggleReaction, toggleSelection: (id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id]), requestScreenshotPermission, sendMessage, hasScreenshotPerm, myRequests, groupMembers, setSearchOpen,
+          muteSelection, setMuteSelection, clearSelection, setClearSelection, clearStarred, setClearStarred, reportExit, setReportExit, selectedIds, setSelectedIds, messageMap, viewInfoMessage, setViewInfoMessage, showReactionsSheetForId, setShowReactionsSheetForId, reactionsByMessage, contactNicknames, showEmojiPickerForId, setShowEmojiPickerForId, toastMessage, activeSubScreen, setActiveSubScreen, onOpenChatSettings, onCreateGroupWith, setChatMute, clearChatsLocally, showToast, toggleReaction, toggleSelection: (id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id]), requestScreenshotPermission, sendMessage: sendCachedMessage, hasScreenshotPerm, myRequests, groupMembers, setSearchOpen,
           muteSetting: (muteSettings && chat) ? muteSettings[chat.id] : undefined,
           performDelete: async (everyone) => {
             if (decoyMode) {
@@ -1147,7 +1222,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight,
           showDecoyManager, setShowDecoyManager,
           onSendSystemMessage: async (body: string) => {
-            await sendMessage({ chatId: chat.id, body, messageKind: "system" });
+            await sendCachedMessage({ chatId: chat.id, body, messageKind: "system" });
           },
           decoyMode,
         }}
@@ -1185,6 +1260,73 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           </View>
         </View>
       )}
+
+      <SlidingChatPage visible={!!activeSubScreen} distance={slideDistance}>
+        {activeSubScreenContent}
+      </SlidingChatPage>
     </View>
+  );
+}
+
+function SlidingChatPage({ visible, distance, children }: PropsWithChildren<{ visible: boolean; distance: number }>) {
+  const [present, setPresent] = useState(visible);
+  const anim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const childrenRef = useRef<React.ReactNode>(children);
+
+  if (visible && children) {
+    childrenRef.current = children;
+  }
+
+  useEffect(() => {
+    if (visible) {
+      setPresent(true);
+      anim.setValue(0);
+      requestAnimationFrame(() => {
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      });
+      return;
+    }
+
+    if (!present) return;
+
+    anim.setValue(1);
+    requestAnimationFrame(() => {
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => setPresent(false));
+    });
+  }, [anim, present, visible]);
+
+  if (!present) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? "auto" : "none"}
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          zIndex: 80,
+          backgroundColor: "#000",
+          transform: [
+            {
+              translateX: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-distance, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {visible ? children : childrenRef.current}
+    </Animated.View>
   );
 }

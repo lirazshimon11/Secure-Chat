@@ -528,8 +528,8 @@ function MenuItem({ label, secondary, onPress }: { label: string; secondary?: st
   const theme = useAppTheme();
   return (
     <Pressable onPress={onPress} style={{ paddingHorizontal: 20, paddingVertical: 14, width: "100%" }}>
-      <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: "700", textAlign: "left" }}>{label}</Text>
-      {secondary ? <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 3, textAlign: "left" }}>{secondary}</Text> : null}
+      <Text style={{ color: theme.colors.text, fontSize: 16, fontWeight: "700", textAlign: "right", writingDirection: "rtl" }}>{label}</Text>
+      {secondary ? <Text style={{ color: theme.colors.textMuted, fontSize: 12, marginTop: 3, textAlign: "right", writingDirection: "rtl" }}>{secondary}</Text> : null}
     </Pressable>
   );
 }

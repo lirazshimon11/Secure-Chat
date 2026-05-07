@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
+import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, TextInput, useWindowDimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
@@ -37,6 +37,7 @@ type Props = {
 export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSettings }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const { width } = useWindowDimensions();
   const { profile } = useAuth();
   const { loadChatMembers, messagesByChat, chats, contactNicknames, createChat, setChatMemberRole, removeChatMember } = useChats();
   const [members, setMembers] = useState<Profile[]>([]);
@@ -137,30 +138,35 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
     );
   }, [members, searchQuery]);
 
-  // Render sub-screens instead of parent if active
-  if (activeScreen === "storage") return <ChatStorageScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "notifications") return <ChatNotificationsScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "disappearing") return <ChatDisappearingMessagesScreen onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "advanced") return <ChatAdvancedPrivacyScreen onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "media") return <ChatMediaScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "permissions") return <ChatPermissionsScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "theme") return <ChatThemeScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "editContact") return <ChatEditContactScreen chat={chat} onBack={() => setActiveScreen(null)} />;
-  if (activeScreen === "decoyContent") return <DecoyContentScreen chat={chat} onBack={() => setActiveScreen(null)} />;
+  const closeActiveScreen = () => setActiveScreen(null);
+  const slideDistance = Math.min(width, 430);
+  const activeScreenContent = useMemo(() => {
+    if (activeScreen === "storage") return <ChatStorageScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "notifications") return <ChatNotificationsScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "disappearing") return <ChatDisappearingMessagesScreen onBack={closeActiveScreen} />;
+    if (activeScreen === "advanced") return <ChatAdvancedPrivacyScreen onBack={closeActiveScreen} />;
+    if (activeScreen === "media") return <ChatMediaScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "permissions") return <ChatPermissionsScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "theme") return <ChatThemeScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "editContact") return <ChatEditContactScreen chat={chat} onBack={closeActiveScreen} />;
+    if (activeScreen === "decoyContent") return <DecoyContentScreen chat={chat} onBack={closeActiveScreen} />;
+    return null;
+  }, [activeScreen, chat]);
 
   return (
-    <Screen>
+    <View style={styles.navigationRoot}>
+      <Screen>
       <ScrollView contentContainerStyle={styles.scrollContent}>
 
         {/* Transparent-like Header Block */}
         <View style={styles.header}>
-          <Pressable onPress={onBack} style={styles.headerIcon}>
-            <Feather color={theme.colors.text} name="arrow-right" size={24} />
-          </Pressable>
-          <View style={styles.headerSpacer} />
           <Pressable style={styles.headerIcon} onPress={() => setShowOverflowMenu(true)}>
             <MaterialCommunityIcons name="dots-vertical" size={24} color={theme.colors.text} />
+          </Pressable>
+          <View style={styles.headerSpacer} />
+          <Pressable onPress={onBack} style={styles.headerIcon}>
+            <Feather color={theme.colors.text} name="arrow-left" size={24} />
           </Pressable>
         </View>
 
@@ -208,9 +214,9 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
         {/* Media Block */}
         <Pressable style={styles.mediaBlockBtn} onPress={() => setActiveScreen("media")}>
           <View style={styles.mediaBlockHeader}>
-            <Text style={styles.mediaBlockTitle}>מדיה, קישורים ומסמכים</Text>
-            {mediaCount > 0 ? <Text style={styles.mediaBlockCount}>{mediaCount}</Text> : null}
             <Feather name="chevron-left" size={20} color={theme.colors.textMuted} />
+            {mediaCount > 0 ? <Text style={styles.mediaBlockCount}>{mediaCount}</Text> : null}
+            <Text style={styles.mediaBlockTitle}>מדיה, קישורים ומסמכים</Text>
           </View>
         </Pressable>
 
@@ -288,7 +294,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
                 <View style={styles.memberAvatar}>
                   <Text style={styles.memberAvatarText}>{(nickname || member.username || "?").slice(0, 1).toUpperCase()}</Text>
                 </View>
-                <View style={[styles.memberCopy, { paddingRight: isAdmin ? 8 : 16 }]}>
+                <View style={[styles.memberCopy, { paddingLeft: isAdmin ? 8 : 16 }]}>
                   <Text style={styles.memberName}>{displayName}</Text>
                   <Text style={styles.memberSubtitle}>~ {member.username}</Text>
                 </View>
@@ -308,10 +314,10 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
       <ChatDescriptionModal chat={chat} visible={showDescription} onClose={() => setShowDescription(false)} />
       <ChatMediaVisibilityModal visible={showVisibility} onClose={() => setShowVisibility(false)} />
 
-      {/* Overflow Menu */}
-      {showOverflowMenu && (
-        <View pointerEvents="box-none" style={styles.overlayRoot}>
-          <Pressable onPress={() => setShowOverflowMenu(false)} style={styles.backdrop} />
+        {/* Overflow Menu */}
+        {showOverflowMenu && (
+          <View pointerEvents="box-none" style={styles.overlayRoot}>
+            <Pressable onPress={() => setShowOverflowMenu(false)} style={styles.backdrop} />
           <View style={styles.menuCard}>
             {liveChat.is_group ? (
               <>
@@ -354,17 +360,84 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
         />
       )}
     </Screen>
+
+      <SlidingSettingsPage visible={!!activeScreen} distance={slideDistance}>
+        {activeScreenContent}
+      </SlidingSettingsPage>
+    </View>
+  );
+}
+
+function SlidingSettingsPage({ visible, distance, children }: PropsWithChildren<{ visible: boolean; distance: number }>) {
+  const [present, setPresent] = useState(visible);
+  const anim = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const childrenRef = useRef<React.ReactNode>(children);
+
+  if (visible && children) {
+    childrenRef.current = children;
+  }
+
+  useEffect(() => {
+    if (visible) {
+      setPresent(true);
+      anim.setValue(0);
+      requestAnimationFrame(() => {
+        Animated.timing(anim, {
+          toValue: 1,
+          duration: 260,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }).start();
+      });
+      return;
+    }
+
+    if (!present) return;
+
+    anim.setValue(1);
+    requestAnimationFrame(() => {
+      Animated.timing(anim, {
+        toValue: 0,
+        duration: 260,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start(() => setPresent(false));
+    });
+  }, [anim, present, visible]);
+
+  if (!present) return null;
+
+  return (
+    <Animated.View
+      pointerEvents={visible ? "auto" : "none"}
+      style={[
+        StyleSheet.absoluteFillObject,
+        {
+          zIndex: 50,
+          backgroundColor: "#000",
+          transform: [
+            {
+              translateX: anim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-distance, 0],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      {visible ? children : childrenRef.current}
+    </Animated.View>
   );
 }
 
 function MenuItem({ label, onPress, danger }: { label: string; onPress: () => void; danger?: boolean }) {
   const theme = useAppTheme();
-  const styles = useMemo(() => createStyles(theme), [theme]);
 
   // Use base sizes similar to screen but padding adapted for dropdowns
   return (
     <Pressable onPress={onPress} style={{ paddingHorizontal: 16, paddingVertical: 14, width: "100%" }}>
-      <Text style={{ color: danger ? theme.colors.danger : theme.colors.text, fontSize: 16, fontWeight: "700", textAlign: "left" }}>
+      <Text style={{ color: danger ? theme.colors.danger : theme.colors.text, fontSize: 16, fontWeight: "700", textAlign: "right", writingDirection: "rtl" }}>
         {label}
       </Text>
     </Pressable>
@@ -392,19 +465,24 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
       backgroundColor: theme.colors.surface,
     },
+    navigationRoot: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+      overflow: "hidden",
+    },
     overlayRoot: {
       ...StyleSheet.absoluteFillObject,
       zIndex: 40,
       justifyContent: "flex-start",
-      alignItems: "flex-end",
-      paddingEnd: 8,
+      alignItems: "flex-start",
+      paddingStart: theme.spacing.md,
     },
     backdrop: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: "transparent",
     },
     menuCard: {
-      marginTop: 50,
+      marginTop: 58,
       width: 230,
       borderRadius: theme.radius.md,
       overflow: "hidden",
@@ -518,6 +596,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       color: theme.colors.text,
       fontWeight: "600",
       flex: 1,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     mediaBlockCount: {
       fontSize: 14,
@@ -557,7 +637,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingBottom: theme.spacing.xl,
     },
     membersHeader: {
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
       justifyContent: "space-between",
       paddingHorizontal: theme.spacing.lg,
@@ -567,6 +647,8 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 15,
       color: theme.colors.textMuted,
       fontWeight: "600",
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     searchBar: {
       paddingHorizontal: theme.spacing.lg,
@@ -579,9 +661,11 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       paddingHorizontal: theme.spacing.md,
       fontSize: 15,
       color: theme.colors.text,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     memberRow: {
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       alignItems: "center",
       paddingHorizontal: theme.spacing.lg,
       paddingVertical: 12,
@@ -603,21 +687,28 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
       paddingHorizontal: theme.spacing.md,
       justifyContent: "center",
+      alignItems: "flex-end",
     },
     memberName: {
       fontSize: 16,
       fontWeight: "600",
       color: theme.colors.text,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     memberSubtitle: {
       fontSize: 14,
       color: theme.colors.textMuted,
       marginTop: 2,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     memberSubtitlePrimary: {
       fontSize: 14,
       color: theme.colors.accent,
       marginTop: 2,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     adminBadge: {
       backgroundColor: theme.colors.accentSoft,

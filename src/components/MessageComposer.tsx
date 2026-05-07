@@ -421,7 +421,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       writingDirection: "rtl",
       width: "100%",
       textAlignVertical: "center",
-      ...(Platform.OS === "web" ? ({ resize: "none", direction: "rtl" } as any) : null),
+      ...(Platform.OS === "web" ? ({ resize: "none" } as any) : null),
     },
     sendButton: {
       width: 46,

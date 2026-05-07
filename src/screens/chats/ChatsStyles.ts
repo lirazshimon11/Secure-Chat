@@ -306,11 +306,12 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>, insets: Retu
     },
     overlayRoot: {
       ...StyleSheet.absoluteFillObject,
-      top: -15,
+      top: 0,
       zIndex: 40,
       justifyContent: "flex-start",
-      alignItems: "flex-end",
-      paddingEnd: 10,
+      alignItems: Platform.OS === "web" ? "flex-start" : "flex-end",
+      paddingStart: Platform.OS === "web" ? 10 : undefined,
+      paddingEnd: Platform.OS === "web" ? undefined : 10,
     },
     backdrop: {
       ...StyleSheet.absoluteFillObject,

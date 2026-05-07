@@ -40,6 +40,7 @@ export type Message = {
   expires_at: string | null;
   created_at: string;
   deleted_at: string | null;
+  optimistic?: boolean;
 };
 
 export type ChatMuteSetting = {

@@ -177,7 +177,6 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       maxWidth: "100%",
       ...(Platform.OS === "web"
         ? ({
-            direction: "inherit",
             overflowWrap: "anywhere",
             wordBreak: "break-word",
           } as any)
@@ -187,13 +186,11 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       textAlign: "right",
       writingDirection: "rtl",
       alignSelf: "flex-end",
-      ...(Platform.OS === "web" ? ({ direction: "rtl" } as any) : null),
     },
     bodyLtr: {
       textAlign: "left",
       writingDirection: "ltr",
       alignSelf: "flex-start",
-      ...(Platform.OS === "web" ? ({ direction: "ltr" } as any) : null),
     },
     metaRow: {
       marginTop: 2,
@@ -226,21 +223,21 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     },
     reactionPicker: {
       position: "absolute",
-      top: -50,
+      top: -58,
       zIndex: 100,
     },
     pickerMine: {
-      right: 0,
+      ...(Platform.OS === "web" ? ({ left: 0 } as any) : { right: 0 }),
     },
     pickerTheirs: {
-      left: 0,
+      ...(Platform.OS === "web" ? ({ left: 0 } as any) : { left: 0 }),
     },
     pickerInner: {
       backgroundColor: theme.colors.surface,
       borderRadius: 30,
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 8,
+      paddingHorizontal: 6,
       paddingVertical: 6,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: 8 },
@@ -249,7 +246,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       elevation: 10,
     },
     quickEmoji: {
-      width: 36,
+      width: 32,
       height: 36,
       alignItems: "center",
       justifyContent: "center",

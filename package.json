@@ -1,6 +1,6 @@
 {
   "name": "secureapp",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -16,10 +16,11 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@supabase/supabase-js": "^2.49.4",
-    "expo": "^54.0.0",
+    "@tanstack/react-query": "^5.100.9",
+    "expo": "~54.0.34",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
-    "expo-dev-client": "~6.0.20",
+    "expo-dev-client": "~6.0.21",
     "expo-font": "~14.0.11",
     "expo-screen-capture": "~8.0.9",
     "expo-secure-store": "~15.0.8",

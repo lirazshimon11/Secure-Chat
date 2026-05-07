@@ -214,7 +214,12 @@ export function MessageBubble({
     if (isSystem) return;
     if (isSelectionMode) { onToggleSelection(message.id); return; }
     const now = Date.now();
-    if (lastTap.current && now - lastTap.current < 300) { onToggleReaction("\u{2764}"); lastTap.current = 0; }
+    if (lastTap.current && now - lastTap.current < 300) {
+      onInitiateDragSelect?.();
+      onToggleSelection(message.id);
+      onShowReactions(null);
+      lastTap.current = 0;
+    }
     else { lastTap.current = now; if (message.message_kind === "view_once" && viewOnceState === "hidden") onRevealViewOnce(); }
   };
 

@@ -51,9 +51,19 @@ export function ChatLeakShield({
         onRevealChange(false);
       }
     };
+    const handleTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length === 0) {
+        revealPointerIdRef.current = null;
+        onRevealChange(false);
+      }
+    };
 
     window.addEventListener("pointerup", handlePointerUp, true);
-    return () => window.removeEventListener("pointerup", handlePointerUp, true);
+    window.addEventListener("touchend", handleTouchEnd, true);
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp, true);
+      window.removeEventListener("touchend", handleTouchEnd, true);
+    };
   }, [onRevealChange, revealHeld]);
 
   const startReveal = useCallback((event: any) => {
@@ -74,16 +84,13 @@ export function ChatLeakShield({
         "button",
         {
           "aria-label": "החזק כדי לחשוף את הצ'אט",
+          type: "button",
+          tabIndex: -1,
           onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
             revealPointerIdRef.current = event.pointerId;
-            event.currentTarget.setPointerCapture?.(event.pointerId);
             onRevealChange(true);
           },
           onPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
             revealPointerIdRef.current = null;
             onRevealChange(false);
           },
@@ -94,6 +101,9 @@ export function ChatLeakShield({
           onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => {
             event.preventDefault();
             event.stopPropagation();
+          },
+          onDragStart: (event: React.DragEvent<HTMLButtonElement>) => {
+            event.preventDefault();
           },
           style: {
             ...webRevealButtonStyle,
@@ -126,7 +136,10 @@ export function ChatLeakShield({
   };
 
   return (
-    <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
+    <View
+      pointerEvents="box-none"
+      style={[StyleSheet.absoluteFillObject, Platform.OS === "web" ? webShieldRootStyle : null]}
+    >
       {revealHeld && Platform.OS === "web" ? (
         React.createElement("div", {
           "aria-hidden": true,
@@ -268,6 +281,7 @@ const webRevealButtonStyle = {
   justifyContent: "center",
   display: "flex",
   zIndex: 40,
+  pointerEvents: "auto",
   boxShadow: "0 4px 8px rgba(0,0,0,0.35)",
   cursor: "default",
   touchAction: "none",
@@ -276,6 +290,10 @@ const webRevealButtonStyle = {
   WebkitTouchCallout: "none",
   outline: "none",
   padding: 0,
+} as const;
+
+const webShieldRootStyle = {
+  pointerEvents: "none",
 } as const;
 
 const webFlickerStyle = {

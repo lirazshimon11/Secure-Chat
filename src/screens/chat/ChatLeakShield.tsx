@@ -87,15 +87,25 @@ export function ChatLeakShield({
           type: "button",
           tabIndex: -1,
           onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
             revealPointerIdRef.current = event.pointerId;
             onRevealChange(true);
           },
           onPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
             revealPointerIdRef.current = null;
             onRevealChange(false);
           },
           onPointerCancel: (event: React.PointerEvent<HTMLButtonElement>) => {
-            event.preventDefault();
+            event.stopPropagation();
+          },
+          onTouchStart: (event: React.TouchEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+          },
+          onTouchMove: (event: React.TouchEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+          },
+          onTouchEnd: (event: React.TouchEvent<HTMLButtonElement>) => {
             event.stopPropagation();
           },
           onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => {

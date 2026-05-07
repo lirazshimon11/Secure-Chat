@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Platform } from "react-native";
 import { Chat, Profile } from "@/lib/types";
 import { useScreenshots } from "@/context/ScreenshotContext";
 import { addScreenshotListener } from "@/lib/screenshotPermission";
@@ -11,6 +12,7 @@ export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMess
 
   useEffect(() => {
     if (!chat.is_group) return;
+    if (Platform.OS === "web") return;
     const tag = `sc-${chat.id}`;
     if (hasScreenshotPerm || isSuspended) {
       void allowScreenCaptureAsync(tag);

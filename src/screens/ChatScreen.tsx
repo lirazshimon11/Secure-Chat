@@ -1,5 +1,5 @@
 import { PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Alert, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder, Easing, useWindowDimensions } from "react-native";
+import { Animated, Alert, AppState, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder, Easing, useWindowDimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import React from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,6 +32,7 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { ChatOverlayManager } from "./chat/ChatOverlayManager";
 import { useChatPermissions } from "./chat/useChatPermissions";
 import { ChatBackground } from "./chat/ChatBackground";
+import { ChatLeakShield, chatLeakShieldStyles } from "./chat/ChatLeakShield";
 
 type Props = {
   chat: Chat;
@@ -293,6 +294,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
   const [isRevealingChat, setIsRevealingChat] = useState(false);
+  const [securityBlackout, setSecurityBlackout] = useState(false);
+  const [fakeScreenshotWarning, setFakeScreenshotWarning] = useState(false);
+  const [identityMagnetPoint, setIdentityMagnetPoint] = useState({ x: 214, y: 320 });
+  const suspiciousInputUntilRef = useRef(0);
+  const warningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blackoutTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isDragSelectLocked, setIsDragSelectLocked] = useState(false);
   const isDragSelectLockedRef = useRef(false);
   useEffect(() => { isDragSelectLockedRef.current = isDragSelectLocked; }, [isDragSelectLocked]);
@@ -430,6 +437,97 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } =
     useChatPermissions(chat, groupMembers, (p) => sendCachedMessage(p), activeSubScreen !== null);
+
+  const triggerSecurityBlackout = useCallback((showWarning: boolean) => {
+    setSecurityBlackout(true);
+    if (blackoutTimeoutRef.current) clearTimeout(blackoutTimeoutRef.current);
+    blackoutTimeoutRef.current = setTimeout(() => setSecurityBlackout(false), 1400);
+
+    if (showWarning) {
+      setFakeScreenshotWarning(true);
+      if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+      warningTimeoutRef.current = setTimeout(() => setFakeScreenshotWarning(false), 3600);
+    }
+  }, []);
+
+  const markSuspiciousInput = useCallback(() => {
+    suspiciousInputUntilRef.current = Date.now() + 700;
+  }, []);
+
+  const updateIdentityMagnet = useCallback((event: any) => {
+    const nativeEvent = event?.nativeEvent;
+    const touch = nativeEvent?.touches?.[1] || nativeEvent?.touches?.[0] || nativeEvent;
+    const x = touch?.locationX ?? touch?.pageX;
+    const y = touch?.locationY ?? touch?.pageY;
+    if (typeof x === "number" && typeof y === "number") {
+      setIdentityMagnetPoint({ x, y });
+    }
+
+    if ((nativeEvent?.touches?.length ?? 0) > 1) {
+      markSuspiciousInput();
+    }
+  }, [markSuspiciousInput]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined" || typeof document === "undefined") return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.toLowerCase();
+      const isScreenshotShortcut =
+        event.key === "PrintScreen" ||
+        ((event.metaKey || event.ctrlKey) && event.shiftKey && ["3", "4", "5", "s"].includes(key));
+
+      if (isScreenshotShortcut) {
+        markSuspiciousInput();
+        triggerSecurityBlackout(true);
+      }
+    };
+
+    const handleFocus = () => {
+      setSecurityBlackout(false);
+      setFakeScreenshotWarning(false);
+      suspiciousInputUntilRef.current = 0;
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        triggerSecurityBlackout(Date.now() < suspiciousInputUntilRef.current);
+        return;
+      }
+      handleFocus();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("focus", handleFocus, true);
+    document.addEventListener("visibilitychange", handleVisibilityChange, true);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("focus", handleFocus, true);
+      document.removeEventListener("visibilitychange", handleVisibilityChange, true);
+    };
+  }, [markSuspiciousInput, triggerSecurityBlackout]);
+
+  useEffect(() => {
+    setSecurityBlackout(false);
+    setFakeScreenshotWarning(false);
+    suspiciousInputUntilRef.current = 0;
+  }, [activeSubScreen]);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState !== "active") {
+        triggerSecurityBlackout(Date.now() < suspiciousInputUntilRef.current);
+      }
+    });
+    return () => subscription.remove();
+  }, [triggerSecurityBlackout]);
+
+  useEffect(() => () => {
+    if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
+    if (blackoutTimeoutRef.current) clearTimeout(blackoutTimeoutRef.current);
+  }, []);
 
   const handleToggleReaction = (messageId: string, emoji: string) => {
     const msg = visibleMessages.find(m => m.id === messageId);
@@ -779,6 +877,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     return {
       onPointerMove: (event: any) => {
+        updateIdentityMagnet(event);
         if (!isDragSelectLockedRef.current && !isDragSelectingRef.current) return;
         if (event?.nativeEvent?.buttons !== undefined && event.nativeEvent.buttons !== 1) {
           stopDragSelect();
@@ -796,7 +895,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         }
       },
     } as any;
-  }, [beginDragSelect, stopDragSelect]);
+  }, [beginDragSelect, stopDragSelect, updateIdentityMagnet]);
 
   const selectionPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponderCapture: () => false,
@@ -921,7 +1020,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             <View style={{ flex: 1 }}>
               <Animated.View
                 ref={threadContainerRef}
-                style={styles.thread}
+                style={[
+                  styles.thread,
+                  isRevealingChat ? chatLeakShieldStyles.protectedThreadRevealed : chatLeakShieldStyles.protectedThreadBlurred,
+                ]}
                 {...selectionPanResponder.panHandlers}
                 {...webDragHandlers}
                 onLayout={(e) => {
@@ -929,6 +1031,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 }}
               >
                 <ScrollView ref={scrollRef} scrollEnabled={!isDragSelectLocked} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                  onTouchStart={updateIdentityMagnet}
+                  onTouchMove={updateIdentityMagnet}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
@@ -1070,6 +1174,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   </Pressable>
                 )}
               </Animated.View>
+              <ChatLeakShield
+                revealHeld={isRevealingChat}
+                blackout={securityBlackout}
+                warningVisible={fakeScreenshotWarning}
+                magnetPoint={identityMagnetPoint}
+                username={profile?.username || profile?.full_name || "משתמש"}
+                onRevealChange={setIsRevealingChat}
+                bottomOffset={16}
+              />
             </View>
           </View>
           {/* Composer — always visible for members (decoy users can still send real messages) */}

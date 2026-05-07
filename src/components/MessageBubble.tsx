@@ -14,6 +14,7 @@ import { getUserColor, getMessagePreview } from "@/screens/chat/ChatUtils";
 import { createStyles } from "./message/MessageBubbleStyles";
 import { PollBubble } from "./message/PollBubble";
 import { ScreenshotRequestBubble } from "./message/ScreenshotRequestBubble";
+import { SecureCanvasText } from "./SecureCanvasText";
 
 type ViewOnceState = "hidden" | "revealed" | "opened";
 
@@ -356,17 +357,16 @@ export function MessageBubble({
                   isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
 
                     <View style={[styles.messageTextContainer, bubbleWidthStyle && styles.messageTextContainerWide]}>
-                      <Text
-                        {...(Platform.OS === "web" ? ({ dir: messageStartsLtr ? "ltr" : "rtl" } as any) : null)}
-                        textBreakStrategy="simple"
+                      <SecureCanvasText
+                        text={displayBody}
+                        color={isTemporaryExpired ? theme.colors.textMuted : theme.colors.text}
+                        direction={messageStartsLtr ? "ltr" : "rtl"}
                         style={[
                           styles.body,
                           messageStartsLtr ? styles.bodyLtr : styles.bodyRtl,
                           isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' },
                         ]}
-                      >
-                        {displayBody}
-                      </Text>
+                      />
                     </View>
                 }
 

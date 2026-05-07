@@ -1,0 +1,108 @@
+
+> secureapp@1.0.2 web
+> expo start --web --port 8083
+
+env: load .env
+env: export EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_ANON_KEY
+Starting project at C:\COMPUTERS\PROJECTS\Apps\SecureApp
+Starting Metro Bundler
+Waiting on http://localhost:8083
+Logs for your project will appear below.
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 1448ms node_modules\expo\AppEntry.js (1033 modules)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 54ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 107ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 85ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 82ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 78ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 79ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 160ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 100ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 105ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 60ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 87ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 78ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+ ERROR  SyntaxError: C:\COMPUTERS\PROJECTS\Apps\SecureApp\src\screens\chat\ChatLeakShield.tsx: Unexpected token, expected ":" (100:7)
+
+   98 |           ]}
+   99 |         />
+> 100 |       )}
+      |        ^
+  101 |
+  102 |       {blackout && <View pointerEvents="none" style={styles.blackout} />}
+  103 |
+    at constructor (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:365:19)
+    at TypeScriptParserMixin.raise (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:6599:19)
+    at TypeScriptParserMixin.unexpected (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:6619:16)
+    at TypeScriptParserMixin.expect (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:6899:12)
+    at TypeScriptParserMixin.parseConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10892:12)
+    at TypeScriptParserMixin.parseConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9603:18)
+    at TypeScriptParserMixin.parseMaybeConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10885:17)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10831:21)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9786:20)
+    at TypeScriptParserMixin.parseConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10893:29)
+    at TypeScriptParserMixin.parseConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9603:18)
+    at TypeScriptParserMixin.parseMaybeConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10885:17)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10831:21)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9786:20)
+    at TypeScriptParserMixin.parseExpressionBase (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10784:23)
+    at C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10780:39
+    at TypeScriptParserMixin.allowInAnd (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:12426:12)
+    at TypeScriptParserMixin.parseExpression (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10780:17)
+    at TypeScriptParserMixin.jsxParseExpressionContainer (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:4632:31)
+    at TypeScriptParserMixin.jsxParseElementAt (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:4711:36)
+    at TypeScriptParserMixin.jsxParseElement (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:4749:17)
+    at TypeScriptParserMixin.parseExprAtom (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:4759:19)
+    at TypeScriptParserMixin.parseExprSubscripts (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11081:23)
+    at TypeScriptParserMixin.parseUpdate (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11066:21)
+    at TypeScriptParserMixin.parseMaybeUnary (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11046:23)
+    at TypeScriptParserMixin.parseMaybeUnary (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9837:18)
+    at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10899:61)
+    at TypeScriptParserMixin.parseExprOps (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10904:23)
+    at TypeScriptParserMixin.parseMaybeConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10881:23)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10831:21)
+    at C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9775:39
+    at TypeScriptParserMixin.tryParse (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:6907:20)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9775:18)
+    at C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10800:39
+    at TypeScriptParserMixin.allowInAnd (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:12426:12)
+    at TypeScriptParserMixin.parseMaybeAssignAllowIn (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10800:17)
+    at TypeScriptParserMixin.parseMaybeAssignAllowInOrVoidPattern (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:12493:17)
+    at TypeScriptParserMixin.parseParenAndDistinguishExpression (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11675:28)
+    at TypeScriptParserMixin.parseExprAtom (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11331:23)
+    at TypeScriptParserMixin.parseExprAtom (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:4764:20)
+    at TypeScriptParserMixin.parseExprSubscripts (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11081:23)
+    at TypeScriptParserMixin.parseUpdate (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11066:21)
+    at TypeScriptParserMixin.parseMaybeUnary (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:11046:23)
+    at TypeScriptParserMixin.parseMaybeUnary (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9837:18)
+    at TypeScriptParserMixin.parseMaybeUnaryOrPrivate (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10899:61)
+    at TypeScriptParserMixin.parseExprOps (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10904:23)
+    at TypeScriptParserMixin.parseMaybeConditional (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10881:23)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10831:21)
+    at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9786:20)
+    at TypeScriptParserMixin.parseExpressionBase (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10784:23)

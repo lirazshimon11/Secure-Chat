@@ -1,17 +1,46 @@
 import "react-native-gesture-handler";
-import { Platform } from "react-native";
+import { Platform, Text as RNText, TextInput as RNTextInput } from "react-native";
 import { SYSTEM_FONT_FAMILY } from "@/lib/webStyles";
+
+if (Platform.OS === "web") {
+  const defaultFontStyle = { fontFamily: SYSTEM_FONT_FAMILY };
+  (RNText as any).defaultProps = (RNText as any).defaultProps || {};
+  (RNText as any).defaultProps.style = [(RNText as any).defaultProps.style, defaultFontStyle];
+  (RNTextInput as any).defaultProps = (RNTextInput as any).defaultProps || {};
+  (RNTextInput as any).defaultProps.style = [(RNTextInput as any).defaultProps.style, defaultFontStyle];
+}
 
 // Web only: constrain layout to phone width
 if (Platform.OS === "web" && typeof document !== "undefined") {
   const style = document.createElement("style");
   style.textContent = `
     * {
+      font-family: ${SYSTEM_FONT_FAMILY};
       -webkit-touch-callout: none !important;
       -webkit-tap-highlight-color: transparent !important;
       -webkit-user-drag: none !important;
       -webkit-user-select: none !important;
       user-select: none !important;
+    }
+    canvas {
+      pointer-events: none !important;
+      -webkit-user-select: none !important;
+      user-select: none !important;
+    }
+    @keyframes secureapp-shutter-flicker {
+      0% { opacity: 0.10; transform: translate3d(0, 0, 0); }
+      20% { opacity: 0.34; transform: translate3d(0, -1px, 0); }
+      40% { opacity: 0.16; transform: translate3d(1px, 0, 0); }
+      60% { opacity: 0.42; transform: translate3d(-1px, 1px, 0); }
+      80% { opacity: 0.22; transform: translate3d(0, 1px, 0); }
+      100% { opacity: 0.38; transform: translate3d(1px, -1px, 0); }
+    }
+    @keyframes secureapp-shutter-noise {
+      0% { background-position: 0 0, 0 0, 0 0; }
+      25% { background-position: 9px -7px, -5px 4px, 0 3px; }
+      50% { background-position: -8px 6px, 4px -6px, 0 7px; }
+      75% { background-position: 5px 9px, 8px 2px, 0 11px; }
+      100% { background-position: -6px -4px, -9px 8px, 0 13px; }
     }
     html, body {
       background: #0a0a0a !important;
@@ -66,6 +95,14 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
   });
 
   document.addEventListener("dragstart", (event) => {
+    if (!isEditableTarget(event.target)) event.preventDefault();
+  });
+
+  document.addEventListener("copy", (event) => {
+    if (!isEditableTarget(event.target)) event.preventDefault();
+  });
+
+  document.addEventListener("cut", (event) => {
     if (!isEditableTarget(event.target)) event.preventDefault();
   });
 }

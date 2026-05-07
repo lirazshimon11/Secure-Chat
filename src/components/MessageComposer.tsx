@@ -105,6 +105,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
       const el = inputRef.current as any;
       const collapsedHeight = 42;
       const maxComposerHeight = 170;
+      const firstWrapThresholdPx = 1;
       const measureEl = typeof document !== "undefined" ? document.createElement("div") : null;
       if (measureEl && typeof document !== "undefined") {
         const computedStyle = window.getComputedStyle(el);
@@ -115,7 +116,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
         measureEl.style.zIndex = "-1";
         measureEl.style.whiteSpace = "pre-wrap";
         measureEl.style.wordBreak = "break-word";
-        measureEl.style.overflowWrap = "anywhere";
+        measureEl.style.overflowWrap = "break-word";
         measureEl.style.boxSizing = computedStyle.boxSizing;
         measureEl.style.font = computedStyle.font;
         measureEl.style.fontSize = computedStyle.fontSize;
@@ -134,6 +135,13 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
         measureEl.style.width = `${el.clientWidth || 0}px`;
         document.body.appendChild(measureEl);
       }
+      const measureContentHeight = (value: string) => {
+        if (!measureEl) return el.scrollHeight;
+        measureEl.style.width = `${el.clientWidth || 0}px`;
+        measureEl.textContent = value || " ";
+        return measureEl.scrollHeight;
+      };
+      const singleLineContentHeight = measureContentHeight(" ");
       const keydownHandler = (e: any) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -144,13 +152,9 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
       const inputHandler = (nextBody?: string) => {
         const value = String(nextBody ?? el.value ?? "");
         const hasText = Boolean(value.trim());
-        const measuredContentHeight = (() => {
-          if (!measureEl) return el.scrollHeight;
-          measureEl.style.width = `${el.clientWidth || 0}px`;
-          measureEl.textContent = value || "";
-          return measureEl.scrollHeight;
-        })();
-        const nextHeight = hasText
+        const measuredContentHeight = measureContentHeight(value);
+        const shouldExpand = measuredContentHeight > singleLineContentHeight + firstWrapThresholdPx;
+        const nextHeight = hasText && shouldExpand
           ? Math.min(maxComposerHeight, Math.max(collapsedHeight, measuredContentHeight))
           : collapsedHeight;
         el.style.height = `${nextHeight}px`;

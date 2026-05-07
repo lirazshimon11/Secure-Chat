@@ -1086,7 +1086,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                                 }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
                                 reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                                 onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
-                                onInitiateDragSelect={() => setIsDragSelectLocked(true)}
+                                onInitiateDragSelect={() => {
+                                  if (Platform.OS !== "web") setIsDragSelectLocked(true);
+                                }}
                                 onAvatarPress={(author) => setSelectedAvatarMember(author)}
                                 replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                                 replyToName={(() => {
@@ -1108,7 +1110,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                               }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
                               reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                               onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
-                              onInitiateDragSelect={() => setIsDragSelectLocked(true)}
+                              onInitiateDragSelect={() => {
+                                if (Platform.OS !== "web") setIsDragSelectLocked(true);
+                              }}
                               onAvatarPress={(author) => setSelectedAvatarMember(author)}
                               replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                               replyToName={(() => {

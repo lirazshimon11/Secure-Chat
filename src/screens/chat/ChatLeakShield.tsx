@@ -21,7 +21,6 @@ export function ChatLeakShield({
   revealHeld,
   blackout,
   warningVisible,
-  magnetPoint,
   username,
   onRevealChange,
   bottomOffset,
@@ -46,26 +45,15 @@ export function ChatLeakShield({
   useEffect(() => {
     if (Platform.OS !== "web" || !revealHeld) return;
 
-    const handlePointerDone = (event: PointerEvent) => {
+    const handlePointerUp = (event: PointerEvent) => {
       if (revealPointerIdRef.current === null || event.pointerId === revealPointerIdRef.current) {
         revealPointerIdRef.current = null;
         onRevealChange(false);
       }
     };
-    const handleWindowBlur = () => {
-      revealPointerIdRef.current = null;
-      onRevealChange(false);
-    };
 
-    window.addEventListener("pointerup", handlePointerDone, true);
-    window.addEventListener("pointercancel", handlePointerDone, true);
-    window.addEventListener("blur", handleWindowBlur, true);
-
-    return () => {
-      window.removeEventListener("pointerup", handlePointerDone, true);
-      window.removeEventListener("pointercancel", handlePointerDone, true);
-      window.removeEventListener("blur", handleWindowBlur, true);
-    };
+    window.addEventListener("pointerup", handlePointerUp, true);
+    return () => window.removeEventListener("pointerup", handlePointerUp, true);
   }, [onRevealChange, revealHeld]);
 
   const startReveal = useCallback((event: any) => {
@@ -79,6 +67,63 @@ export function ChatLeakShield({
   }, [onRevealChange]);
 
   const watermarkText = useMemo(() => `הודלף ע"י ${username || "משתמש"}`, [username]);
+
+  const renderRevealButton = (side: "left" | "right") => {
+    if (Platform.OS === "web") {
+      return React.createElement(
+        "button",
+        {
+          "aria-label": "החזק כדי לחשוף את הצ'אט",
+          onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            revealPointerIdRef.current = event.pointerId;
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            onRevealChange(true);
+          },
+          onPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            revealPointerIdRef.current = null;
+            onRevealChange(false);
+          },
+          onPointerCancel: (event: React.PointerEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+          },
+          onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+          },
+          style: {
+            ...webRevealButtonStyle,
+            ...(side === "left" ? { left: 14 } : { right: 14 }),
+            bottom: bottomOffset + 14,
+            backgroundColor: revealHeld ? "rgba(0,168,132,0.95)" : "rgba(220,0,0,0.86)",
+          },
+        },
+        <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />,
+      );
+    }
+
+    return (
+      <Pressable
+        accessibilityLabel="החזק כדי לחשוף את הצ'אט"
+        delayLongPress={0}
+        onPressIn={startReveal}
+        onPressOut={endReveal}
+        onResponderTerminate={endReveal}
+        style={({ pressed }) => [
+          styles.revealButton,
+          side === "left" && styles.revealButtonLeft,
+          { bottom: bottomOffset + 14 },
+          pressed && styles.revealButtonPressed,
+        ]}
+      >
+        <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />
+      </Pressable>
+    );
+  };
 
   return (
     <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
@@ -116,38 +161,8 @@ export function ChatLeakShield({
         </View>
       )}
 
-      <Pressable
-        accessibilityLabel="החזק כדי לחשוף את הצ'אט"
-        delayLongPress={0}
-        onPressIn={startReveal}
-        onPressOut={endReveal}
-        onResponderTerminate={endReveal}
-        onTouchCancel={endReveal}
-        style={({ pressed }) => [
-          styles.revealButton,
-          { bottom: bottomOffset + 14 },
-          pressed && styles.revealButtonPressed,
-        ]}
-      >
-        <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />
-      </Pressable>
-
-      <Pressable
-        accessibilityLabel="החזק כדי לחשוף את הצ'אט"
-        delayLongPress={0}
-        onPressIn={startReveal}
-        onPressOut={endReveal}
-        onResponderTerminate={endReveal}
-        onTouchCancel={endReveal}
-        style={({ pressed }) => [
-          styles.revealButton,
-          styles.revealButtonLeft,
-          { bottom: bottomOffset + 14 },
-          pressed && styles.revealButtonPressed,
-        ]}
-      >
-        <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />
-      </Pressable>
+      {renderRevealButton("right")}
+      {renderRevealButton("left")}
 
       {warningVisible && (
         <View pointerEvents="none" style={styles.warningOverlay}>
@@ -241,6 +256,27 @@ const styles = StyleSheet.create({
     writingDirection: "rtl",
   },
 });
+
+const webRevealButtonStyle = {
+  position: "absolute",
+  width: 44,
+  height: 44,
+  borderRadius: 22,
+  borderWidth: 0,
+  borderStyle: "solid",
+  alignItems: "center",
+  justifyContent: "center",
+  display: "flex",
+  zIndex: 40,
+  boxShadow: "0 4px 8px rgba(0,0,0,0.35)",
+  cursor: "default",
+  touchAction: "none",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
+  outline: "none",
+  padding: 0,
+} as const;
 
 const webFlickerStyle = {
   position: "absolute",

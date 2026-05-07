@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAppTheme } from "@/lib/theme";
-import { webEmbeddedInputReset, webNoOutline } from "@/lib/webStyles";
+import { webEmbeddedInputReset, webNoOutline, webSystemFont } from "@/lib/webStyles";
 import { getUserColor, getMessagePreview } from "@/screens/chat/ChatUtils";
 
 type Props = {
@@ -104,36 +104,36 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
       const collapsedHeight = 42;
-      const lineHeight = 22;
       const maxComposerHeight = 170;
-      const measureCanvas = typeof document !== "undefined" ? document.createElement("canvas") : null;
-      const measureContext = measureCanvas?.getContext("2d") ?? null;
-      const estimateLineCount = (nextBody?: string) => {
-        const value = String(nextBody ?? el.value ?? "");
-        const availableWidth = Math.max(1, (el.clientWidth || 0) - 8);
-        if (!measureContext || !value || availableWidth <= 1) return 1;
-
+      const measureEl = typeof document !== "undefined" ? document.createElement("div") : null;
+      if (measureEl && typeof document !== "undefined") {
         const computedStyle = window.getComputedStyle(el);
-        measureContext.font = computedStyle.font || `${computedStyle.fontSize || "16px"} ${computedStyle.fontFamily || "sans-serif"}`;
-
-        return value.split("\n").reduce((totalLines, paragraph) => {
-          if (!paragraph) return totalLines + 1;
-          let paragraphLines = 1;
-          let currentLineWidth = 0;
-
-          for (const char of Array.from(paragraph)) {
-            const charWidth = measureContext.measureText(char).width;
-            if (currentLineWidth > 0 && currentLineWidth + charWidth > availableWidth) {
-              paragraphLines += 1;
-              currentLineWidth = charWidth;
-            } else {
-              currentLineWidth += charWidth;
-            }
-          }
-
-          return totalLines + paragraphLines;
-        }, 0);
-      };
+        measureEl.setAttribute("aria-hidden", "true");
+        measureEl.style.position = "absolute";
+        measureEl.style.visibility = "hidden";
+        measureEl.style.pointerEvents = "none";
+        measureEl.style.zIndex = "-1";
+        measureEl.style.whiteSpace = "pre-wrap";
+        measureEl.style.wordBreak = "break-word";
+        measureEl.style.overflowWrap = "anywhere";
+        measureEl.style.boxSizing = computedStyle.boxSizing;
+        measureEl.style.font = computedStyle.font;
+        measureEl.style.fontSize = computedStyle.fontSize;
+        measureEl.style.lineHeight = computedStyle.lineHeight;
+        measureEl.style.fontWeight = computedStyle.fontWeight;
+        measureEl.style.letterSpacing = computedStyle.letterSpacing;
+        measureEl.style.paddingTop = computedStyle.paddingTop;
+        measureEl.style.paddingBottom = computedStyle.paddingBottom;
+        measureEl.style.paddingLeft = computedStyle.paddingLeft;
+        measureEl.style.paddingRight = computedStyle.paddingRight;
+        measureEl.style.borderTopWidth = computedStyle.borderTopWidth;
+        measureEl.style.borderBottomWidth = computedStyle.borderBottomWidth;
+        measureEl.style.borderLeftWidth = computedStyle.borderLeftWidth;
+        measureEl.style.borderRightWidth = computedStyle.borderRightWidth;
+        measureEl.style.direction = computedStyle.direction;
+        measureEl.style.width = `${el.clientWidth || 0}px`;
+        document.body.appendChild(measureEl);
+      }
       const keydownHandler = (e: any) => {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
@@ -144,10 +144,14 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
       const inputHandler = (nextBody?: string) => {
         const value = String(nextBody ?? el.value ?? "");
         const hasText = Boolean(value.trim());
-        el.style.height = 'auto';
-        const lineCount = estimateLineCount(value);
-        const nextHeight = hasText && lineCount > 1
-          ? Math.min(maxComposerHeight, collapsedHeight + (lineCount - 1) * lineHeight)
+        const measuredContentHeight = (() => {
+          if (!measureEl) return el.scrollHeight;
+          measureEl.style.width = `${el.clientWidth || 0}px`;
+          measureEl.textContent = value || "";
+          return measureEl.scrollHeight;
+        })();
+        const nextHeight = hasText
+          ? Math.min(maxComposerHeight, Math.max(collapsedHeight, measuredContentHeight))
           : collapsedHeight;
         el.style.height = `${nextHeight}px`;
         el.style.overflowY = nextHeight >= maxComposerHeight ? "auto" : "hidden";
@@ -166,6 +170,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
       return () => {
         el.removeAttribute("data-secureapp-composer");
         el.style.removeProperty("overflow-y");
+        measureEl?.remove();
         resizeInputRef.current = () => {};
         el.removeEventListener("keydown", keydownHandler);
       };
@@ -362,9 +367,12 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>, isReplying: boolean
       elevation: 3,
     },
     modeLabel: {
+      ...webSystemFont,
       color: theme.colors.textMuted,
       fontSize: 12,
-      fontWeight: "800",
+      fontWeight: "600",
+      fontVariant: [],
+      writingDirection: "rtl",
     },
     modeLabelActive: {
       color: theme.colors.textOnAccent,

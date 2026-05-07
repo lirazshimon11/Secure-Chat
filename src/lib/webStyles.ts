@@ -1,5 +1,16 @@
 import { Platform } from "react-native";
 
+export const SYSTEM_FONT_FAMILY =
+  'system-ui, "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif';
+
+export const webSystemFont =
+  Platform.OS === "web"
+    ?
+        ({
+          fontFamily: SYSTEM_FONT_FAMILY,
+        } as any)
+    : undefined;
+
 export const webNoOutline =
   Platform.OS === "web"
     ?

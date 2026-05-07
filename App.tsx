@@ -1,5 +1,6 @@
 import "react-native-gesture-handler";
 import { Platform } from "react-native";
+import { SYSTEM_FONT_FAMILY } from "@/lib/webStyles";
 
 // Web only: constrain layout to phone width
 if (Platform.OS === "web" && typeof document !== "undefined") {
@@ -14,6 +15,7 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
     }
     html, body {
       background: #0a0a0a !important;
+      font-family: ${SYSTEM_FONT_FAMILY};
       height: 100%;
       margin: 0;
       padding: 0;
@@ -31,11 +33,13 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
       background: transparent !important;
     }
     input, textarea, [contenteditable="true"], [contenteditable="true"] * {
+      font-family: ${SYSTEM_FONT_FAMILY};
       -webkit-user-select: text !important;
       user-select: text !important;
       -webkit-touch-callout: default !important;
     }
     #root {
+      font-family: ${SYSTEM_FONT_FAMILY};
       max-width: 430px;
       height: 100%;
       margin: 0 auto;

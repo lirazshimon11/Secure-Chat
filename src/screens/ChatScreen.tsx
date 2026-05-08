@@ -937,6 +937,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       startY: number;
       lastY: number;
       messageId: string | null;
+      chatAction: string | null;
       longPressed: boolean;
       moved: boolean;
       timer: ReturnType<typeof setTimeout> | null;
@@ -1026,17 +1027,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       element.dispatchEvent(new MouseEvent("click", commonMouse));
     };
 
-    const findScrollable = (element: HTMLElement | null) => {
-      let node: HTMLElement | null = element;
-      while (node && node !== document.body) {
-        const style = window.getComputedStyle(node);
-        const canScroll = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
-        if (canScroll) return node;
-        node = node.parentElement;
-      }
-      return null;
-    };
-
     const toggleSelection = (messageId: string) => {
       if (!messageMap[messageId] || messageMap[messageId].message_kind === "system") return;
       setSelectedIds((current) =>
@@ -1054,7 +1044,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const shouldHandleTouch = (target: HTMLElement | null) => {
       if (!isRevealingChatRef.current) return false;
       if (target?.closest?.("[data-secure-reveal-button='true']")) return false;
-      return true;
+      return !!findChatAction(target) || !!findMessageId(target);
     };
 
     const handleTouchStart = (event: TouchEvent) => {
@@ -1067,12 +1057,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
       const target = getElementFromTouch(touch);
       const messageId = findMessageId(target);
+      const chatAction = findChatAction(target);
       const nextTouch: OperationalTouch = {
         id: touch.identifier,
         startX: touch.clientX,
         startY: touch.clientY,
         lastY: touch.clientY,
         messageId,
+        chatAction,
         longPressed: false,
         moved: false,
         timer: null,
@@ -1083,9 +1075,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           const current = operationalTouchRef.current;
           if (!current || current.id !== nextTouch.id || current.moved) return;
           current.longPressed = true;
-          if (!selectedIdsRef.current.includes(messageId)) {
-            toggleSelection(messageId);
-          }
           isDragSelectingRef.current = true;
           dragPivotIdRef.current = null;
           dragInitialIdsRef.current = new Set(selectedIdsRef.current);
@@ -1094,9 +1083,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
 
       operationalTouchRef.current = nextTouch;
-      event.preventDefault();
-      event.stopPropagation();
-      (event as any).stopImmediatePropagation?.();
+      if (chatAction) {
+        event.preventDefault();
+        event.stopPropagation();
+        (event as any).stopImmediatePropagation?.();
+      }
     };
 
     const handleTouchMove = (event: TouchEvent) => {
@@ -1116,21 +1107,19 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
       if (current.longPressed) {
         beginDragSelect(touch.clientY);
+        event.preventDefault();
+        event.stopPropagation();
+        (event as any).stopImmediatePropagation?.();
       } else if (movedEnough) {
         clearOperationalTimer();
-        const target = getElementFromTouch(touch);
-        const scrollable = findScrollable(target);
-        if (scrollable) {
-          const nextScrollTop = Math.max(0, scrollable.scrollTop + current.lastY - touch.clientY);
-          scrollable.scrollTop = nextScrollTop;
-          scrollMetricsRef.current.y = nextScrollTop;
+        if (current.chatAction) {
+          event.preventDefault();
+          event.stopPropagation();
+          (event as any).stopImmediatePropagation?.();
         }
       }
 
       current.lastY = touch.clientY;
-      event.preventDefault();
-      event.stopPropagation();
-      (event as any).stopImmediatePropagation?.();
     };
 
     const handleTouchEnd = (event: TouchEvent) => {
@@ -1142,29 +1131,35 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       clearOperationalTimer();
       const target = getElementFromTouch(touch);
       const messageId = findMessageId(target) || current.messageId;
+      let handled = false;
 
       if (!current.longPressed && !current.moved) {
-        if (runChatAction(findChatAction(target))) {
-          // Header action was handled directly.
+        if (runChatAction(findChatAction(target) || current.chatAction)) {
+          handled = true;
         } else if (messageId && selectedIdsRef.current.length > 0) {
           toggleSelection(messageId);
+          handled = true;
         } else {
           const clickable = findClickable(target);
           if (clickable && !clickable.closest("[data-secure-reveal-button='true']")) {
             dispatchTapSequence(clickable, touch);
             clickable.click();
+            handled = true;
           }
         }
       }
 
       if (current.longPressed) {
         stopDragSelect();
+        handled = true;
       }
 
       operationalTouchRef.current = null;
-      event.preventDefault();
-      event.stopPropagation();
-      (event as any).stopImmediatePropagation?.();
+      if (handled || current.chatAction) {
+        event.preventDefault();
+        event.stopPropagation();
+        (event as any).stopImmediatePropagation?.();
+      }
     };
 
     const handleTouchCancel = () => {

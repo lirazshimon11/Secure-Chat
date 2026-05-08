@@ -5,6 +5,7 @@ import { Screen } from "@/components/Screen";
 import { DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings, saveChatSecuritySettings } from "@/lib/chatSecuritySettings";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatSecuritySettings } from "@/lib/types";
+import { webSystemFont } from "@/lib/webStyles";
 
 type Props = {
   chat: Chat;
@@ -96,7 +97,7 @@ export function ChatAdvancedPrivacyScreen({ chat, currentUserId, isAdmin, onBack
     <Screen>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>הגנות אבטחה בצ׳אט</Text>
+          <Text style={[styles.headerTitle, webSystemFont]}>הגנות אבטחה בצ׳אט</Text>
           <Pressable onPress={onBack} style={styles.backButton}>
             <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
           </Pressable>
@@ -105,7 +106,7 @@ export function ChatAdvancedPrivacyScreen({ chat, currentUserId, isAdmin, onBack
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.notice}>
             <MaterialCommunityIcons name={isAdmin ? "shield-check-outline" : "shield-lock-outline"} size={24} color={theme.colors.accent} />
-            <Text style={styles.noticeText}>
+            <Text style={[styles.noticeText, webSystemFont]}>
               {isAdmin
                 ? "כמנהל/ת הקבוצה אפשר להדליק ולכבות כל שכבת אבטחה בכל רגע. השינוי חל על הצ׳אט הזה."
                 : "רק מנהל/ת הקבוצה יכול/ה לשנות את שכבות האבטחה. כאן אפשר לראות מה פעיל כרגע."}
@@ -124,8 +125,8 @@ export function ChatAdvancedPrivacyScreen({ chat, currentUserId, isAdmin, onBack
                     <MaterialCommunityIcons name={row.icon} size={24} color={theme.colors.textMuted} />
                   </View>
                   <View style={styles.rowCopy}>
-                    <Text style={styles.rowTitle}>{row.title}</Text>
-                    <Text style={styles.rowSubtitle}>{row.subtitle}</Text>
+                    <Text style={[styles.rowTitle, webSystemFont]}>{row.title}</Text>
+                    <Text style={[styles.rowSubtitle, webSystemFont]}>{row.subtitle}</Text>
                   </View>
                   <Switch
                     value={settings[row.key]}
@@ -133,6 +134,7 @@ export function ChatAdvancedPrivacyScreen({ chat, currentUserId, isAdmin, onBack
                     onValueChange={(value) => void updateSetting(row.key, value)}
                     trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentSoft }}
                     thumbColor={settings[row.key] ? theme.colors.accent : theme.colors.textMuted}
+                    style={webSystemFont}
                   />
                 </View>
               ))}
@@ -171,7 +173,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     headerTitle: {
       color: theme.colors.headerText,
       fontSize: 20,
-      fontWeight: "800",
+      fontWeight: "700",
       flex: 1,
       textAlign: "right",
       writingDirection: "rtl",
@@ -225,7 +227,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     rowTitle: {
       color: theme.colors.text,
       fontSize: 16,
-      fontWeight: "800",
+      fontWeight: "600",
       textAlign: "right",
       writingDirection: "rtl",
     },

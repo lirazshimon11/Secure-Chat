@@ -988,6 +988,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       lastY: number;
       messageId: string | null;
       chatAction: string | null;
+      downTarget: HTMLElement | null;
       longPressed: boolean;
       moved: boolean;
       timer: ReturnType<typeof setTimeout> | null;
@@ -1043,13 +1044,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     };
 
     const dispatchTapSequence = (element: HTMLElement, touch: Touch) => {
+      const primaryPointerId = 1;
       const commonPointer = {
         bubbles: true,
         cancelable: true,
         composed: true,
-        pointerId: touch.identifier,
+        pointerId: primaryPointerId,
         pointerType: "touch",
-        isPrimary: false,
+        isPrimary: true,
         clientX: touch.clientX,
         clientY: touch.clientY,
         screenX: touch.screenX,
@@ -1075,6 +1077,43 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       element.dispatchEvent(new MouseEvent("mousedown", commonMouse));
       element.dispatchEvent(new MouseEvent("mouseup", commonMouse));
       element.dispatchEvent(new MouseEvent("click", commonMouse));
+    };
+
+    const dispatchPrimaryTouchPointer = (element: HTMLElement | null, type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", touch: Touch) => {
+      if (!element) return;
+      try {
+        element.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            pointerId: 1,
+            pointerType: "touch",
+            isPrimary: true,
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            screenX: touch.screenX,
+            screenY: touch.screenY,
+          }),
+        );
+      } catch {
+        // PointerEvent construction can be unavailable in older embedded webviews.
+      }
+    };
+
+    const dispatchPrimaryMouse = (element: HTMLElement | null, type: "mousedown" | "mousemove" | "mouseup", touch: Touch) => {
+      if (!element) return;
+      element.dispatchEvent(
+        new MouseEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          screenX: touch.screenX,
+          screenY: touch.screenY,
+        }),
+      );
     };
 
     const toggleSelection = (messageId: string) => {
@@ -1115,6 +1154,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         lastY: touch.clientY,
         messageId,
         chatAction,
+        downTarget: target,
         longPressed: false,
         moved: false,
         timer: null,
@@ -1133,6 +1173,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
 
       operationalTouchRef.current = nextTouch;
+      dispatchPrimaryTouchPointer(target, "pointerdown", touch);
+      dispatchPrimaryMouse(target, "mousedown", touch);
       event.preventDefault();
       event.stopPropagation();
       (event as any).stopImmediatePropagation?.();
@@ -1152,6 +1194,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
 
       setIdentityMagnetPoint({ x: touch.clientX, y: touch.clientY });
+      const currentTarget = getElementFromTouch(touch);
+      dispatchPrimaryTouchPointer(currentTarget || current.downTarget, "pointermove", touch);
+      dispatchPrimaryMouse(currentTarget || current.downTarget, "mousemove", touch);
 
       if (current.longPressed) {
         beginDragSelect(touch.clientY);
@@ -1180,6 +1225,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       const target = getElementFromTouch(touch);
       const messageId = findMessageId(target) || current.messageId;
       let handled = current.moved;
+      dispatchPrimaryTouchPointer(target || current.downTarget, "pointerup", touch);
+      dispatchPrimaryMouse(target || current.downTarget, "mouseup", touch);
 
       if (!current.longPressed && !current.moved) {
         if (runChatAction(findChatAction(target) || current.chatAction)) {
@@ -1212,6 +1259,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     const handleTouchCancel = () => {
       clearOperationalTimer();
+      const current = operationalTouchRef.current;
+      if (current?.downTarget) {
+        try {
+          current.downTarget.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: "touch", isPrimary: true }));
+        } catch {
+          // no-op
+        }
+      }
       operationalTouchRef.current = null;
       stopDragSelect();
     };

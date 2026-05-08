@@ -27,6 +27,8 @@ export function ChatLeakShield({
 }: Props) {
   const flicker = useRef(new Animated.Value(0)).current;
   const webFlickerRef = useRef<HTMLDivElement | null>(null);
+  const leftButtonRef = useRef<HTMLButtonElement | null>(null);
+  const rightButtonRef = useRef<HTMLButtonElement | null>(null);
   const revealPointerIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -66,6 +68,59 @@ export function ChatLeakShield({
     };
   }, [onRevealChange, revealHeld]);
 
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+
+    const buttons = [leftButtonRef.current, rightButtonRef.current].filter(Boolean) as HTMLButtonElement[];
+    const cleanups: Array<() => void> = [];
+
+    buttons.forEach((button) => {
+      const stopNative = (event: Event) => {
+        event.stopPropagation();
+        (event as any).stopImmediatePropagation?.();
+      };
+
+      const start = (event: PointerEvent) => {
+        stopNative(event);
+        revealPointerIdRef.current = event.pointerId;
+        onRevealChange(true);
+      };
+
+      const end = (event: PointerEvent) => {
+        stopNative(event);
+        revealPointerIdRef.current = null;
+        onRevealChange(false);
+      };
+
+      const cancel = (event: Event) => {
+        event.preventDefault();
+        stopNative(event);
+      };
+
+      button.addEventListener("pointerdown", start, { capture: true });
+      button.addEventListener("pointerup", end, { capture: true });
+      button.addEventListener("pointercancel", cancel, { capture: true });
+      button.addEventListener("touchstart", stopNative, { capture: true, passive: true });
+      button.addEventListener("touchmove", stopNative, { capture: true, passive: true });
+      button.addEventListener("touchend", stopNative, { capture: true, passive: true });
+      button.addEventListener("contextmenu", cancel, { capture: true });
+      button.addEventListener("dragstart", cancel, { capture: true });
+
+      cleanups.push(() => {
+        button.removeEventListener("pointerdown", start, { capture: true } as any);
+        button.removeEventListener("pointerup", end, { capture: true } as any);
+        button.removeEventListener("pointercancel", cancel, { capture: true } as any);
+        button.removeEventListener("touchstart", stopNative, { capture: true } as any);
+        button.removeEventListener("touchmove", stopNative, { capture: true } as any);
+        button.removeEventListener("touchend", stopNative, { capture: true } as any);
+        button.removeEventListener("contextmenu", cancel, { capture: true } as any);
+        button.removeEventListener("dragstart", cancel, { capture: true } as any);
+      });
+    });
+
+    return () => cleanups.forEach((cleanup) => cleanup());
+  }, [onRevealChange]);
+
   const startReveal = useCallback((event: any) => {
     revealPointerIdRef.current = event?.nativeEvent?.pointerId ?? null;
     onRevealChange(true);
@@ -86,34 +141,9 @@ export function ChatLeakShield({
           "aria-label": "החזק כדי לחשוף את הצ'אט",
           type: "button",
           tabIndex: -1,
-          onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-            revealPointerIdRef.current = event.pointerId;
-            onRevealChange(true);
-          },
-          onPointerUp: (event: React.PointerEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-            revealPointerIdRef.current = null;
-            onRevealChange(false);
-          },
-          onPointerCancel: (event: React.PointerEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-          },
-          onTouchStart: (event: React.TouchEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-          },
-          onTouchMove: (event: React.TouchEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-          },
-          onTouchEnd: (event: React.TouchEvent<HTMLButtonElement>) => {
-            event.stopPropagation();
-          },
-          onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => {
-            event.preventDefault();
-            event.stopPropagation();
-          },
-          onDragStart: (event: React.DragEvent<HTMLButtonElement>) => {
-            event.preventDefault();
+          ref: (node: HTMLButtonElement | null) => {
+            if (side === "left") leftButtonRef.current = node;
+            else rightButtonRef.current = node;
           },
           style: {
             ...webRevealButtonStyle,

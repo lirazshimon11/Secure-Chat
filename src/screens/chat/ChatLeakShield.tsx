@@ -360,7 +360,7 @@ const webRevealButtonStyle = {
   pointerEvents: "auto",
   boxShadow: "0 4px 8px rgba(0,0,0,0.35)",
   cursor: "default",
-  touchAction: "none",
+  touchAction: "manipulation",
   userSelect: "none",
   WebkitUserSelect: "none",
   WebkitTouchCallout: "none",

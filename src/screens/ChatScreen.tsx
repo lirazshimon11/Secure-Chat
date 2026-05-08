@@ -1044,7 +1044,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const shouldHandleTouch = (target: HTMLElement | null) => {
       if (!isRevealingChatRef.current) return false;
       if (target?.closest?.("[data-secure-reveal-button='true']")) return false;
-      return !!findChatAction(target) || !!findMessageId(target);
+      return true;
     };
 
     const handleTouchStart = (event: TouchEvent) => {
@@ -1083,11 +1083,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
 
       operationalTouchRef.current = nextTouch;
-      if (chatAction) {
-        event.preventDefault();
-        event.stopPropagation();
-        (event as any).stopImmediatePropagation?.();
-      }
+      event.preventDefault();
+      event.stopPropagation();
+      (event as any).stopImmediatePropagation?.();
     };
 
     const handleTouchMove = (event: TouchEvent) => {
@@ -1107,19 +1105,19 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
       if (current.longPressed) {
         beginDragSelect(touch.clientY);
-        event.preventDefault();
-        event.stopPropagation();
-        (event as any).stopImmediatePropagation?.();
       } else if (movedEnough) {
         clearOperationalTimer();
-        if (current.chatAction) {
-          event.preventDefault();
-          event.stopPropagation();
-          (event as any).stopImmediatePropagation?.();
-        }
+        const { y, height, contentHeight } = scrollMetricsRef.current;
+        const maxY = Math.max(0, contentHeight - height);
+        const nextY = Math.max(0, Math.min(maxY, y + current.lastY - touch.clientY));
+        scrollMetricsRef.current.y = nextY;
+        scrollRef.current?.scrollTo({ y: nextY, animated: false });
       }
 
       current.lastY = touch.clientY;
+      event.preventDefault();
+      event.stopPropagation();
+      (event as any).stopImmediatePropagation?.();
     };
 
     const handleTouchEnd = (event: TouchEvent) => {
@@ -1131,7 +1129,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       clearOperationalTimer();
       const target = getElementFromTouch(touch);
       const messageId = findMessageId(target) || current.messageId;
-      let handled = false;
+      let handled = current.moved;
 
       if (!current.longPressed && !current.moved) {
         if (runChatAction(findChatAction(target) || current.chatAction)) {

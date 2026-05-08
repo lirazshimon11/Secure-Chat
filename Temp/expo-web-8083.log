@@ -106,3 +106,44 @@ Web Bundled 78ms node_modules\expo\AppEntry.js (1 module)
     at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10831:21)
     at TypeScriptParserMixin.parseMaybeAssign (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:9786:20)
     at TypeScriptParserMixin.parseExpressionBase (C:\COMPUTERS\PROJECTS\Apps\SecureApp\node_modules\@babel\parser\lib\index.js:10784:23)
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 647ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Unable to resolve "./chat-settings/ChatAdvancedPrivacyScreen" from "src\screens\ChatSettingsScreen.tsx"
+[0m [90m 13 |[39m [36mimport[39m { [33mChatMediaVisibilityModal[39m } [36mfrom[39m [32m"./chat-settings/ChatMediaVisibilityModal"[39m[33m;[39m
+ [90m 14 |[39m [36mimport[39m { [33mChatStorageScreen[39m } [36mfrom[39m [32m"./chat-settings/ChatStorageScreen"[39m[33m;[39m
+[31m[1m>[22m[39m[90m 15 |[39m [36mimport[39m { [33mChatAdvancedPrivacyScreen[39m } [36mfrom[39m [32m"./chat-settings/ChatAdvancedPrivacyScreen"[39m[33m;[39m
+ [90m    |[39m                                            [31m[1m^[22m[39m
+ [90m 16 |[39m [36mimport[39m { [33mChatDisappearingMessagesScreen[39m } [36mfrom[39m [32m"./chat-settings/ChatDisappearingMessagesScreen"[39m[33m;[39m
+ [90m 17 |[39m [36mimport[39m { [33mChatNotificationsScreen[39m } [36mfrom[39m [32m"./chat-settings/ChatNotificationsScreen"[39m[33m;[39m
+ [90m 18 |[39m [36mimport[39m { [33mChatMediaScreen[39m } [36mfrom[39m [32m"./chat-settings/ChatMediaScreen"[39m[33m;[39m[0m
+
+Import stack:
+
+ src\screens\ChatSettingsScreen.tsx
+ | import "./chat-settings/ChatAdvancedPrivacyScreen"
+
+ src\AppShell.tsx
+ | import "./screens/ChatSettingsScreen"
+
+ App.tsx
+ | import "./src/AppShell"
+
+ node_modules\expo\AppEntry.js
+ | import "../../App"
+
+ 
+ | import "./node_modules/expo/AppEntry"
+
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 87ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 85ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 77ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console
+Web node_modules\expo\AppEntry.js ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 83ms node_modules\expo\AppEntry.js (1 module)
+ LOG  [web] Logs will appear in the browser console

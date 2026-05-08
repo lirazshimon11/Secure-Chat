@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { createPortal } from "react-dom";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -16,6 +15,9 @@ type Props = {
   username: string;
   onRevealChange: (revealed: boolean) => void;
   bottomOffset: number;
+  revealButtonsEnabled?: boolean;
+  identityMagnetEnabled?: boolean;
+  shutterFlickerEnabled?: boolean;
 };
 
 export function ChatLeakShield({
@@ -25,12 +27,24 @@ export function ChatLeakShield({
   username,
   onRevealChange,
   bottomOffset,
+  revealButtonsEnabled = true,
+  identityMagnetEnabled = true,
+  shutterFlickerEnabled = true,
 }: Props) {
   const flicker = useRef(new Animated.Value(0)).current;
   const webFlickerRef = useRef<HTMLDivElement | null>(null);
   const leftButtonRef = useRef<HTMLButtonElement | null>(null);
   const rightButtonRef = useRef<HTMLButtonElement | null>(null);
   const revealPointerIdRef = useRef<number | null>(null);
+
+  const setWebButtonsInteractive = useCallback((interactive: boolean) => {
+    if (Platform.OS !== "web") return;
+    [leftButtonRef.current, rightButtonRef.current].forEach((button) => {
+      if (button) {
+        button.style.pointerEvents = interactive ? "auto" : "none";
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -51,12 +65,14 @@ export function ChatLeakShield({
     const handlePointerUp = (event: PointerEvent) => {
       if (revealPointerIdRef.current === null || event.pointerId === revealPointerIdRef.current) {
         revealPointerIdRef.current = null;
+        setWebButtonsInteractive(true);
         onRevealChange(false);
       }
     };
     const handleTouchEnd = (event: TouchEvent) => {
       if (event.touches.length === 0) {
         revealPointerIdRef.current = null;
+        setWebButtonsInteractive(true);
         onRevealChange(false);
       }
     };
@@ -67,7 +83,13 @@ export function ChatLeakShield({
       window.removeEventListener("pointerup", handlePointerUp, true);
       window.removeEventListener("touchend", handleTouchEnd, true);
     };
-  }, [onRevealChange, revealHeld]);
+  }, [onRevealChange, revealHeld, setWebButtonsInteractive]);
+
+  useEffect(() => {
+    if (Platform.OS === "web" && !revealHeld) {
+      setWebButtonsInteractive(true);
+    }
+  }, [revealHeld, setWebButtonsInteractive]);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -85,11 +107,13 @@ export function ChatLeakShield({
         stopNative(event);
         revealPointerIdRef.current = event.pointerId;
         onRevealChange(true);
+        requestAnimationFrame(() => setWebButtonsInteractive(false));
       };
 
       const end = (event: PointerEvent) => {
         stopNative(event);
         revealPointerIdRef.current = null;
+        setWebButtonsInteractive(true);
         onRevealChange(false);
       };
 
@@ -129,8 +153,9 @@ export function ChatLeakShield({
 
   const endReveal = useCallback(() => {
     revealPointerIdRef.current = null;
+    setWebButtonsInteractive(true);
     onRevealChange(false);
-  }, [onRevealChange]);
+  }, [onRevealChange, setWebButtonsInteractive]);
 
   const watermarkText = useMemo(() => `הודלף ע"י ${username || "משתמש"}`, [username]);
 
@@ -159,6 +184,7 @@ export function ChatLeakShield({
       "button",
       {
         "aria-label": "החזק כדי לחשוף את הצ'אט",
+        "data-secure-reveal-button": "true",
         type: "button",
         tabIndex: -1,
         ref: (node: HTMLButtonElement | null) => {
@@ -167,9 +193,7 @@ export function ChatLeakShield({
         },
         style: {
           ...webRevealButtonStyle,
-          ...(side === "left"
-            ? { left: "calc(max((100vw - 430px) / 2, 0px) + 14px)" }
-            : { right: "calc(max((100vw - 430px) / 2, 0px) + 14px)" }),
+          ...(side === "left" ? { left: 14 } : { right: 14 }),
           bottom: bottomOffset + 14,
           backgroundColor: revealHeld ? "rgba(0,168,132,0.95)" : "rgba(220,0,0,0.86)",
         },
@@ -178,29 +202,18 @@ export function ChatLeakShield({
     );
   };
 
-  const renderWebRevealButtons = () => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return null;
-    return createPortal(
-      <>
-        {renderWebRevealButton("right")}
-        {renderWebRevealButton("left")}
-      </>,
-      document.body,
-    );
-  };
-
   return (
     <View
       pointerEvents="box-none"
       style={[StyleSheet.absoluteFillObject, Platform.OS === "web" ? webShieldRootStyle : null]}
     >
-      {revealHeld && Platform.OS === "web" ? (
+      {revealHeld && shutterFlickerEnabled && Platform.OS === "web" ? (
         React.createElement("div", {
           "aria-hidden": true,
           ref: webFlickerRef,
           style: webFlickerStyle,
         })
-      ) : revealHeld ? (
+      ) : revealHeld && shutterFlickerEnabled ? (
         <Animated.View
           pointerEvents="none"
           style={[
@@ -213,7 +226,7 @@ export function ChatLeakShield({
 
       {blackout && <View pointerEvents="none" style={styles.blackout} />}
 
-      {revealHeld && (
+      {revealHeld && identityMagnetEnabled && (
         <View
           pointerEvents="none"
           style={[
@@ -228,12 +241,17 @@ export function ChatLeakShield({
         </View>
       )}
 
-      {Platform.OS === "web" ? renderWebRevealButtons() : (
+      {revealButtonsEnabled && Platform.OS === "web" ? (
+        <>
+          {renderWebRevealButton("right")}
+          {renderWebRevealButton("left")}
+        </>
+      ) : revealButtonsEnabled ? (
         <>
           {renderNativeRevealButton("right")}
           {renderNativeRevealButton("left")}
         </>
-      )}
+      ) : null}
 
       {warningVisible && (
         <View pointerEvents="none" style={styles.warningOverlay}>

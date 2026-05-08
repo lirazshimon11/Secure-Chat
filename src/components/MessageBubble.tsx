@@ -42,6 +42,7 @@ type Props = {
   onOpenPollVotes?: (id: string) => void;
   onInitiateDragSelect?: () => void;
   onAvatarPress?: (author: Profile) => void;
+  renderSecureText?: boolean;
 };
 
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
@@ -84,7 +85,7 @@ export function MessageBubble({
   isSelected, isSelectionMode, onReply, onScrollToReply, onToggleReaction, onRevealViewOnce,
   onToggleSelection, onShowReactions, onShowReactionsSheet, onPlusExtra,
   showReactions, onReportPickerLayout, isSaved, onOpenPollVotes, onInitiateDragSelect,
-  onAvatarPress
+  onAvatarPress, renderSecureText = true
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -207,7 +208,7 @@ export function MessageBubble({
     if (!isSelected) {
       onToggleSelection(message.id);
     }
-    if (!isSelectionMode) {
+    if (!isSelectionMode && Platform.OS !== "web") {
       onShowReactions(message.id);
     }
   };
@@ -280,7 +281,13 @@ export function MessageBubble({
             </View>
           </View>
         ) : (
-          <Pressable delayLongPress={450} onLongPress={handleLongPress} onPress={handlePress} style={[styles.fullWidthSelection, webDefaultCursor]}>
+          <Pressable
+            delayLongPress={450}
+            onLongPress={handleLongPress}
+            onPress={handlePress}
+            {...(Platform.OS === "web" ? ({ dataSet: { messageId: message.id } } as any) : {})}
+            style={[styles.fullWidthSelection, webDefaultCursor]}
+          >
             <View style={[mine ? styles.bubbleWrapperMine : styles.bubbleWrapperTheirs]}>
               {!mine && author && (
                 <Pressable onPress={() => onAvatarPress && onAvatarPress(author)} style={[styles.messageAvatarWrap, { backgroundColor: authorColor }]}>
@@ -357,16 +364,29 @@ export function MessageBubble({
                   isPoll ? <PollBubble message={message} currentUserId={currentUserId} reactions={reactions} theme={theme} styles={styles} onToggleReaction={onToggleReaction} onOpenPollVotes={onOpenPollVotes} /> :
 
                     <View style={[styles.messageTextContainer, bubbleWidthStyle && styles.messageTextContainerWide]}>
-                      <SecureCanvasText
-                        text={displayBody}
-                        color={isTemporaryExpired ? theme.colors.textMuted : theme.colors.text}
-                        direction={messageStartsLtr ? "ltr" : "rtl"}
-                        style={[
-                          styles.body,
-                          messageStartsLtr ? styles.bodyLtr : styles.bodyRtl,
-                          isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' },
-                        ]}
-                      />
+                      {renderSecureText ? (
+                        <SecureCanvasText
+                          text={displayBody}
+                          color={isTemporaryExpired ? theme.colors.textMuted : theme.colors.text}
+                          direction={messageStartsLtr ? "ltr" : "rtl"}
+                          style={[
+                            styles.body,
+                            messageStartsLtr ? styles.bodyLtr : styles.bodyRtl,
+                            isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' },
+                          ]}
+                        />
+                      ) : (
+                        <Text
+                          selectable={false}
+                          style={[
+                            styles.body,
+                            messageStartsLtr ? styles.bodyLtr : styles.bodyRtl,
+                            isTemporaryExpired && { color: theme.colors.textMuted, fontStyle: 'italic' },
+                          ]}
+                        >
+                          {displayBody}
+                        </Text>
+                      )}
                     </View>
                 }
 

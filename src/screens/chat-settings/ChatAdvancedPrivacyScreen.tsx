@@ -1,72 +1,146 @@
-import { useMemo } from "react";
-import { StyleSheet, Text, View, Pressable, Switch } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
+import { DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings, saveChatSecuritySettings } from "@/lib/chatSecuritySettings";
 import { useAppTheme } from "@/lib/theme";
+import { Chat, ChatSecuritySettings } from "@/lib/types";
 
 type Props = {
+  chat: Chat;
+  currentUserId?: string | null;
+  isAdmin: boolean;
   onBack: () => void;
 };
 
-export function ChatAdvancedPrivacyScreen({ onBack }: Props) {
+const rows: Array<{
+  key: keyof ChatSecuritySettings;
+  icon: any;
+  title: string;
+  subtitle: string;
+}> = [
+  {
+    key: "require_hold_to_reveal",
+    icon: "eye-lock-outline",
+    title: "חשיפה רק בלחיצה על העין",
+    subtitle: "הודעות נשארות מטושטשות עד שמחזיקים את כפתור העין.",
+  },
+  {
+    key: "identity_magnet",
+    icon: "fingerprint",
+    title: "חותמת זהות בזמן צפייה",
+    subtitle: "מצמיד סימון אדום עם שם המשתמש בזמן שהצ׳אט גלוי.",
+  },
+  {
+    key: "shutter_flicker",
+    icon: "camera-burst",
+    title: "תעתוע צילום",
+    subtitle: "שכבת רעש מהירה מעל תוכן הצ׳אט בזמן חשיפה.",
+  },
+  {
+    key: "app_switcher_blackout",
+    icon: "cellphone-lock",
+    title: "טשטוש במעבר אפליקציות",
+    subtitle: "מסתיר מיד את הצ׳אט כשעוזבים את הטאב או האפליקציה.",
+  },
+  {
+    key: "fake_screenshot_warning",
+    icon: "alert-octagon-outline",
+    title: "התראת הרתעה",
+    subtitle: "מציג אזהרה במסך מלא כשמזוהה ניסיון חשוד.",
+  },
+  {
+    key: "anti_copy_canvas",
+    icon: "text-box-search-outline",
+    title: "Canvas נגד העתקה ו-OCR",
+    subtitle: "מרנדר טקסט הודעות כקנבס עם רעש דיגיטלי.",
+  },
+];
+
+export function ChatAdvancedPrivacyScreen({ chat, currentUserId, isAdmin, onBack }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const [settings, setSettings] = useState<ChatSecuritySettings>(DEFAULT_CHAT_SECURITY_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<keyof ChatSecuritySettings | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    void fetchChatSecuritySettings(chat.id)
+      .then((next) => {
+        if (active) setSettings(next);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [chat.id]);
+
+  const updateSetting = async (key: keyof ChatSecuritySettings, value: boolean) => {
+    if (!isAdmin || !currentUserId) return;
+    const previous = settings;
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    setSavingKey(key);
+    const { error } = await saveChatSecuritySettings(chat.id, next, currentUserId);
+    if (error) {
+      setSettings(previous);
+    }
+    setSavingKey(null);
+  };
 
   return (
     <Screen>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>הגדרה מתקדמת של פרטיות בצ'אט</Text>
+          <Text style={styles.headerTitle}>הגנות אבטחה בצ׳אט</Text>
           <Pressable onPress={onBack} style={styles.backButton}>
             <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
           </Pressable>
         </View>
 
-        <View style={styles.content}>
-          <View style={styles.banner}>
-            <MaterialCommunityIcons name="information-outline" size={24} color={theme.colors.accent} />
-            <View style={styles.bannerCopy}>
-              <Text style={styles.bannerText}>כל הצ'אטים הם פרטיים כברירת מחדל, גם אם הפעלת את ההגדרה הזאת וגם אם לא.</Text>
-              <Text style={styles.bannerLink}>מידע נוסף</Text>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.notice}>
+            <MaterialCommunityIcons name={isAdmin ? "shield-check-outline" : "shield-lock-outline"} size={24} color={theme.colors.accent} />
+            <Text style={styles.noticeText}>
+              {isAdmin
+                ? "כמנהל/ת הקבוצה אפשר להדליק ולכבות כל שכבת אבטחה בכל רגע. השינוי חל על הצ׳אט הזה."
+                : "רק מנהל/ת הקבוצה יכול/ה לשנות את שכבות האבטחה. כאן אפשר לראות מה פעיל כרגע."}
+            </Text>
+          </View>
+
+          {loading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator color={theme.colors.accent} />
             </View>
-          </View>
-
-          <View style={styles.illustration}>
-              <MaterialCommunityIcons name="shield-lock-outline" size={80} color={theme.colors.accent} />
-          </View>
-
-          <Text style={styles.mainDescription}>
-            יש לך אפשרות להגביל את אופן השיתוף של הודעות ומדיה בצ'אט הזה מחוץ לאפליקציה
-          </Text>
-          
-          <Text style={styles.subDescription}>
-            אם בחרת להפעיל את ההגדרה המתקדמת של פרטיות, אנשים בצ'אט הזה:
-          </Text>
-
-          <View style={styles.bulletList}>
-             <Bullet icon="download-off-outline" text="לא יכולים לשמור מדיה בגלריית המכשיר באופן אוטומטי" theme={theme} />
-             <Bullet icon="file-export-outline" text="לא יכולים לייצא את הצ'אט" theme={theme} />
-          </View>
-          
-          <View style={styles.switchRow}>
-            <View style={styles.switchCopy}>
-              <Text style={styles.switchTitle}>הגדרה מתקדמת של פרטיות בצ'אט</Text>
+          ) : (
+            <View style={styles.list}>
+              {rows.map((row) => (
+                <View key={row.key} style={styles.row}>
+                  <View style={styles.iconBox}>
+                    <MaterialCommunityIcons name={row.icon} size={24} color={theme.colors.textMuted} />
+                  </View>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>{row.title}</Text>
+                    <Text style={styles.rowSubtitle}>{row.subtitle}</Text>
+                  </View>
+                  <Switch
+                    value={settings[row.key]}
+                    disabled={!isAdmin || savingKey === row.key}
+                    onValueChange={(value) => void updateSetting(row.key, value)}
+                    trackColor={{ false: theme.colors.surfaceMuted, true: theme.colors.accentSoft }}
+                    thumbColor={settings[row.key] ? theme.colors.accent : theme.colors.textMuted}
+                  />
+                </View>
+              ))}
             </View>
-            <Switch value={false} disabled />
-          </View>
-        </View>
+          )}
+        </ScrollView>
       </View>
     </Screen>
-  );
-}
-
-function Bullet({ icon, text, theme }: { icon: any; text: string; theme: any }) {
-  const styles = useMemo(() => createStyles(theme), [theme]);
-  return (
-    <View style={styles.bulletItem}>
-      <Text style={styles.bulletText}>{text}</Text>
-      <MaterialCommunityIcons name={icon} size={24} color={theme.colors.textMuted} style={styles.bulletIcon} />
-    </View>
   );
 }
 
@@ -99,88 +173,68 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       fontSize: 20,
       fontWeight: "800",
       flex: 1,
-
+      textAlign: "right",
+      writingDirection: "rtl",
     },
     content: {
-      flex: 1,
       padding: theme.spacing.md,
+      paddingBottom: theme.spacing.xl,
     },
-    banner: {
+    notice: {
       backgroundColor: theme.colors.surfaceMuted,
       borderRadius: theme.radius.md,
       padding: theme.spacing.md,
-      flexDirection: "row",
+      flexDirection: "row-reverse",
       gap: theme.spacing.md,
-      marginBottom: theme.spacing.xl,
+      alignItems: "flex-start",
+      marginBottom: theme.spacing.md,
     },
-    bannerCopy: {
+    noticeText: {
       flex: 1,
-    },
-    bannerText: {
-      fontSize: 14,
       color: theme.colors.text,
-
-    },
-    bannerLink: {
       fontSize: 14,
-      color: theme.colors.accent,
-
-      fontWeight: "700",
-      marginTop: 4,
+      lineHeight: 21,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
-    illustration: {
+    loading: {
+      paddingVertical: 40,
+    },
+    list: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.radius.md,
+      overflow: "hidden",
+    },
+    row: {
+      flexDirection: "row-reverse",
       alignItems: "center",
-      marginVertical: theme.spacing.xl,
-    },
-    mainDescription: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: theme.colors.text,
-      textAlign: "center",
-      marginBottom: theme.spacing.lg,
-      lineHeight: 26,
-    },
-    subDescription: {
-      fontSize: 15,
-      color: theme.colors.text,
-
-      marginBottom: theme.spacing.lg,
-    },
-    bulletList: {
-      gap: theme.spacing.lg,
-      marginBottom: theme.spacing.xl,
-      borderColor: theme.colors.separator,
+      gap: theme.spacing.md,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 16,
       borderBottomWidth: 1,
-      paddingBottom: theme.spacing.xl,
+      borderBottomColor: theme.colors.separator,
     },
-    bulletItem: {
-      flexDirection: "row",
-      justifyContent: "flex-end",
+    iconBox: {
+      width: 34,
       alignItems: "center",
-      gap: theme.spacing.md,
     },
-    bulletIcon: {
-      marginLeft: 8,
-    },
-    bulletText: {
+    rowCopy: {
       flex: 1,
-      fontSize: 15,
+      alignItems: "flex-end",
+    },
+    rowTitle: {
       color: theme.colors.text,
-
-    },
-    switchRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingVertical: theme.spacing.md,
-    },
-    switchCopy: {
-      flex: 1,
-    },
-    switchTitle: {
       fontSize: 16,
-      color: theme.colors.text,
-
-      fontWeight: "600",
+      fontWeight: "800",
+      textAlign: "right",
+      writingDirection: "rtl",
+    },
+    rowSubtitle: {
+      color: theme.colors.textMuted,
+      fontSize: 13,
+      lineHeight: 18,
+      marginTop: 3,
+      textAlign: "right",
+      writingDirection: "rtl",
     },
   });

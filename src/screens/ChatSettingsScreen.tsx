@@ -1,5 +1,5 @@
 import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View, TextInput, useWindowDimensions } from "react-native";
+import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, View, TextInput, useWindowDimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
 import { useChats } from "@/context/ChatContext";
@@ -125,9 +125,11 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
       const nextMembers = await loadChatMembers(chat.id);
       setMembers(nextMembers || []);
     })();
-    // Explicitly unblock screenshots whenever entering a settings page
-    void ScreenCapture.allowScreenCaptureAsync();
-    void ScreenCapture.allowScreenCaptureAsync(`sc-${chat.id}`);
+    // Explicitly unblock screenshots whenever entering a native settings page.
+    if (Platform.OS !== "web") {
+      void ScreenCapture.allowScreenCaptureAsync();
+      void ScreenCapture.allowScreenCaptureAsync(`sc-${chat.id}`);
+    }
   }, [chat.id]);
 
   const filteredMembers = useMemo(() => {
@@ -144,7 +146,16 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
     if (activeScreen === "storage") return <ChatStorageScreen chat={chat} onBack={closeActiveScreen} />;
     if (activeScreen === "notifications") return <ChatNotificationsScreen chat={chat} onBack={closeActiveScreen} />;
     if (activeScreen === "disappearing") return <ChatDisappearingMessagesScreen onBack={closeActiveScreen} />;
-    if (activeScreen === "advanced") return <ChatAdvancedPrivacyScreen onBack={closeActiveScreen} />;
+    if (activeScreen === "advanced") {
+      return (
+        <ChatAdvancedPrivacyScreen
+          chat={chat}
+          currentUserId={profile?.id}
+          isAdmin={profile?.id === liveChat.created_by}
+          onBack={closeActiveScreen}
+        />
+      );
+    }
     if (activeScreen === "media") return <ChatMediaScreen chat={chat} onBack={closeActiveScreen} />;
     if (activeScreen === "addMembers") return <ChatAddMembersScreen chat={chat} onBack={closeActiveScreen} />;
     if (activeScreen === "permissions") return <ChatPermissionsScreen chat={chat} onBack={closeActiveScreen} />;
@@ -152,7 +163,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
     if (activeScreen === "editContact") return <ChatEditContactScreen chat={chat} onBack={closeActiveScreen} />;
     if (activeScreen === "decoyContent") return <DecoyContentScreen chat={chat} onBack={closeActiveScreen} />;
     return null;
-  }, [activeScreen, chat]);
+  }, [activeScreen, chat, liveChat.created_by, profile?.id]);
 
   return (
     <View style={styles.navigationRoot}>
@@ -235,7 +246,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
           <SettingRow icon="lock-outline" title="הצפנה" subtitle="ההודעות והשיחות מוצפנות מקצה לקצה. יש להקיש לקבלת פרטים נוספים." actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("הצפנה", "הצ'אט מעוגן מאובטח בפרוטוקול קצה-לקצה מלא.")); }} />
           <SettingRow icon="timer-sand" title="הודעות זמניות" subtitle="כבה" onPress={() => setActiveScreen("disappearing")} theme={theme} />
           <SettingRow icon="cellphone-lock" title="נעילת הצ'אט" subtitle="נעילה והסתרה של הצ'אט הזה במכשיר" actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("נעילת צ'אט", "ניתן לנעול צ'אטים ממסך הבית (לחיצה ארוכה).")); }} />
-          <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="כבה" onPress={() => setActiveScreen("advanced")} theme={theme} />
+          <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="ניהול שכבות אבטחה" onPress={() => setActiveScreen("advanced")} theme={theme} />
           <SettingRow icon="palette-outline" title="ערכת הנושא של הצאט" subtitle="ברירת מחדל" onPress={() => setActiveScreen("theme")} theme={theme} />
           <SettingRow
             icon="fish"

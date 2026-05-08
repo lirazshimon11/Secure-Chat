@@ -11,9 +11,10 @@ import { MessageComposer } from "@/components/MessageComposer";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
-import { Chat, Message, Profile } from "@/lib/types";
+import { Chat, ChatSecuritySettings, Message, Profile } from "@/lib/types";
 import { webEmbeddedInputReset, webDefaultCursor } from "@/lib/webStyles";
 import { supabase } from "@/lib/supabase";
+import { DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings } from "@/lib/chatSecuritySettings";
 import { useMessages, useMessagesSubscription, useSendMessage } from "@/hooks/useChatMessages";
 
 // Sub-screens
@@ -292,8 +293,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
+  const [securitySettings, setSecuritySettings] = useState<ChatSecuritySettings>(DEFAULT_CHAT_SECURITY_SETTINGS);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
   const [isRevealingChat, setIsRevealingChat] = useState(false);
+  const isRevealingChatRef = useRef(false);
+  useEffect(() => { isRevealingChatRef.current = isRevealingChat; }, [isRevealingChat]);
   const [securityBlackout, setSecurityBlackout] = useState(false);
   const [fakeScreenshotWarning, setFakeScreenshotWarning] = useState(false);
   const [identityMagnetPoint, setIdentityMagnetPoint] = useState({ x: 214, y: 320 });
@@ -438,17 +442,48 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } =
     useChatPermissions(chat, groupMembers, (p) => sendCachedMessage(p), activeSubScreen !== null);
 
-  const triggerSecurityBlackout = useCallback((showWarning: boolean) => {
-    setSecurityBlackout(true);
-    if (blackoutTimeoutRef.current) clearTimeout(blackoutTimeoutRef.current);
-    blackoutTimeoutRef.current = setTimeout(() => setSecurityBlackout(false), 1400);
+  useEffect(() => {
+    let active = true;
+    void fetchChatSecuritySettings(chat.id).then((next) => {
+      if (active) setSecuritySettings(next);
+    });
 
-    if (showWarning) {
+    const channel = supabase
+      .channel(`chat-security-settings:${chat.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chat_security_settings", filter: `chat_id=eq.${chat.id}` },
+        (payload) => {
+          const next = payload.new as Partial<ChatSecuritySettings> | null;
+          if (next) {
+            setSecuritySettings({ ...DEFAULT_CHAT_SECURITY_SETTINGS, ...next });
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [chat.id]);
+
+  const triggerSecurityBlackout = useCallback((showWarning: boolean) => {
+    if (!securitySettings.app_switcher_blackout && !(showWarning && securitySettings.fake_screenshot_warning)) {
+      return;
+    }
+    if (securitySettings.app_switcher_blackout) {
+      setSecurityBlackout(true);
+      if (blackoutTimeoutRef.current) clearTimeout(blackoutTimeoutRef.current);
+      blackoutTimeoutRef.current = setTimeout(() => setSecurityBlackout(false), 1400);
+    }
+
+    if (showWarning && securitySettings.fake_screenshot_warning) {
       setFakeScreenshotWarning(true);
       if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
       warningTimeoutRef.current = setTimeout(() => setFakeScreenshotWarning(false), 3600);
     }
-  }, []);
+  }, [securitySettings.app_switcher_blackout, securitySettings.fake_screenshot_warning]);
 
   const markSuspiciousInput = useCallback(() => {
     suspiciousInputUntilRef.current = Date.now() + 700;
@@ -872,6 +907,189 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     updateDragSelection(pageY);
   }, [updateDragSelection]);
 
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+
+    type OperationalTouch = {
+      id: number;
+      startX: number;
+      startY: number;
+      lastY: number;
+      messageId: string | null;
+      longPressed: boolean;
+      moved: boolean;
+      timer: ReturnType<typeof setTimeout> | null;
+    };
+
+    const operationalTouchRef = { current: null as OperationalTouch | null };
+
+    const getElementFromTouch = (touch: Touch) =>
+      document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+
+    const findMessageId = (element: HTMLElement | null) =>
+      element?.closest?.("[data-message-id]")?.getAttribute("data-message-id") ?? null;
+
+    const findClickable = (element: HTMLElement | null) =>
+      element?.closest?.("button,[role='button'],a,input,textarea") as HTMLElement | null;
+
+    const findScrollable = (element: HTMLElement | null) => {
+      let node: HTMLElement | null = element;
+      while (node && node !== document.body) {
+        const style = window.getComputedStyle(node);
+        const canScroll = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
+        if (canScroll) return node;
+        node = node.parentElement;
+      }
+      return null;
+    };
+
+    const toggleSelection = (messageId: string) => {
+      if (!messageMap[messageId] || messageMap[messageId].message_kind === "system") return;
+      setSelectedIds((current) =>
+        current.includes(messageId) ? current.filter((id) => id !== messageId) : [...current, messageId],
+      );
+    };
+
+    const clearOperationalTimer = () => {
+      if (operationalTouchRef.current?.timer) {
+        clearTimeout(operationalTouchRef.current.timer);
+        operationalTouchRef.current.timer = null;
+      }
+    };
+
+    const shouldHandleTouch = (target: HTMLElement | null) => {
+      if (!isRevealingChatRef.current) return false;
+      if (target?.closest?.("[data-secure-reveal-button='true']")) return false;
+      return true;
+    };
+
+    const handleTouchStart = (event: TouchEvent) => {
+      if (operationalTouchRef.current) return;
+      const touch = Array.from(event.changedTouches).find((candidate) => {
+        const target = getElementFromTouch(candidate);
+        return shouldHandleTouch(target);
+      });
+      if (!touch) return;
+
+      const target = getElementFromTouch(touch);
+      const messageId = findMessageId(target);
+      const nextTouch: OperationalTouch = {
+        id: touch.identifier,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        lastY: touch.clientY,
+        messageId,
+        longPressed: false,
+        moved: false,
+        timer: null,
+      };
+
+      if (messageId) {
+        nextTouch.timer = setTimeout(() => {
+          const current = operationalTouchRef.current;
+          if (!current || current.id !== nextTouch.id || current.moved) return;
+          current.longPressed = true;
+          if (!selectedIdsRef.current.includes(messageId)) {
+            toggleSelection(messageId);
+          }
+          isDragSelectingRef.current = true;
+          dragPivotIdRef.current = null;
+          dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+          beginDragSelect(current.startY);
+        }, 430);
+      }
+
+      operationalTouchRef.current = nextTouch;
+      event.preventDefault();
+      event.stopPropagation();
+      (event as any).stopImmediatePropagation?.();
+    };
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const current = operationalTouchRef.current;
+      if (!current) return;
+      const touch = Array.from(event.changedTouches).find((candidate) => candidate.identifier === current.id);
+      if (!touch) return;
+
+      const deltaX = touch.clientX - current.startX;
+      const deltaY = touch.clientY - current.startY;
+      const movedEnough = Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8;
+      if (movedEnough) {
+        current.moved = true;
+      }
+
+      setIdentityMagnetPoint({ x: touch.clientX, y: touch.clientY });
+
+      if (current.longPressed) {
+        beginDragSelect(touch.clientY);
+      } else if (movedEnough) {
+        clearOperationalTimer();
+        const target = getElementFromTouch(touch);
+        const scrollable = findScrollable(target);
+        if (scrollable) {
+          const nextScrollTop = Math.max(0, scrollable.scrollTop + current.lastY - touch.clientY);
+          scrollable.scrollTop = nextScrollTop;
+          scrollMetricsRef.current.y = nextScrollTop;
+        }
+      }
+
+      current.lastY = touch.clientY;
+      event.preventDefault();
+      event.stopPropagation();
+      (event as any).stopImmediatePropagation?.();
+    };
+
+    const handleTouchEnd = (event: TouchEvent) => {
+      const current = operationalTouchRef.current;
+      if (!current) return;
+      const touch = Array.from(event.changedTouches).find((candidate) => candidate.identifier === current.id);
+      if (!touch) return;
+
+      clearOperationalTimer();
+      const target = getElementFromTouch(touch);
+      const messageId = findMessageId(target) || current.messageId;
+
+      if (!current.longPressed && !current.moved) {
+        if (messageId && selectedIdsRef.current.length > 0) {
+          toggleSelection(messageId);
+        } else {
+          const clickable = findClickable(target);
+          if (clickable && !clickable.closest("[data-secure-reveal-button='true']")) {
+            clickable.click();
+          }
+        }
+      }
+
+      if (current.longPressed) {
+        stopDragSelect();
+      }
+
+      operationalTouchRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+      (event as any).stopImmediatePropagation?.();
+    };
+
+    const handleTouchCancel = () => {
+      clearOperationalTimer();
+      operationalTouchRef.current = null;
+      stopDragSelect();
+    };
+
+    document.addEventListener("touchstart", handleTouchStart, { capture: true, passive: false });
+    document.addEventListener("touchmove", handleTouchMove, { capture: true, passive: false });
+    document.addEventListener("touchend", handleTouchEnd, { capture: true, passive: false });
+    document.addEventListener("touchcancel", handleTouchCancel, { capture: true, passive: false });
+
+    return () => {
+      clearOperationalTimer();
+      document.removeEventListener("touchstart", handleTouchStart, { capture: true } as any);
+      document.removeEventListener("touchmove", handleTouchMove, { capture: true } as any);
+      document.removeEventListener("touchend", handleTouchEnd, { capture: true } as any);
+      document.removeEventListener("touchcancel", handleTouchCancel, { capture: true } as any);
+    };
+  }, [beginDragSelect, messageMap, stopDragSelect]);
+
   const webDragHandlers = useMemo(() => {
     if (Platform.OS !== "web") return {};
 
@@ -1022,7 +1240,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 ref={threadContainerRef}
                 style={[
                   styles.thread,
-                  isRevealingChat ? chatLeakShieldStyles.protectedThreadRevealed : chatLeakShieldStyles.protectedThreadBlurred,
+                  !securitySettings.require_hold_to_reveal || isRevealingChat
+                    ? chatLeakShieldStyles.protectedThreadRevealed
+                    : chatLeakShieldStyles.protectedThreadBlurred,
                 ]}
                 {...selectionPanResponder.panHandlers}
                 {...webDragHandlers}
@@ -1087,8 +1307,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                                 reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                                 onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
                                 onInitiateDragSelect={() => {
-                                  if (Platform.OS !== "web") setIsDragSelectLocked(true);
+                                  if (Platform.OS === "web") {
+                                    isDragSelectingRef.current = true;
+                                    dragPivotIdRef.current = null;
+                                    dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+                                  } else {
+                                    setIsDragSelectLocked(true);
+                                  }
                                 }}
+                                renderSecureText={securitySettings.anti_copy_canvas}
                                 onAvatarPress={(author) => setSelectedAvatarMember(author)}
                                 replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                                 replyToName={(() => {
@@ -1111,8 +1338,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                               reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                               onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
                               onInitiateDragSelect={() => {
-                                if (Platform.OS !== "web") setIsDragSelectLocked(true);
+                                if (Platform.OS === "web") {
+                                  isDragSelectingRef.current = true;
+                                  dragPivotIdRef.current = null;
+                                  dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+                                } else {
+                                  setIsDragSelectLocked(true);
+                                }
                               }}
+                              renderSecureText={securitySettings.anti_copy_canvas}
                               onAvatarPress={(author) => setSelectedAvatarMember(author)}
                               replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                               replyToName={(() => {
@@ -1186,6 +1420,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 username={profile?.username || profile?.full_name || "משתמש"}
                 onRevealChange={setIsRevealingChat}
                 bottomOffset={16}
+                revealButtonsEnabled={securitySettings.require_hold_to_reveal}
+                identityMagnetEnabled={securitySettings.identity_magnet}
+                shutterFlickerEnabled={securitySettings.shutter_flicker}
               />
             </View>
           </View>

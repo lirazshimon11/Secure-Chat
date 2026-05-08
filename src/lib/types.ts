@@ -56,4 +56,13 @@ export type ChatLocalPreferences = {
   deleted_from_home_at: string | null;
 };
 
+export type ChatSecuritySettings = {
+  require_hold_to_reveal: boolean;
+  identity_magnet: boolean;
+  shutter_flicker: boolean;
+  app_switcher_blackout: boolean;
+  fake_screenshot_warning: boolean;
+  anti_copy_canvas: boolean;
+};
+
 export type ReactionSummary = Record<string, { userId: string; createdAt: string }[]>;

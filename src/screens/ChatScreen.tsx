@@ -12,7 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatSecuritySettings, Message, Profile } from "@/lib/types";
-import { webEmbeddedInputReset, webDefaultCursor } from "@/lib/webStyles";
+import { webEmbeddedInputReset, webDefaultCursor, webSystemFont } from "@/lib/webStyles";
 import { supabase } from "@/lib/supabase";
 import { CHAT_SECURITY_SETTINGS_EVENT, DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings } from "@/lib/chatSecuritySettings";
 import { useMessages, useMessagesSubscription, useSendMessage } from "@/hooks/useChatMessages";
@@ -298,6 +298,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [isRevealingChat, setIsRevealingChat] = useState(false);
   const isRevealingChatRef = useRef(false);
   useEffect(() => { isRevealingChatRef.current = isRevealingChat; }, [isRevealingChat]);
+  const [touchDebugPoints, setTouchDebugPoints] = useState<Array<{ id: number; x: number; y: number; target: string }>>([]);
   const [securityBlackout, setSecurityBlackout] = useState(false);
   const [fakeScreenshotWarning, setFakeScreenshotWarning] = useState(false);
   const [identityMagnetPoint, setIdentityMagnetPoint] = useState({ x: 214, y: 320 });
@@ -563,6 +564,55 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       document.removeEventListener("visibilitychange", handleVisibilityChange, true);
     };
   }, [markSuspiciousInput, triggerSecurityBlackout]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+
+    const targetLabel = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return "unknown";
+      if (target.closest("[data-secure-reveal-button='true']")) return "eye";
+      if (target.closest("[data-chat-action]")) {
+        return `header:${target.closest("[data-chat-action]")?.getAttribute("data-chat-action") ?? "action"}`;
+      }
+      if (target.closest("[data-message-id]")) return "message";
+      if (target.closest("input, textarea")) return "input";
+      return target.tagName.toLowerCase();
+    };
+
+    const updateTouches = (event: TouchEvent) => {
+      setTouchDebugPoints(
+        Array.from(event.touches).map((touch, index) => {
+          const element = document.elementFromPoint(touch.clientX, touch.clientY);
+          return {
+            id: touch.identifier,
+            x: Math.round(touch.clientX),
+            y: Math.round(touch.clientY),
+            target: targetLabel(element),
+          };
+        }),
+      );
+    };
+
+    const clearTouches = (event: TouchEvent) => {
+      if (event.touches.length) {
+        updateTouches(event);
+      } else {
+        setTouchDebugPoints([]);
+      }
+    };
+
+    document.addEventListener("touchstart", updateTouches, { capture: true, passive: true });
+    document.addEventListener("touchmove", updateTouches, { capture: true, passive: true });
+    document.addEventListener("touchend", clearTouches, { capture: true, passive: true });
+    document.addEventListener("touchcancel", clearTouches, { capture: true, passive: true });
+
+    return () => {
+      document.removeEventListener("touchstart", updateTouches, { capture: true } as any);
+      document.removeEventListener("touchmove", updateTouches, { capture: true } as any);
+      document.removeEventListener("touchend", clearTouches, { capture: true } as any);
+      document.removeEventListener("touchcancel", clearTouches, { capture: true } as any);
+    };
+  }, []);
 
   useEffect(() => {
     setSecurityBlackout(false);
@@ -1514,6 +1564,20 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 identityMagnetEnabled={securitySettings.identity_magnet}
                 shutterFlickerEnabled={securitySettings.shutter_flicker}
               />
+              {Platform.OS === "web" && (
+                <View pointerEvents="none" style={touchDebugStyles.panel}>
+                  <Text style={[touchDebugStyles.title, webSystemFont]}>Touch debug</Text>
+                  {touchDebugPoints.length ? (
+                    touchDebugPoints.map((point, index) => (
+                      <Text key={point.id} style={[touchDebugStyles.line, webSystemFont]}>
+                        {`אצבע ${index + 1} | id ${point.id} | x:${point.x} y:${point.y} | ${point.target}`}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text style={[touchDebugStyles.line, webSystemFont]}>אין אצבעות פעילות</Text>
+                  )}
+                </View>
+              )}
             </View>
           </View>
           {/* Composer — always visible for members (decoy users can still send real messages) */}
@@ -1774,3 +1838,34 @@ function SlidingChatPage({ visible, distance, children }: PropsWithChildren<{ vi
     </Animated.View>
   );
 }
+
+const touchDebugStyles = StyleSheet.create({
+  panel: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    right: 10,
+    zIndex: 999,
+    backgroundColor: "rgba(0, 0, 0, 0.72)",
+    borderColor: "rgba(0, 168, 132, 0.9)",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  title: {
+    color: "#00f5c8",
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "left",
+    writingDirection: "ltr",
+    marginBottom: 3,
+  },
+  line: {
+    color: "#ffffff",
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: "left",
+    writingDirection: "ltr",
+  },
+});

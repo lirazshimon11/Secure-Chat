@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -133,29 +134,7 @@ export function ChatLeakShield({
 
   const watermarkText = useMemo(() => `הודלף ע"י ${username || "משתמש"}`, [username]);
 
-  const renderRevealButton = (side: "left" | "right") => {
-    if (Platform.OS === "web") {
-      return React.createElement(
-        "button",
-        {
-          "aria-label": "החזק כדי לחשוף את הצ'אט",
-          type: "button",
-          tabIndex: -1,
-          ref: (node: HTMLButtonElement | null) => {
-            if (side === "left") leftButtonRef.current = node;
-            else rightButtonRef.current = node;
-          },
-          style: {
-            ...webRevealButtonStyle,
-            ...(side === "left" ? { left: 14 } : { right: 14 }),
-            bottom: bottomOffset + 14,
-            backgroundColor: revealHeld ? "rgba(0,168,132,0.95)" : "rgba(220,0,0,0.86)",
-          },
-        },
-        <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />,
-      );
-    }
-
+  const renderNativeRevealButton = (side: "left" | "right") => {
     return (
       <Pressable
         accessibilityLabel="החזק כדי לחשוף את הצ'אט"
@@ -172,6 +151,41 @@ export function ChatLeakShield({
       >
         <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />
       </Pressable>
+    );
+  };
+
+  const renderWebRevealButton = (side: "left" | "right") => {
+    return React.createElement(
+      "button",
+      {
+        "aria-label": "החזק כדי לחשוף את הצ'אט",
+        type: "button",
+        tabIndex: -1,
+        ref: (node: HTMLButtonElement | null) => {
+          if (side === "left") leftButtonRef.current = node;
+          else rightButtonRef.current = node;
+        },
+        style: {
+          ...webRevealButtonStyle,
+          ...(side === "left"
+            ? { left: "calc(max((100vw - 430px) / 2, 0px) + 14px)" }
+            : { right: "calc(max((100vw - 430px) / 2, 0px) + 14px)" }),
+          bottom: bottomOffset + 14,
+          backgroundColor: revealHeld ? "rgba(0,168,132,0.95)" : "rgba(220,0,0,0.86)",
+        },
+      },
+      <MaterialCommunityIcons name={revealHeld ? "eye" : "eye-lock-outline"} size={22} color="#fff" />,
+    );
+  };
+
+  const renderWebRevealButtons = () => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return null;
+    return createPortal(
+      <>
+        {renderWebRevealButton("right")}
+        {renderWebRevealButton("left")}
+      </>,
+      document.body,
     );
   };
 
@@ -214,8 +228,12 @@ export function ChatLeakShield({
         </View>
       )}
 
-      {renderRevealButton("right")}
-      {renderRevealButton("left")}
+      {Platform.OS === "web" ? renderWebRevealButtons() : (
+        <>
+          {renderNativeRevealButton("right")}
+          {renderNativeRevealButton("left")}
+        </>
+      )}
 
       {warningVisible && (
         <View pointerEvents="none" style={styles.warningOverlay}>

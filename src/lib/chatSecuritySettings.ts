@@ -2,6 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { ChatSecuritySettings } from "@/lib/types";
 
+export const CHAT_SECURITY_SETTINGS_EVENT = "secureapp:chat-security-settings";
+
 export const DEFAULT_CHAT_SECURITY_SETTINGS: ChatSecuritySettings = {
   require_hold_to_reveal: true,
   identity_magnet: true,
@@ -36,6 +38,15 @@ async function writeLocalSettings(chatId: string, settings: ChatSecuritySettings
   await AsyncStorage.setItem(storageKey(chatId), JSON.stringify(settings));
 }
 
+function emitSettingsChanged(chatId: string, settings: ChatSecuritySettings) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(CHAT_SECURITY_SETTINGS_EVENT, {
+      detail: { chatId, settings },
+    }),
+  );
+}
+
 export async function fetchChatSecuritySettings(chatId: string): Promise<ChatSecuritySettings> {
   const { data, error } = await supabase
     .from("chat_security_settings")
@@ -56,6 +67,7 @@ export async function saveChatSecuritySettings(
   userId: string,
 ) {
   await writeLocalSettings(chatId, settings);
+  emitSettingsChanged(chatId, settings);
   const result = await supabase
     .from("chat_security_settings")
     .upsert({

@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Chat, ChatMuteSetting } from "@/lib/types";
 import { describeMute } from "./ChatUtils";
@@ -47,9 +47,12 @@ export const ChatHeader = ({
   onShowOverflowMenu,
   decoyMode,
 }: Props) => {
+  const webAction = (action: string) =>
+    Platform.OS === "web" ? ({ dataSet: { chatAction: action } } as any) : {};
+
   return (
     <View style={styles.header}>
-      <Pressable onPress={onBack} style={styles.headerButton}>
+      <Pressable {...webAction("back")} onPress={onBack} style={styles.headerButton}>
         <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
       </Pressable>
 
@@ -58,34 +61,34 @@ export const ChatHeader = ({
           <Text style={styles.selectionCount}>{selectedIds.length}</Text>
           <View style={styles.selectionActions}>
             {selectedIds.length === 1 && (
-              <Pressable onPress={onReplyToSelected} style={styles.headerButton}>
+              <Pressable {...webAction("reply-selected")} onPress={onReplyToSelected} style={styles.headerButton}>
                 <MaterialCommunityIcons color={theme.colors.headerIcon} name="reply" size={22} />
               </Pressable>
             )}
-            <Pressable onPress={onToggleStarSelected} style={styles.headerButton}>
+            <Pressable {...webAction("star-selected")} onPress={onToggleStarSelected} style={styles.headerButton}>
               <MaterialCommunityIcons 
                 color={theme.colors.headerIcon} 
                 name={selectedIds.every((id) => savedMessageIds.has(id)) ? "star" : "star-outline"} 
                 size={24} 
               />
             </Pressable>
-            <Pressable onPress={onDeleteSelected} style={styles.headerButton}>
+            <Pressable {...webAction("delete-selected")} onPress={onDeleteSelected} style={styles.headerButton}>
               <MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can-outline" size={24} />
             </Pressable>
-            <Pressable onPress={onForwardSelected} style={styles.headerButton}>
+            <Pressable {...webAction("forward-selected")} onPress={onForwardSelected} style={styles.headerButton}>
               <MaterialCommunityIcons color={theme.colors.headerIcon} name="share-all-outline" size={24} />
             </Pressable>
-            <Pressable onPress={onShowSelectionOverflow} style={styles.headerButton}>
+            <Pressable {...webAction("selection-overflow")} onPress={onShowSelectionOverflow} style={styles.headerButton}>
               <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={26} />
             </Pressable>
           </View>
         </>
       ) : (
         <>
-          <Pressable onPress={onOpenChatSettings} style={styles.avatar}>
+          <Pressable {...webAction("settings")} onPress={onOpenChatSettings} style={styles.avatar}>
             <Text style={styles.avatarText}>{(chat.title || "?").slice(0, 1).toUpperCase()}</Text>
           </Pressable>
-          <Pressable onPress={onOpenChatSettings} style={styles.headerCopy}>
+          <Pressable {...webAction("settings")} onPress={onOpenChatSettings} style={styles.headerCopy}>
             <Text numberOfLines={1} style={styles.title}>
               {chat.title}
             </Text>
@@ -101,17 +104,17 @@ export const ChatHeader = ({
           </Pressable>
           
           {!decoyMode && (
-            <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
+            <Pressable {...webAction("video")} onPress={() => {}} style={styles.headerButtonSmall}>
               <Feather color={theme.colors.headerIcon} name="video" size={20} />
             </Pressable>
           )}
           {!decoyMode && (
-            <Pressable onPress={() => {}} style={styles.headerButtonSmall}>
+            <Pressable {...webAction("phone")} onPress={() => {}} style={styles.headerButtonSmall}>
               <Feather color={theme.colors.headerIcon} name="phone" size={19} />
             </Pressable>
           )}
 
-          <Pressable onPress={onShowOverflowMenu} style={styles.headerButtonSmall}>
+          <Pressable {...webAction("overflow")} onPress={onShowOverflowMenu} style={styles.headerButtonSmall}>
             <MaterialCommunityIcons color={theme.colors.headerIcon} name="dots-vertical" size={24} />
           </Pressable>
         </>

@@ -14,7 +14,7 @@ import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatSecuritySettings, Message, Profile } from "@/lib/types";
 import { webEmbeddedInputReset, webDefaultCursor } from "@/lib/webStyles";
 import { supabase } from "@/lib/supabase";
-import { DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings } from "@/lib/chatSecuritySettings";
+import { CHAT_SECURITY_SETTINGS_EVENT, DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings } from "@/lib/chatSecuritySettings";
 import { useMessages, useMessagesSubscription, useSendMessage } from "@/hooks/useChatMessages";
 
 // Sub-screens
@@ -444,9 +444,26 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   useEffect(() => {
     let active = true;
+    const reloadSettings = () => {
+      void fetchChatSecuritySettings(chat.id).then((next) => {
+        if (active) setSecuritySettings(next);
+      });
+    };
+    const handleLocalSettingsChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ chatId: string; settings: ChatSecuritySettings }>).detail;
+      if (detail?.chatId === chat.id) {
+        setSecuritySettings({ ...DEFAULT_CHAT_SECURITY_SETTINGS, ...detail.settings });
+      }
+    };
+
     void fetchChatSecuritySettings(chat.id).then((next) => {
       if (active) setSecuritySettings(next);
     });
+
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.addEventListener(CHAT_SECURITY_SETTINGS_EVENT, handleLocalSettingsChange);
+      window.addEventListener("focus", reloadSettings);
+    }
 
     const channel = supabase
       .channel(`chat-security-settings:${chat.id}`)
@@ -464,6 +481,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     return () => {
       active = false;
+      if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.removeEventListener(CHAT_SECURITY_SETTINGS_EVENT, handleLocalSettingsChange);
+        window.removeEventListener("focus", reloadSettings);
+      }
       void supabase.removeChannel(channel);
     };
   }, [chat.id]);
@@ -932,6 +953,79 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const findClickable = (element: HTMLElement | null) =>
       element?.closest?.("button,[role='button'],a,input,textarea") as HTMLElement | null;
 
+    const findChatAction = (element: HTMLElement | null) =>
+      element?.closest?.("[data-chat-action]")?.getAttribute("data-chat-action") ?? null;
+
+    const runChatAction = (action: string | null) => {
+      if (!action) return false;
+      switch (action) {
+        case "back":
+          if (selectedIdsRef.current.length) setSelectedIds([]);
+          else onBack();
+          return true;
+        case "settings":
+          onOpenChatSettings();
+          return true;
+        case "reply-selected": {
+          const selected = selectedIdsRef.current[0];
+          const message = selected ? messageMap[selected] : null;
+          if (message) setReplyTo(message);
+          setSelectedIds([]);
+          return true;
+        }
+        case "delete-selected":
+          setShowDeleteModal(true);
+          return true;
+        case "forward-selected":
+          onForward?.(selectedIdsRef.current.map((id) => messageMap[id]).filter(Boolean));
+          setSelectedIds([]);
+          return true;
+        case "selection-overflow":
+          setShowSelectionOverflowMenu(true);
+          return true;
+        case "overflow":
+          setShowOverflowMenu(true);
+          return true;
+        default:
+          return false;
+      }
+    };
+
+    const dispatchTapSequence = (element: HTMLElement, touch: Touch) => {
+      const commonPointer = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId: touch.identifier,
+        pointerType: "touch",
+        isPrimary: false,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        screenX: touch.screenX,
+        screenY: touch.screenY,
+      };
+
+      try {
+        element.dispatchEvent(new PointerEvent("pointerdown", commonPointer));
+        element.dispatchEvent(new PointerEvent("pointerup", commonPointer));
+      } catch {
+        // Older embedded WebViews can miss PointerEvent construction.
+      }
+
+      const commonMouse = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        screenX: touch.screenX,
+        screenY: touch.screenY,
+      };
+      element.dispatchEvent(new MouseEvent("mousedown", commonMouse));
+      element.dispatchEvent(new MouseEvent("mouseup", commonMouse));
+      element.dispatchEvent(new MouseEvent("click", commonMouse));
+    };
+
     const findScrollable = (element: HTMLElement | null) => {
       let node: HTMLElement | null = element;
       while (node && node !== document.body) {
@@ -1050,11 +1144,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       const messageId = findMessageId(target) || current.messageId;
 
       if (!current.longPressed && !current.moved) {
-        if (messageId && selectedIdsRef.current.length > 0) {
+        if (runChatAction(findChatAction(target))) {
+          // Header action was handled directly.
+        } else if (messageId && selectedIdsRef.current.length > 0) {
           toggleSelection(messageId);
         } else {
           const clickable = findClickable(target);
           if (clickable && !clickable.closest("[data-secure-reveal-button='true']")) {
+            dispatchTapSequence(clickable, touch);
             clickable.click();
           }
         }
@@ -1088,7 +1185,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       document.removeEventListener("touchend", handleTouchEnd, { capture: true } as any);
       document.removeEventListener("touchcancel", handleTouchCancel, { capture: true } as any);
     };
-  }, [beginDragSelect, messageMap, stopDragSelect]);
+  }, [beginDragSelect, messageMap, onBack, onForward, onOpenChatSettings, stopDragSelect]);
 
   const webDragHandlers = useMemo(() => {
     if (Platform.OS !== "web") return {};

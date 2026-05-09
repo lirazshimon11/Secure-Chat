@@ -995,9 +995,23 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     };
 
     const operationalTouchRef = { current: null as OperationalTouch | null };
+    const revealTouchIds = new Set<number>();
 
     const getElementFromTouch = (touch: Touch) =>
       document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
+
+    const isRevealTarget = (element: HTMLElement | null) =>
+      !!element?.closest?.("[data-secure-reveal-button='true']");
+
+    const hideOriginalTouchEvent = (event: TouchEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      (event as any).stopImmediatePropagation?.();
+    };
+
+    const eventIncludesRevealTouch = (event: TouchEvent) =>
+      Array.from(event.touches).some((touch) => revealTouchIds.has(touch.identifier)) ||
+      Array.from(event.changedTouches).some((touch) => revealTouchIds.has(touch.identifier));
 
     const findMessageId = (element: HTMLElement | null) =>
       element?.closest?.("[data-message-id]")?.getAttribute("data-message-id") ?? null;
@@ -1132,17 +1146,28 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     const shouldHandleTouch = (target: HTMLElement | null) => {
       if (!isRevealingChatRef.current) return false;
-      if (target?.closest?.("[data-secure-reveal-button='true']")) return false;
+      if (isRevealTarget(target)) return false;
       return true;
     };
 
     const handleTouchStart = (event: TouchEvent) => {
+      Array.from(event.changedTouches).forEach((touch) => {
+        if (isRevealTarget(getElementFromTouch(touch))) {
+          revealTouchIds.add(touch.identifier);
+        }
+      });
+
       if (operationalTouchRef.current) return;
       const touch = Array.from(event.changedTouches).find((candidate) => {
         const target = getElementFromTouch(candidate);
         return shouldHandleTouch(target);
       });
-      if (!touch) return;
+      if (!touch) {
+        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current) {
+          hideOriginalTouchEvent(event);
+        }
+        return;
+      }
 
       const target = getElementFromTouch(touch);
       const messageId = findMessageId(target);
@@ -1175,16 +1200,24 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       operationalTouchRef.current = nextTouch;
       dispatchPrimaryTouchPointer(target, "pointerdown", touch);
       dispatchPrimaryMouse(target, "mousedown", touch);
-      event.preventDefault();
-      event.stopPropagation();
-      (event as any).stopImmediatePropagation?.();
+      hideOriginalTouchEvent(event);
     };
 
     const handleTouchMove = (event: TouchEvent) => {
       const current = operationalTouchRef.current;
-      if (!current) return;
+      if (!current) {
+        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current) {
+          hideOriginalTouchEvent(event);
+        }
+        return;
+      }
       const touch = Array.from(event.changedTouches).find((candidate) => candidate.identifier === current.id);
-      if (!touch) return;
+      if (!touch) {
+        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current) {
+          hideOriginalTouchEvent(event);
+        }
+        return;
+      }
 
       const deltaX = touch.clientX - current.startX;
       const deltaY = touch.clientY - current.startY;
@@ -1210,16 +1243,29 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
 
       current.lastY = touch.clientY;
-      event.preventDefault();
-      event.stopPropagation();
-      (event as any).stopImmediatePropagation?.();
+      hideOriginalTouchEvent(event);
     };
 
     const handleTouchEnd = (event: TouchEvent) => {
       const current = operationalTouchRef.current;
-      if (!current) return;
+      const endedRevealIds = Array.from(event.changedTouches)
+        .filter((touch) => revealTouchIds.has(touch.identifier))
+        .map((touch) => touch.identifier);
+      if (!current) {
+        if (endedRevealIds.length || eventIncludesRevealTouch(event)) {
+          hideOriginalTouchEvent(event);
+        }
+        endedRevealIds.forEach((id) => revealTouchIds.delete(id));
+        return;
+      }
       const touch = Array.from(event.changedTouches).find((candidate) => candidate.identifier === current.id);
-      if (!touch) return;
+      if (!touch) {
+        if (endedRevealIds.length || eventIncludesRevealTouch(event)) {
+          hideOriginalTouchEvent(event);
+        }
+        endedRevealIds.forEach((id) => revealTouchIds.delete(id));
+        return;
+      }
 
       clearOperationalTimer();
       const target = getElementFromTouch(touch);
@@ -1251,13 +1297,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
       operationalTouchRef.current = null;
       if (handled || current.chatAction) {
-        event.preventDefault();
-        event.stopPropagation();
-        (event as any).stopImmediatePropagation?.();
+        hideOriginalTouchEvent(event);
       }
+      endedRevealIds.forEach((id) => revealTouchIds.delete(id));
     };
 
-    const handleTouchCancel = () => {
+    const handleTouchCancel = (event: TouchEvent) => {
       clearOperationalTimer();
       const current = operationalTouchRef.current;
       if (current?.downTarget) {
@@ -1267,8 +1312,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           // no-op
         }
       }
+      Array.from(event.changedTouches).forEach((touch) => revealTouchIds.delete(touch.identifier));
       operationalTouchRef.current = null;
       stopDragSelect();
+      if (eventIncludesRevealTouch(event)) {
+        hideOriginalTouchEvent(event);
+      }
     };
 
     document.addEventListener("touchstart", handleTouchStart, { capture: true, passive: false });

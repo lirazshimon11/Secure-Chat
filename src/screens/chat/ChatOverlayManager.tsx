@@ -148,7 +148,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
       {showOverflowMenu ? (
         <View pointerEvents="box-none" style={styles.overlayRoot}>
           <Pressable onPress={() => setShowOverflowMenu(false)} style={styles.backdrop} />
-          <View style={styles.menuCard}>
+          <View {...(Platform.OS === "web" ? ({ dataSet: { chatMenu: "true" } } as any) : {})} style={styles.menuCard}>
             {chat.is_group ? (
               <>
                 <MenuItem label="צירוף חברים" onPress={() => { setShowOverflowMenu(false); setActiveSubScreen("addMembers"); }} />
@@ -197,7 +197,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
       {showMoreMenu ? (
         <View pointerEvents="box-none" style={styles.overlayRoot}>
           <Pressable onPress={() => setShowMoreMenu(false)} style={styles.backdrop} />
-          <View style={styles.menuCard}>
+          <View {...(Platform.OS === "web" ? ({ dataSet: { chatMenu: "true" } } as any) : {})} style={styles.menuCard}>
             {chat.is_group ? (
               <>
                 <MenuItem label="ניקוי הצאט" onPress={() => { setShowMoreMenu(false); setShowClearDialog(true); }} />
@@ -332,7 +332,7 @@ export const ChatOverlayManager = (props: OverlayProps) => {
       {showSelectionOverflowMenu ? (
         <View pointerEvents="box-none" style={styles.overlayRoot}>
           <Pressable onPress={() => setShowSelectionOverflowMenu(false)} style={styles.backdrop} />
-          <View style={styles.menuCard}>
+          <View {...(Platform.OS === "web" ? ({ dataSet: { chatMenu: "true" } } as any) : {})} style={styles.menuCard}>
             {selectedIds.length === 1 && (
               <MenuItem label="פרטים" onPress={() => {
                 const msg = messageMap[selectedIds[0]];

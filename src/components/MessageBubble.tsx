@@ -204,6 +204,7 @@ export function MessageBubble({
 
   const handleLongPress = () => {
     if (isSystem) return;
+    if ((Platform.OS as string) === "web") return;
     onInitiateDragSelect?.();
     if (!isSelected) {
       onToggleSelection(message.id);

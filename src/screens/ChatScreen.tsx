@@ -299,6 +299,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const isRevealingChatRef = useRef(false);
   useEffect(() => { isRevealingChatRef.current = isRevealingChat; }, [isRevealingChat]);
   const headerTouchActionLockRef = useRef(0);
+  const ignoredRevealTouchIdsRef = useRef<Set<number>>(new Set());
+  const contentRevealHoldRef = useRef<{
+    id: number | null;
+    startX: number;
+    startY: number;
+    revealed: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+  const [revealHoldCircle, setRevealHoldCircle] = useState<{ x: number; y: number; radius: number; active: boolean } | null>(null);
   const [touchDebugPoints, setTouchDebugPoints] = useState<Array<{ id: number; x: number; y: number; target: string }>>([]);
   const [securityBlackout, setSecurityBlackout] = useState(false);
   const [fakeScreenshotWarning, setFakeScreenshotWarning] = useState(false);
@@ -1057,13 +1066,145 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     );
   }, [messageMap]);
 
-  const getTouchPoint = (event: any) => {
+  const getTouchPoint = (event: any, preferredId?: number | null) => {
     const nativeEvent = event?.nativeEvent;
-    const touch = nativeEvent?.changedTouches?.[0] || nativeEvent?.touches?.[0] || nativeEvent;
+    const touchLists = [nativeEvent?.changedTouches, nativeEvent?.touches];
+    let touch = null as any;
+
+    if (typeof preferredId === "number") {
+      for (const touchList of touchLists) {
+        const match = touchList ? Array.from(touchList as ArrayLike<any>).find((item: any) => item?.identifier === preferredId) : null;
+        if (match) {
+          touch = match;
+          break;
+        }
+      }
+      if (!touch) return null;
+    }
+
+    touch = touch || nativeEvent?.changedTouches?.[0] || nativeEvent?.touches?.[0] || nativeEvent;
     const x = touch?.clientX ?? touch?.pageX ?? touch?.locationX;
     const y = touch?.clientY ?? touch?.pageY ?? touch?.locationY;
-    return typeof x === "number" && typeof y === "number" ? { x, y } : null;
+    const id = touch?.identifier ?? touch?.pointerId ?? null;
+    return typeof x === "number" && typeof y === "number" ? { x, y, id } : null;
   };
+  const revealHoldRadius = 42;
+
+  const clearContentRevealHold = useCallback((hideReveal: boolean) => {
+    const current = contentRevealHoldRef.current;
+    if (current?.timer) clearTimeout(current.timer);
+    if (current?.id !== null && current?.id !== undefined) {
+      ignoredRevealTouchIdsRef.current.delete(current.id);
+    }
+    if (hideReveal && current?.revealed) {
+      setIsRevealingChat(false);
+    }
+    setRevealHoldCircle(null);
+    contentRevealHoldRef.current = null;
+  }, []);
+
+  const handleContentRevealTouchStart = useCallback((event: any) => {
+    updateIdentityMagnet(event);
+    if (Platform.OS !== "web" || !securitySettings.require_hold_to_reveal) return;
+
+    const point = getTouchPoint(event);
+    if (!point) return;
+
+    clearContentRevealHold(true);
+    const nextHold = {
+      id: typeof point.id === "number" ? point.id : null,
+      startX: point.x,
+      startY: point.y,
+      revealed: false,
+      timer: null as ReturnType<typeof setTimeout> | null,
+    };
+
+    if (nextHold.id !== null) {
+      ignoredRevealTouchIdsRef.current.add(nextHold.id);
+    }
+    setRevealHoldCircle({ x: point.x, y: point.y, radius: revealHoldRadius, active: false });
+
+    nextHold.timer = setTimeout(() => {
+      const current = contentRevealHoldRef.current;
+      if (!current) return;
+      current.revealed = true;
+      setIdentityMagnetPoint({ x: current.startX, y: current.startY });
+      setRevealHoldCircle({ x: current.startX, y: current.startY, radius: revealHoldRadius, active: true });
+      setIsRevealingChat(true);
+    }, 650);
+
+    contentRevealHoldRef.current = nextHold;
+  }, [clearContentRevealHold, securitySettings.require_hold_to_reveal, updateIdentityMagnet]);
+
+  const handleContentRevealTouchMove = useCallback((event: any) => {
+    updateIdentityMagnet(event);
+    const current = contentRevealHoldRef.current;
+    const point = getTouchPoint(event, current?.id);
+    if (!current || !point) return;
+
+    const distance = Math.hypot(point.x - current.startX, point.y - current.startY);
+    if (distance > revealHoldRadius) {
+      clearContentRevealHold(true);
+      return;
+    }
+
+    if (current.revealed) {
+      setIdentityMagnetPoint({ x: point.x, y: point.y });
+    } else {
+      setRevealHoldCircle({ x: current.startX, y: current.startY, radius: revealHoldRadius, active: false });
+    }
+  }, [clearContentRevealHold, updateIdentityMagnet]);
+
+  const handleContentRevealTouchEnd = useCallback((event: any) => {
+    updateIdentityMagnet(event);
+    const current = contentRevealHoldRef.current;
+    const point = getTouchPoint(event, current?.id);
+    if (!current || current.id === null || point?.id === current.id) {
+      clearContentRevealHold(true);
+    }
+  }, [clearContentRevealHold, updateIdentityMagnet]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+
+    const getTrackedTouch = (event: TouchEvent, source: "active" | "changed") => {
+      const current = contentRevealHoldRef.current;
+      if (!current || current.id === null) return null;
+      const touchList = source === "active" ? event.touches : event.changedTouches;
+      return Array.from(touchList).find((touch) => touch.identifier === current.id) || null;
+    };
+
+    const handleDocumentTouchMove = (event: TouchEvent) => {
+      const current = contentRevealHoldRef.current;
+      const touch = getTrackedTouch(event, "active");
+      if (!current || !touch) return;
+
+      const distance = Math.hypot(touch.clientX - current.startX, touch.clientY - current.startY);
+      if (distance > revealHoldRadius) {
+        clearContentRevealHold(true);
+        return;
+      }
+
+      if (current.revealed) {
+        setIdentityMagnetPoint({ x: touch.clientX, y: touch.clientY });
+      }
+    };
+
+    const handleDocumentTouchEnd = (event: TouchEvent) => {
+      if (getTrackedTouch(event, "changed")) {
+        clearContentRevealHold(true);
+      }
+    };
+
+    document.addEventListener("touchmove", handleDocumentTouchMove, { capture: true, passive: true });
+    document.addEventListener("touchend", handleDocumentTouchEnd, { capture: true, passive: true });
+    document.addEventListener("touchcancel", handleDocumentTouchEnd, { capture: true, passive: true });
+    return () => {
+      document.removeEventListener("touchmove", handleDocumentTouchMove, { capture: true });
+      document.removeEventListener("touchend", handleDocumentTouchEnd, { capture: true });
+      document.removeEventListener("touchcancel", handleDocumentTouchEnd, { capture: true });
+    };
+  }, [clearContentRevealHold]);
 
   const handleOperationalOverlayTouchStart = useCallback((event: any) => {
     if (showOverflowMenu || showSelectionOverflowMenu || showReactionsForId) {
@@ -1178,7 +1319,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     };
 
     const operationalTouchRef = { current: null as OperationalTouch | null };
-    const revealTouchIds = new Set<number>();
+    const revealTouchIds = ignoredRevealTouchIdsRef.current;
 
     const getElementFromTouch = (touch: Touch) =>
       document.elementFromPoint(touch.clientX, touch.clientY) as HTMLElement | null;
@@ -1702,8 +1843,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 }}
               >
                 <ScrollView ref={scrollRef} scrollEnabled={!isDragSelectLocked} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
-                  onTouchStart={updateIdentityMagnet}
-                  onTouchMove={updateIdentityMagnet}
+                  onTouchStart={handleContentRevealTouchStart}
+                  onTouchMove={handleContentRevealTouchMove}
+                  onTouchEnd={handleContentRevealTouchEnd}
+                  onTouchCancel={handleContentRevealTouchEnd}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
@@ -1881,10 +2024,30 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 username={profile?.username || profile?.full_name || "משתמש"}
                 onRevealChange={setIsRevealingChat}
                 bottomOffset={16}
-                revealButtonsEnabled={securitySettings.require_hold_to_reveal}
+                revealButtonsEnabled={false}
                 identityMagnetEnabled={securitySettings.identity_magnet}
                 shutterFlickerEnabled={securitySettings.shutter_flicker}
               />
+              {Platform.OS === "web" && revealHoldCircle
+                ? React.createElement("div", {
+                    "aria-hidden": true,
+                    style: {
+                      position: "fixed",
+                      left: revealHoldCircle.x - revealHoldCircle.radius,
+                      top: revealHoldCircle.y - revealHoldCircle.radius,
+                      width: revealHoldCircle.radius * 2,
+                      height: revealHoldCircle.radius * 2,
+                      borderRadius: 999,
+                      border: `2px solid ${revealHoldCircle.active ? "#00a884" : "rgba(255,255,255,0.85)"}`,
+                      background: revealHoldCircle.active ? "rgba(0,168,132,0.14)" : "rgba(255,255,255,0.08)",
+                      boxShadow: revealHoldCircle.active
+                        ? "0 0 0 9999px rgba(0,0,0,0.04), 0 0 18px rgba(0,168,132,0.55)"
+                        : "0 0 14px rgba(255,255,255,0.3)",
+                      pointerEvents: "none",
+                      zIndex: 9998,
+                    },
+                  })
+                : null}
               {Platform.OS === "web" && (
                 <View pointerEvents="none" style={touchDebugStyles.panel}>
                   <Text style={[touchDebugStyles.title, webSystemFont]}>Touch debug</Text>

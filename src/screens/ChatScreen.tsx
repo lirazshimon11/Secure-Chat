@@ -890,6 +890,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     longPressed: boolean;
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
+  const overlayLastTapRef = useRef<{ messageId: string; time: number; x: number; y: number } | null>(null);
   const overlayMomentumRef = useRef<number | null>(null);
 
   const threadHeightRef = useRef(0);
@@ -1056,8 +1057,16 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const getMessageIdAtPoint = useCallback((x: number, y: number) => {
     if (Platform.OS !== "web" || typeof document === "undefined") return null;
-    const element = document.elementFromPoint(x, y) as HTMLElement | null;
-    return element?.closest?.("[data-message-id]")?.getAttribute("data-message-id") ?? null;
+    const elements =
+      typeof document.elementsFromPoint === "function"
+        ? document.elementsFromPoint(x, y)
+        : [document.elementFromPoint(x, y)].filter(Boolean);
+    for (const element of elements) {
+      const messageElement = (element as HTMLElement | null)?.closest?.("[data-message-id]");
+      const messageId = messageElement?.getAttribute("data-message-id");
+      if (messageId) return messageId;
+    }
+    return null;
   }, []);
 
   const toggleMessageSelection = useCallback((messageId: string) => {
@@ -1301,6 +1310,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         const current = overlayTouchRef.current;
         if (!current || current.moved) return;
         current.longPressed = true;
+        if (messageId && !selectedIdsRef.current.includes(messageId)) {
+          toggleMessageSelection(messageId);
+        }
         beginDragSelect(current.startY);
       }, 430);
     }
@@ -1308,7 +1320,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     overlayTouchRef.current = nextTouch;
     event?.preventDefault?.();
     event?.stopPropagation?.();
-  }, [beginDragSelect, getMessageIdAtPoint, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu]);
+  }, [beginDragSelect, getMessageIdAtPoint, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu, toggleMessageSelection]);
 
   const handleOperationalOverlayTouchMove = useCallback((event: any) => {
     const current = overlayTouchRef.current;
@@ -1350,8 +1362,26 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     if (!current.longPressed && !current.moved) {
       const messageId = (point ? getMessageIdAtPoint(point.x, point.y) : null) || current.messageId;
-      if (messageId && selectedIdsRef.current.length > 0) {
-        toggleMessageSelection(messageId);
+      if (messageId) {
+        const now = Date.now();
+        const lastTap = overlayLastTapRef.current;
+        const isDoubleTap =
+          !!lastTap &&
+          lastTap.messageId === messageId &&
+          now - lastTap.time < 320 &&
+          Math.hypot((point?.x ?? current.startX) - lastTap.x, (point?.y ?? current.startY) - lastTap.y) < 34;
+
+        if (selectedIdsRef.current.length > 0 || isDoubleTap) {
+          toggleMessageSelection(messageId);
+          overlayLastTapRef.current = null;
+        } else {
+          overlayLastTapRef.current = {
+            messageId,
+            time: now,
+            x: point?.x ?? current.startX,
+            y: point?.y ?? current.startY,
+          };
+        }
       }
     }
 
@@ -1670,6 +1700,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           const current = operationalTouchRef.current;
           if (!current || current.id !== nextTouch.id || current.moved) return;
           current.longPressed = true;
+          if (messageId && !selectedIdsRef.current.includes(messageId)) {
+            toggleSelection(messageId);
+          }
           isDragSelectingRef.current = true;
           dragPivotIdRef.current = null;
           dragInitialIdsRef.current = new Set(selectedIdsRef.current);
@@ -1759,9 +1792,27 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       if (!current.longPressed && !current.moved) {
         if (runChatAction(findChatAction(target) || current.chatAction)) {
           handled = true;
-        } else if (messageId && selectedIdsRef.current.length > 0) {
-          toggleSelection(messageId);
-          handled = true;
+        } else if (messageId) {
+          const now = Date.now();
+          const lastTap = overlayLastTapRef.current;
+          const isDoubleTap =
+            !!lastTap &&
+            lastTap.messageId === messageId &&
+            now - lastTap.time < 320 &&
+            Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y) < 34;
+
+          if (selectedIdsRef.current.length > 0 || isDoubleTap) {
+            toggleSelection(messageId);
+            overlayLastTapRef.current = null;
+            handled = true;
+          } else {
+            overlayLastTapRef.current = {
+              messageId,
+              time: now,
+              x: touch.clientX,
+              y: touch.clientY,
+            };
+          }
         } else {
           const clickable = findClickable(target);
           if (clickable && !clickable.closest("[data-secure-reveal-button='true']")) {

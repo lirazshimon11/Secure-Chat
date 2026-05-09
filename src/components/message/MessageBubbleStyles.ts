@@ -26,12 +26,13 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       marginVertical: 1,
       paddingVertical: 2,
+      ...(Platform.OS === "web" ? ({ direction: "ltr" } as any) : null),
     },
     rowMine: {
       justifyContent: Platform.OS === "web" ? "flex-start" : "flex-end",
     },
     rowTheirs: {
-      justifyContent: Platform.OS === "web" ? "flex-end" : "flex-start",
+      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-start",
     },
     rowSystem: {
       justifyContent: "center",
@@ -77,13 +78,21 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: Platform.OS === "web" ? "flex-start" : "flex-end",
       alignItems: "flex-start",
       minWidth: 0,
+      ...(Platform.OS === "web" ? ({ direction: "ltr" } as any) : null),
     },
     bubbleWrapperTheirs: {
       flex: 1,
-      flexDirection: Platform.OS === "web" ? "row-reverse" : "row",
-      justifyContent: Platform.OS === "web" ? "flex-end" : "flex-start",
+      flexDirection: "row",
+      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-start",
       alignItems: "flex-start",
       minWidth: 0,
+      ...(Platform.OS === "web"
+        ? ({
+            direction: "ltr",
+            marginLeft: "auto",
+            marginRight: 0,
+          } as any)
+        : null),
     },
     messageAvatarWrap: {
       width: 28,

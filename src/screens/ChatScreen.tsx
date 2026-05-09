@@ -879,6 +879,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const selectedIdsRef = useRef<string[]>([]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   const overlayTouchRef = useRef<{
+    id: number | null;
     startX: number;
     startY: number;
     lastY: number;
@@ -1088,6 +1089,47 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const id = touch?.identifier ?? touch?.pointerId ?? null;
     return typeof x === "number" && typeof y === "number" ? { x, y, id } : null;
   };
+
+  const getOperationalTouchPoint = (event: any, preferredId?: number | null) => {
+    const nativeEvent = event?.nativeEvent;
+    const touchLists = [nativeEvent?.changedTouches, nativeEvent?.touches];
+    let touch = null as any;
+
+    if (typeof preferredId === "number") {
+      for (const touchList of touchLists) {
+        const match = touchList ? Array.from(touchList as ArrayLike<any>).find((item: any) => item?.identifier === preferredId) : null;
+        if (match) {
+          touch = match;
+          break;
+        }
+      }
+      if (!touch) return null;
+    } else {
+      for (const touchList of touchLists) {
+        const match = touchList
+          ? Array.from(touchList as ArrayLike<any>).find((item: any) => !ignoredRevealTouchIdsRef.current.has(item?.identifier))
+          : null;
+        if (match) {
+          touch = match;
+          break;
+        }
+      }
+    }
+
+    if (!touch) return null;
+    const x = touch?.clientX ?? touch?.pageX ?? touch?.locationX;
+    const y = touch?.clientY ?? touch?.pageY ?? touch?.locationY;
+    const id = touch?.identifier ?? touch?.pointerId ?? null;
+    return typeof x === "number" && typeof y === "number" ? { x, y, id } : null;
+  };
+
+  const changedTouchesIncludeId = (event: any, id: number | null) => {
+    if (id === null) return true;
+    const changedTouches = event?.nativeEvent?.changedTouches;
+    if (!changedTouches) return false;
+    return Array.from(changedTouches as ArrayLike<any>).some((touch: any) => touch?.identifier === id);
+  };
+
   const revealHoldRadius = 42;
 
   const clearContentRevealHold = useCallback((hideReveal: boolean) => {
@@ -1106,6 +1148,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const handleContentRevealTouchStart = useCallback((event: any) => {
     updateIdentityMagnet(event);
     if (Platform.OS !== "web" || !securitySettings.require_hold_to_reveal) return;
+
+    const current = contentRevealHoldRef.current;
+    if (current || isRevealingChatRef.current) return;
 
     const point = getTouchPoint(event);
     if (!point) return;
@@ -1158,8 +1203,15 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const handleContentRevealTouchEnd = useCallback((event: any) => {
     updateIdentityMagnet(event);
     const current = contentRevealHoldRef.current;
-    const point = getTouchPoint(event, current?.id);
-    if (!current || current.id === null || point?.id === current.id) {
+    if (!current || changedTouchesIncludeId(event, current.id)) {
+      clearContentRevealHold(true);
+    }
+  }, [clearContentRevealHold, updateIdentityMagnet]);
+
+  const handleContentRevealTouchCancel = useCallback((event: any) => {
+    updateIdentityMagnet(event);
+    const current = contentRevealHoldRef.current;
+    if (!current || !current.revealed) {
       clearContentRevealHold(true);
     }
   }, [clearContentRevealHold, updateIdentityMagnet]);
@@ -1196,13 +1248,20 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
     };
 
+    const handleDocumentTouchCancel = (event: TouchEvent) => {
+      const current = contentRevealHoldRef.current;
+      if (!current?.revealed && getTrackedTouch(event, "changed")) {
+        clearContentRevealHold(true);
+      }
+    };
+
     document.addEventListener("touchmove", handleDocumentTouchMove, { capture: true, passive: true });
     document.addEventListener("touchend", handleDocumentTouchEnd, { capture: true, passive: true });
-    document.addEventListener("touchcancel", handleDocumentTouchEnd, { capture: true, passive: true });
+    document.addEventListener("touchcancel", handleDocumentTouchCancel, { capture: true, passive: true });
     return () => {
       document.removeEventListener("touchmove", handleDocumentTouchMove, { capture: true });
       document.removeEventListener("touchend", handleDocumentTouchEnd, { capture: true });
-      document.removeEventListener("touchcancel", handleDocumentTouchEnd, { capture: true });
+      document.removeEventListener("touchcancel", handleDocumentTouchCancel, { capture: true });
     };
   }, [clearContentRevealHold]);
 
@@ -1221,10 +1280,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       overlayMomentumRef.current = null;
     }
 
-    const point = getTouchPoint(event);
+    const point = getOperationalTouchPoint(event);
     if (!point) return;
     const messageId = getMessageIdAtPoint(point.x, point.y);
     const nextTouch = {
+      id: typeof point.id === "number" ? point.id : null,
       startX: point.x,
       startY: point.y,
       lastY: point.y,
@@ -1252,7 +1312,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const handleOperationalOverlayTouchMove = useCallback((event: any) => {
     const current = overlayTouchRef.current;
-    const point = getTouchPoint(event);
+    const point = getOperationalTouchPoint(event, current?.id);
     if (!current || !point) return;
 
     const deltaX = point.x - current.startX;
@@ -1283,7 +1343,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const handleOperationalOverlayTouchEnd = useCallback((event: any) => {
     const current = overlayTouchRef.current;
-    const point = getTouchPoint(event);
+    const point = getOperationalTouchPoint(event, current?.id);
     if (!current) return;
 
     if (current.timer) clearTimeout(current.timer);
@@ -1310,9 +1370,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       startX: number;
       startY: number;
       lastY: number;
+      lastTime: number;
+      velocityY: number;
       messageId: string | null;
       chatAction: string | null;
       downTarget: HTMLElement | null;
+      scrollElement: HTMLElement | null;
       longPressed: boolean;
       moved: boolean;
       timer: ReturnType<typeof setTimeout> | null;
@@ -1337,6 +1400,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       Array.from(event.touches).some((touch) => revealTouchIds.has(touch.identifier)) ||
       Array.from(event.changedTouches).some((touch) => revealTouchIds.has(touch.identifier));
 
+    const eventChangedIncludesOperationalTouch = (event: TouchEvent) =>
+      Array.from(event.changedTouches).some((touch) => !revealTouchIds.has(touch.identifier));
+
     const findMessageId = (element: HTMLElement | null) =>
       element?.closest?.("[data-message-id]")?.getAttribute("data-message-id") ?? null;
 
@@ -1345,6 +1411,59 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     const findChatAction = (element: HTMLElement | null) =>
       element?.closest?.("[data-chat-action]")?.getAttribute("data-chat-action") ?? null;
+
+    const findScrollElement = (element: HTMLElement | null) => {
+      const direct = element?.closest?.("[data-chat-scroller='true']") as HTMLElement | null;
+      if (direct) return direct;
+      const thread = element?.closest?.("[data-chat-thread='true']") as HTMLElement | null;
+      return (thread?.querySelector?.("[data-chat-scroller='true']") as HTMLElement | null) ?? null;
+    };
+
+    const scrollDomTo = (element: HTMLElement | null, nextY: number) => {
+      if (!element) return scrollThreadTo(nextY);
+      const maxY = Math.max(0, element.scrollHeight - element.clientHeight);
+      const boundedY = Math.max(0, Math.min(maxY, nextY));
+      element.scrollTop = boundedY;
+      scrollMetricsRef.current.y = boundedY;
+      scrollMetricsRef.current.height = element.clientHeight || scrollMetricsRef.current.height;
+      scrollMetricsRef.current.contentHeight = element.scrollHeight || scrollMetricsRef.current.contentHeight;
+      return boundedY;
+    };
+
+    const startDomMomentum = (element: HTMLElement | null, initialVelocityY: number) => {
+      if (!element) {
+        startOverlayMomentum(initialVelocityY);
+        return;
+      }
+      if (overlayMomentumRef.current !== null) {
+        cancelAnimationFrame(overlayMomentumRef.current);
+        overlayMomentumRef.current = null;
+      }
+
+      let velocity = initialVelocityY;
+      let lastTime = performance.now();
+      const friction = 0.955;
+      const minVelocity = 0.025;
+
+      const step = (now: number) => {
+        const dt = Math.min(34, now - lastTime);
+        lastTime = now;
+        const beforeY = element.scrollTop;
+        const afterY = scrollDomTo(element, beforeY + velocity * dt);
+        const hitEdge = Math.abs(afterY - beforeY) < 0.5 && Math.abs(velocity) > minVelocity;
+        velocity *= Math.pow(friction, dt / 16);
+
+        if (!hitEdge && Math.abs(velocity) > minVelocity) {
+          overlayMomentumRef.current = requestAnimationFrame(step);
+        } else {
+          overlayMomentumRef.current = null;
+        }
+      };
+
+      if (Math.abs(initialVelocityY) > minVelocity) {
+        overlayMomentumRef.current = requestAnimationFrame(step);
+      }
+    };
 
     const runChatAction = (action: string | null) => {
       if (!action) return false;
@@ -1468,10 +1587,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
     };
 
-    const shouldHandleTouch = (target: HTMLElement | null) => {
+    const isChatThreadTarget = (target: HTMLElement | null) =>
+      !!target?.closest?.("[data-chat-thread='true']");
+
+    const shouldHandleTouch = (touch: Touch, target: HTMLElement | null) => {
       if (!isRevealingChatRef.current) return false;
+      if (revealTouchIds.has(touch.identifier)) return false;
       if (isRevealTarget(target)) return false;
-      return !!findChatAction(target);
+      return !!findChatAction(target) || isChatThreadTarget(target);
     };
 
     const handleTouchStart = (event: TouchEvent) => {
@@ -1498,10 +1621,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       if (operationalTouchRef.current) return;
       const touch = Array.from(event.changedTouches).find((candidate) => {
         const target = getElementFromTouch(candidate);
-        return shouldHandleTouch(target);
+        return shouldHandleTouch(candidate, target);
       });
       if (!touch) {
-        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current) {
+        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current && !eventChangedIncludesOperationalTouch(event)) {
           hideOriginalTouchEvent(event);
         }
         return;
@@ -1510,6 +1633,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       const target = getElementFromTouch(touch);
       const messageId = findMessageId(target);
       const chatAction = findChatAction(target);
+      const scrollElement = findScrollElement(target);
       if (chatAction) {
         const now = performance.now();
         if (now > headerTouchActionLockRef.current) {
@@ -1520,14 +1644,22 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         return;
       }
 
+      if (overlayMomentumRef.current !== null) {
+        cancelAnimationFrame(overlayMomentumRef.current);
+        overlayMomentumRef.current = null;
+      }
+
       const nextTouch: OperationalTouch = {
         id: touch.identifier,
         startX: touch.clientX,
         startY: touch.clientY,
         lastY: touch.clientY,
+        lastTime: performance.now(),
+        velocityY: 0,
         messageId,
         chatAction,
         downTarget: target,
+        scrollElement,
         longPressed: false,
         moved: false,
         timer: null,
@@ -1554,14 +1686,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     const handleTouchMove = (event: TouchEvent) => {
       const current = operationalTouchRef.current;
       if (!current) {
-        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current) {
+        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current && !eventChangedIncludesOperationalTouch(event)) {
           hideOriginalTouchEvent(event);
         }
         return;
       }
       const touch = Array.from(event.changedTouches).find((candidate) => candidate.identifier === current.id);
       if (!touch) {
-        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current) {
+        if (eventIncludesRevealTouch(event) && isRevealingChatRef.current && !eventChangedIncludesOperationalTouch(event)) {
           hideOriginalTouchEvent(event);
         }
         return;
@@ -1583,11 +1715,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         beginDragSelect(touch.clientY);
       } else if (movedEnough) {
         clearOperationalTimer();
-        const { y, height, contentHeight } = scrollMetricsRef.current;
-        const maxY = Math.max(0, contentHeight - height);
-        const nextY = Math.max(0, Math.min(maxY, y + current.lastY - touch.clientY));
-        scrollMetricsRef.current.y = nextY;
-        scrollRef.current?.scrollTo({ y: nextY, animated: false });
+        const now = performance.now();
+        const dt = Math.max(1, now - current.lastTime);
+        const scrollDelta = current.lastY - touch.clientY;
+        current.velocityY = scrollDelta / dt;
+        current.lastTime = now;
+        const baseY = current.scrollElement ? current.scrollElement.scrollTop : scrollMetricsRef.current.y;
+        scrollDomTo(current.scrollElement, baseY + scrollDelta);
       }
 
       current.lastY = touch.clientY;
@@ -1600,7 +1734,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         .filter((touch) => revealTouchIds.has(touch.identifier))
         .map((touch) => touch.identifier);
       if (!current) {
-        if (endedRevealIds.length || eventIncludesRevealTouch(event)) {
+        if ((endedRevealIds.length || eventIncludesRevealTouch(event)) && !eventChangedIncludesOperationalTouch(event)) {
           hideOriginalTouchEvent(event);
         }
         endedRevealIds.forEach((id) => revealTouchIds.delete(id));
@@ -1608,7 +1742,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       }
       const touch = Array.from(event.changedTouches).find((candidate) => candidate.identifier === current.id);
       if (!touch) {
-        if (endedRevealIds.length || eventIncludesRevealTouch(event)) {
+        if ((endedRevealIds.length || eventIncludesRevealTouch(event)) && !eventChangedIncludesOperationalTouch(event)) {
           hideOriginalTouchEvent(event);
         }
         endedRevealIds.forEach((id) => revealTouchIds.delete(id));
@@ -1641,6 +1775,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       if (current.longPressed) {
         stopDragSelect();
         handled = true;
+      } else if (current.moved) {
+        startDomMomentum(current.scrollElement, current.velocityY);
       }
 
       operationalTouchRef.current = null;
@@ -1680,7 +1816,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       document.removeEventListener("touchend", handleTouchEnd, { capture: true } as any);
       document.removeEventListener("touchcancel", handleTouchCancel, { capture: true } as any);
     };
-  }, [beginDragSelect, messageMap, onBack, onForward, onOpenChatSettings, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu, stopDragSelect]);
+  }, [beginDragSelect, messageMap, onBack, onForward, onOpenChatSettings, scrollThreadTo, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu, startOverlayMomentum, stopDragSelect]);
 
   const webDragHandlers = useMemo(() => {
     if (Platform.OS !== "web") return {};
@@ -1836,6 +1972,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     ? chatLeakShieldStyles.protectedThreadRevealed
                     : chatLeakShieldStyles.protectedThreadBlurred,
                 ]}
+                dataSet={{ chatThread: "true" } as any}
                 {...selectionPanResponder.panHandlers}
                 {...webDragHandlers}
                 onLayout={(e) => {
@@ -1843,10 +1980,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 }}
               >
                 <ScrollView ref={scrollRef} scrollEnabled={!isDragSelectLocked} keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scrollContent, webDefaultCursor]} showsVerticalScrollIndicator={false} scrollEventThrottle={16}
+                  {...({ dataSet: { chatScroller: "true" } } as any)}
                   onTouchStart={handleContentRevealTouchStart}
                   onTouchMove={handleContentRevealTouchMove}
                   onTouchEnd={handleContentRevealTouchEnd}
-                  onTouchCancel={handleContentRevealTouchEnd}
+                  onTouchCancel={handleContentRevealTouchCancel}
                   // Initial offset to bottom to reduce jump
                   contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}

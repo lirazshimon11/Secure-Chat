@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, ViewStyle } from "react-native";
 import { useAppTheme } from "@/lib/theme";
-import { webNoOutline } from "@/lib/webStyles";
+import { webNoOutline, webSystemFont } from "@/lib/webStyles";
 
 type Props = {
   label: string;
@@ -67,6 +67,7 @@ const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
     label: {
       fontSize: 15,
       fontWeight: "700",
+      ...webSystemFont,
     },
     primaryLabel: {
       color: theme.colors.textOnAccent,

@@ -60,10 +60,10 @@ export function ChatLeakShield({
   }, [flicker]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" || !revealHeld) return;
+    if (Platform.OS !== "web" || !revealHeld || !revealButtonsEnabled) return;
 
     const handlePointerUp = (event: PointerEvent) => {
-      if (revealPointerIdRef.current === null || event.pointerId === revealPointerIdRef.current) {
+      if (revealPointerIdRef.current !== null && event.pointerId === revealPointerIdRef.current) {
         revealPointerIdRef.current = null;
         setWebButtonsInteractive(true);
         onRevealChange(false);
@@ -83,7 +83,7 @@ export function ChatLeakShield({
       window.removeEventListener("pointerup", handlePointerUp, true);
       window.removeEventListener("touchend", handleTouchEnd, true);
     };
-  }, [onRevealChange, revealHeld, setWebButtonsInteractive]);
+  }, [onRevealChange, revealButtonsEnabled, revealHeld, setWebButtonsInteractive]);
 
   useEffect(() => {
     if (Platform.OS === "web" && !revealHeld) {

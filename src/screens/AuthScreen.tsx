@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
-import { Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, TextInput, View, useColorScheme } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { Screen } from "@/components/Screen";
@@ -32,7 +32,9 @@ type SocialButtonProps = {
 
 export function AuthScreen() {
   const theme = useAppTheme();
-  const styles = createStyles(theme);
+  const isDark = useColorScheme() === "dark";
+  const styles = createStyles(theme, isDark);
+  const authColors = getAuthColors(isDark);
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<AuthMode>("signin");
   const [identifier, setIdentifier] = useState("");
@@ -107,7 +109,7 @@ export function AuthScreen() {
             onPress={() => (isSignin ? undefined : switchMode("signin"))}
             style={[styles.backButton, webNoOutline]}
           >
-            <MaterialCommunityIcons name="chevron-left" size={24} color="#ffffff" />
+            <MaterialCommunityIcons name="chevron-left" size={24} color={authColors.icon} />
           </Pressable>
           <Text style={styles.brand}>SecureApp</Text>
           <View style={styles.backButtonPlaceholder} />
@@ -171,7 +173,7 @@ export function AuthScreen() {
                 <MaterialCommunityIcons
                   name={passwordVisible ? "eye-off-outline" : "eye-outline"}
                   size={19}
-                  color="#f8f8f8"
+                  color={authColors.iconMuted}
                 />
               </Pressable>
             }
@@ -182,7 +184,7 @@ export function AuthScreen() {
           <View style={styles.utilityRow}>
             <Pressable onPress={() => setRememberMe((current) => !current)} style={[styles.rememberRow, webNoOutline]}>
               <View style={[styles.checkbox, rememberMe && styles.checkboxActive]}>
-                {rememberMe ? <MaterialCommunityIcons name="check" size={13} color="#090909" /> : null}
+                {rememberMe ? <MaterialCommunityIcons name="check" size={13} color={authColors.checkboxIcon} /> : null}
               </View>
               <Text style={styles.utilityText}>זכור אותי</Text>
             </Pressable>
@@ -214,7 +216,7 @@ export function AuthScreen() {
           styles={styles}
         />
         <SocialButton
-          icon={<MaterialCommunityIcons name="apple" size={20} color="#ffffff" />}
+          icon={<MaterialCommunityIcons name="apple" size={20} color={authColors.socialIcon} />}
           label={isSignin ? "Continue with Apple" : "Sign up with Apple"}
           onPress={() => setError("כניסה עם Apple עדיין לא מחוברת במערכת.")}
           styles={styles}
@@ -252,7 +254,7 @@ function AuthField({
           autoCapitalize="none"
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#777777"
+          placeholderTextColor={styles.inputPlaceholder.color}
           returnKeyType={returnKeyType}
           secureTextEntry={secureTextEntry}
           onSubmitEditing={onSubmitEditing}
@@ -276,15 +278,51 @@ function SocialButton({ icon, label, onPress, styles }: SocialButtonProps) {
   );
 }
 
-const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
+const getAuthColors = (isDark: boolean) => ({
+  pageBg: isDark ? "#080808" : "#ffffff",
+  pageGradient: isDark
+    ? "linear-gradient(180deg, #080808 0%, #080808 100%)"
+    : "linear-gradient(180deg, #ffffff 0%, #ffffff 100%)",
+  brand: isDark ? "#ffffff" : "#111b21",
+  title: isDark ? "#ffffff" : "#111b21",
+  subtitle: isDark ? "#a3a3a3" : "#667781",
+  fieldLabel: isDark ? "#777777" : "#667781",
+  inputBg: isDark ? "#181818" : "#f0f2f5",
+  inputBorder: isDark ? "rgba(255,255,255,0.03)" : "#e2e7ea",
+  inputText: isDark ? "#ffffff" : "#111b21",
+  utilityText: isDark ? "#d8d8d8" : "#111b21",
+  link: "#ff3b86",
+  primary: "#ff3b86",
+  divider: isDark ? "#202020" : "#e9edef",
+  dividerText: isDark ? "#ffffff" : "#54656f",
+  socialBg: isDark ? "#181818" : "#f0f2f5",
+  socialText: isDark ? "#d7d7d7" : "#111b21",
+  checkboxBorder: isDark ? "#ffffff" : "#111b21",
+  checkboxFill: isDark ? "#ffffff" : "#111b21",
+  checkboxIcon: isDark ? "#090909" : "#ffffff",
+  notice: isDark ? "#ff4a92" : "#be1f62",
+  error: isDark ? "#ff7ba9" : "#b42318",
+  icon: isDark ? "#ffffff" : "#111b21",
+  iconMuted: isDark ? "#f8f8f8" : "#54656f",
+  socialIcon: isDark ? "#ffffff" : "#111b21",
+});
+
+const createStyles = (_theme: ReturnType<typeof useAppTheme>, isDark: boolean) => {
+  const colors = getAuthColors(isDark);
+  return (
   StyleSheet.create({
     page: {
       flexGrow: 1,
-      backgroundColor: "#080808",
+      backgroundColor: colors.pageBg,
       paddingHorizontal: 18,
       paddingTop: 18,
       paddingBottom: 34,
       ...webSystemFont,
+      ...(Platform.OS === "web"
+        ? ({
+            backgroundImage: colors.pageGradient,
+          } as any)
+        : null),
     },
     topBar: {
       minHeight: 34,
@@ -305,7 +343,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       height: 34,
     },
     brand: {
-      color: "#ffffff",
+      color: colors.brand,
       fontSize: 18,
       fontWeight: "700",
       letterSpacing: 0,
@@ -317,7 +355,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       alignItems: "flex-end",
     },
     title: {
-      color: "#ffffff",
+      color: colors.title,
       fontSize: 25,
       lineHeight: 31,
       fontWeight: "700",
@@ -327,7 +365,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       ...webSystemFont,
     },
     subtitle: {
-      color: "#a3a3a3",
+      color: colors.subtitle,
       fontSize: 14,
       lineHeight: 21,
       maxWidth: 305,
@@ -342,7 +380,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       gap: 8,
     },
     fieldLabel: {
-      color: "#777777",
+      color: colors.fieldLabel,
       fontSize: 13,
       fontWeight: "500",
       textAlign: "right",
@@ -352,7 +390,9 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
     inputShell: {
       minHeight: 54,
       borderRadius: 27,
-      backgroundColor: "#181818",
+      backgroundColor: colors.inputBg,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
       paddingHorizontal: 18,
       flexDirection: "row",
       alignItems: "center",
@@ -360,12 +400,15 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
     },
     input: {
       flex: 1,
-      color: "#ffffff",
+      color: colors.inputText,
       fontSize: 15,
       paddingVertical: 15,
       textAlign: "right",
       writingDirection: "rtl",
       ...webSystemFont,
+    },
+    inputPlaceholder: {
+      color: colors.fieldLabel,
     },
     eyeButton: {
       width: 34,
@@ -391,26 +434,26 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       height: 16,
       borderRadius: 8,
       borderWidth: 1.5,
-      borderColor: "#ffffff",
+      borderColor: colors.checkboxBorder,
       alignItems: "center",
       justifyContent: "center",
     },
     checkboxActive: {
-      backgroundColor: "#ffffff",
+      backgroundColor: colors.checkboxFill,
     },
     utilityText: {
-      color: "#d8d8d8",
+      color: colors.utilityText,
       fontSize: 13,
       ...webSystemFont,
     },
     utilityLink: {
-      color: "#ff3b86",
+      color: colors.link,
       fontSize: 13,
       fontWeight: "600",
       ...webSystemFont,
     },
     notice: {
-      color: "#ff4a92",
+      color: colors.notice,
       marginBottom: 10,
       lineHeight: 20,
       textAlign: "right",
@@ -418,7 +461,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       ...webSystemFont,
     },
     error: {
-      color: "#ff7ba9",
+      color: colors.error,
       marginBottom: 10,
       lineHeight: 20,
       textAlign: "right",
@@ -428,7 +471,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
     primaryAction: {
       minHeight: 56,
       borderRadius: 28,
-      backgroundColor: "#ff3b86",
+      backgroundColor: colors.primary,
     },
     dividerRow: {
       marginTop: 28,
@@ -440,17 +483,19 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
     dividerLine: {
       flex: 1,
       height: 1,
-      backgroundColor: "#202020",
+      backgroundColor: colors.divider,
     },
     dividerText: {
-      color: "#ffffff",
+      color: colors.dividerText,
       fontSize: 13,
       ...webSystemFont,
     },
     socialButton: {
       minHeight: 52,
       borderRadius: 26,
-      backgroundColor: "#181818",
+      backgroundColor: colors.socialBg,
+      borderWidth: 1,
+      borderColor: colors.inputBorder,
       alignItems: "center",
       justifyContent: "center",
       marginBottom: 12,
@@ -470,7 +515,7 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       ...webSystemFont,
     },
     socialLabel: {
-      color: "#d7d7d7",
+      color: colors.socialText,
       fontSize: 14,
       ...webSystemFont,
     },
@@ -482,14 +527,16 @@ const createStyles = (_theme: ReturnType<typeof useAppTheme>) =>
       gap: 5,
     },
     switchText: {
-      color: "#8c8c8c",
+      color: colors.subtitle,
       fontSize: 14,
       ...webSystemFont,
     },
     switchLink: {
-      color: "#ff3b86",
+      color: colors.link,
       fontSize: 14,
       fontWeight: "700",
       ...webSystemFont,
     },
-  });
+  })
+  );
+};

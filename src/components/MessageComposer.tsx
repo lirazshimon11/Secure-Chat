@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   NativeSyntheticEvent,
   Platform,
@@ -30,7 +30,7 @@ type Props = {
   onCancelEdit?: () => void;
 };
 
-export function MessageComposer({ replyToText, replyToName, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress, keepKeyboardOpenAfterSend, editSession, onCancelEdit }: Props) {
+export function MessageComposer({ replyToText, replyToName, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress, keepKeyboardOpenAfterSend = true, editSession, onCancelEdit }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme, !!replyToText);
   const [body, setBody] = useState("");
@@ -38,6 +38,51 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   const [kind, setKind] = useState<"standard" | "temporary" | "view_once">("standard");
   const inputRef = useRef<TextInput | null>(null);
   const resizeInputRef = useRef<(nextBody?: string) => void>(() => {});
+
+  const focusInput = useCallback(() => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    if (Platform.OS === "web") {
+      try {
+        (input as any).focus({ preventScroll: true });
+        return;
+      } catch {
+        // React Native's imperative focus is the fallback for older web runtimes.
+      }
+    }
+
+    input.focus();
+  }, []);
+
+  const keepInputFocusedDuringPress = useCallback((event?: any) => {
+    if (Platform.OS !== "web" || !keepKeyboardOpenAfterSend) return;
+    event?.nativeEvent?.preventDefault?.();
+    focusInput();
+  }, [focusInput, keepKeyboardOpenAfterSend]);
+
+  const focusWebInputWithoutPageScroll = useCallback((event: Event) => {
+    if (Platform.OS !== "web") return;
+    if (event instanceof PointerEvent && event.pointerType === "touch") return;
+    const input = inputRef.current as any;
+    if (!input || typeof document === "undefined") return;
+    if (document.activeElement === input) return;
+
+    event.preventDefault();
+    input.focus?.({ preventScroll: true });
+  }, []);
+
+  const refocusAfterSend = useCallback(() => {
+    if (!keepKeyboardOpenAfterSend) return;
+    focusInput();
+
+    if (Platform.OS === "web" && typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(focusInput);
+    }
+
+    setTimeout(focusInput, 0);
+    setTimeout(focusInput, 80);
+  }, [focusInput, keepKeyboardOpenAfterSend]);
 
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
@@ -95,13 +140,12 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
 
   function handleSend() {
     if (!body.trim()) return;
+    refocusAfterSend();
     onSend(body, kind, expireSeconds);
     setBody("");
     setKind("standard");
     setInputHeight(42);
-    if (keepKeyboardOpenAfterSend) {
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    refocusAfterSend();
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
       el.style.height = '42px';
@@ -180,6 +224,8 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
       resizeInputRef.current = inputHandler;
       el.setAttribute("data-secureapp-composer", "true");
       el.style.overflowY = "hidden";
+      el.addEventListener("touchstart", focusWebInputWithoutPageScroll, { capture: true, passive: false });
+      el.addEventListener("pointerdown", focusWebInputWithoutPageScroll, { capture: true });
       el.addEventListener("keydown", keydownHandler);
       // Init height
       setTimeout(() => {
@@ -191,10 +237,12 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
         el.style.removeProperty("overflow-y");
         measureEl?.remove();
         resizeInputRef.current = () => {};
+        el.removeEventListener("touchstart", focusWebInputWithoutPageScroll, { capture: true } as any);
+        el.removeEventListener("pointerdown", focusWebInputWithoutPageScroll, { capture: true } as any);
         el.removeEventListener("keydown", keydownHandler);
       };
     }
-  }, []);
+  }, [focusWebInputWithoutPageScroll]);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -213,7 +261,10 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   }, [replyToName]);
 
   return (
-    <View style={styles.safeAreaWrapper}>
+    <View
+      {...(Platform.OS === "web" ? ({ dataSet: { messageComposer: "true" } } as any) : {})}
+      style={styles.safeAreaWrapper}
+    >
       <View style={styles.wrapper}>
         {!editSession ? <View style={styles.modeRow}>
           <ModeChip active={kind === "standard"} activeColor={theme.colors.mine} textColor={theme.colors.text} icon="message-text-outline" label="הודעה" onPress={() => setKind("standard")} />
@@ -289,7 +340,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
           </View>
 
           {body.trim().length > 0 && (
-            <Pressable onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
+            <Pressable onPressIn={keepInputFocusedDuringPress} onPress={handleSend} style={[styles.sendButton, webNoOutline]}>
               <Feather color={theme.colors.textOnAccent} name="send" size={18} style={styles.sendIcon} />
             </Pressable>
           )}

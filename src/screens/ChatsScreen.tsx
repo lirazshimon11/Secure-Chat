@@ -2,6 +2,7 @@ import { Alert, Image, Pressable, ScrollView, Text, TextInput, View, useColorSch
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Screen } from "@/components/Screen";
 import { useAuth } from "@/context/AuthContext";
 import { useChats } from "@/context/ChatContext";
@@ -54,6 +55,9 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const [decoyActiveChatIds, setDecoyActiveChatIds] = useState<Set<string>>(new Set());
   const decoyActiveChatIdsRef = useRef<Set<string>>(new Set());
   const [decoyPreviewByChat, setDecoyPreviewByChat] = useState<Record<string, string>>({});
+  const [decoyActivatedAtByChat, setDecoyActivatedAtByChat] = useState<Record<string, string>>({});
+  const [decoyReadAtByChat, setDecoyReadAtByChat] = useState<Record<string, string>>({});
+  const [decoyUnreadCounts, setDecoyUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     decoyActiveChatIdsRef.current = decoyActiveChatIds;
@@ -96,6 +100,49 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     setDecoyPreviewByChat((current) => (replace ? next : { ...current, ...next }));
   }, []);
 
+  const decoyReadStorageKey = useCallback(
+    (chatId: string) => `decoy-read-at:${profile?.id ?? "guest"}:${chatId}`,
+    [profile?.id],
+  );
+
+  const loadDecoyReadMarkers = useCallback(async (chatIds: string[]) => {
+    if (!chatIds.length) {
+      setDecoyReadAtByChat({});
+      return;
+    }
+
+    const entries = await Promise.all(
+      chatIds.map(async (chatId) => [chatId, await AsyncStorage.getItem(decoyReadStorageKey(chatId))] as const),
+    );
+    setDecoyReadAtByChat(
+      Object.fromEntries(entries.filter((entry): entry is readonly [string, string] => Boolean(entry[1]))),
+    );
+  }, [decoyReadStorageKey]);
+
+  const loadDecoyUnreadCounts = useCallback(async (
+    activatedAtByChat: Record<string, string>,
+    readAtByChat: Record<string, string>,
+  ) => {
+    const entries = await Promise.all(
+      Object.entries(activatedAtByChat).map(async ([chatId, activatedAt]) => {
+        const baseline = readAtByChat[chatId] && new Date(readAtByChat[chatId]).getTime() > new Date(activatedAt).getTime()
+          ? readAtByChat[chatId]
+          : activatedAt;
+        let query = supabase
+          .from("chat_decoy_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("chat_id", chatId)
+          .gt("created_at", baseline);
+        if (profile?.id) {
+          query = query.neq("sender_id", profile.id);
+        }
+        const { count } = await query;
+        return [chatId, count ?? 0] as const;
+      }),
+    );
+    setDecoyUnreadCounts(Object.fromEntries(entries));
+  }, [profile?.id]);
+
   useEffect(() => {
     const chatIds = chatIdsKey ? chatIdsKey.split("|").filter(Boolean) : [];
     if (!profile?.id || !chatIds.length) {
@@ -109,12 +156,16 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     const loadDecoyTargets = async () => {
       const { data } = await supabase
         .from("chat_decoy_targets")
-        .select("chat_id")
+        .select("chat_id, created_at")
         .eq("target_id", profile.id)
         .in("chat_id", chatIds);
       if (!active) return;
-      const activeIds = [...new Set(((data ?? []) as Array<{ chat_id: string }>).map((row) => row.chat_id))];
+      const activeRows = (data ?? []) as Array<{ chat_id: string; created_at: string }>;
+      const activeIds = [...new Set(activeRows.map((row) => row.chat_id))];
+      const activatedAtByChat = Object.fromEntries(activeRows.map((row) => [row.chat_id, row.created_at]));
       setDecoyActiveChatIds(new Set(activeIds));
+      setDecoyActivatedAtByChat(activatedAtByChat);
+      void loadDecoyReadMarkers(activeIds);
       void loadDecoyPreviewMap(activeIds);
     };
 
@@ -128,7 +179,10 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         (payload) => {
           const chatId = (payload.new as { chat_id?: string } | null)?.chat_id;
           if (!chatId || !chatIdSet.has(chatId)) return;
+          const createdAt = (payload.new as { created_at?: string } | null)?.created_at ?? new Date().toISOString();
           setDecoyActiveChatIds((current) => new Set([...current, chatId]));
+          setDecoyActivatedAtByChat((current) => ({ ...current, [chatId]: createdAt }));
+          setDecoyUnreadCounts((current) => ({ ...current, [chatId]: 0 }));
           void loadDecoyPreviewMap([chatId], false);
         },
       )
@@ -140,11 +194,16 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
     const decoyMessagesChannel = supabase
       .channel(`home-decoy-messages:${profile.id}:${chatIds.join(":")}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_decoy_messages" }, (payload) => {
-        const row = payload.new as { chat_id?: string; body?: string } | null;
+        const row = payload.new as { chat_id?: string; body?: string; sender_id?: string } | null;
         if (!row?.chat_id || !chatIdSet.has(row.chat_id)) return;
         setDecoyPreviewByChat((current) => (
           decoyActiveChatIdsRef.current.has(row.chat_id!)
             ? { ...current, [row.chat_id!]: row.body ?? "" }
+            : current
+        ));
+        setDecoyUnreadCounts((current) => (
+          decoyActiveChatIdsRef.current.has(row.chat_id!) && row.sender_id !== profile.id
+            ? { ...current, [row.chat_id!]: (current[row.chat_id!] ?? 0) + 1 }
             : current
         ));
       })
@@ -155,7 +214,11 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
       void supabase.removeChannel(decoyTargetsChannel);
       void supabase.removeChannel(decoyMessagesChannel);
     };
-  }, [chatIdsKey, loadDecoyPreviewMap, profile?.id]);
+  }, [chatIdsKey, loadDecoyPreviewMap, loadDecoyReadMarkers, profile?.id]);
+
+  useEffect(() => {
+    void loadDecoyUnreadCounts(decoyActivatedAtByChat, decoyReadAtByChat);
+  }, [decoyActivatedAtByChat, decoyReadAtByChat, loadDecoyUnreadCounts]);
 
   useEffect(() => {
     const chatIds = chats.map((chat) => chat.id);
@@ -220,7 +283,9 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
         ? decoyPreviewByChat[chat.id] ?? "\u05D0\u05D9\u05DF \u05D4\u05D5\u05D3\u05E2\u05D5\u05EA \u05E2\u05D3\u05D9\u05D9\u05DF"
         : formatChatPreviewSystemMessage(chat.last_message_preview) ?? chat.last_message_preview;
       return {
-        chat, preferences, unreadCount: hiddenByClear ? 0 : unreadCounts[chat.id] ?? 0,
+        chat,
+        preferences,
+        unreadCount: decoyActive ? decoyUnreadCounts[chat.id] ?? 0 : hiddenByClear ? 0 : unreadCounts[chat.id] ?? 0,
         muted: isChatMuted(muteSettings[chat.id]), hiddenByClear,
         preview: !previewEnabled ? "" : hiddenByClear && !decoyActive ? "\u05D4\u05E6'\u05D0\u05D8 \u05E0\u05D5\u05E7\u05D4 \u05D1\u05DE\u05DB\u05E9\u05D9\u05E8 \u05D6\u05D4" : lastMessagePreview ?? "\u05D0\u05D9\u05DF \u05D4\u05D5\u05D3\u05E2\u05D5\u05EA \u05E2\u05D3\u05D9\u05D9\u05DF",
         timeLabel: formatChatTime(chat, hiddenByClear), type: "chat",
@@ -248,17 +313,17 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
       }
     }
     return combined.sort((a, b) => a.type !== b.type ? (a.type === "chat" ? -1 : 1) : sortDisplayChats(a, b));
-  }, [chatPreferences, chatSecuritySettings, chats, decoyActiveChatIds, decoyPreviewByChat, muteSettings, searchQuery, securitySettingsReadyIds, unreadCounts, messageSearchResults]);
+  }, [chatPreferences, chatSecuritySettings, chats, decoyActiveChatIds, decoyPreviewByChat, decoyUnreadCounts, muteSettings, searchQuery, securitySettingsReadyIds, unreadCounts, messageSearchResults]);
 
   const activeChats = useMemo(() => {
     let base = viewMode === "locked" ? displayChats.filter(c => c.preferences.locked) : viewMode === "archived" ? displayChats.filter(c => c.preferences.archived && !c.preferences.locked) : displayChats.filter(c => !c.preferences.locked && !c.preferences.archived);
     if (viewMode === "home") {
-      if (activeFilter === "unread") return base.filter(c => (unreadCounts[c.chat.id] ?? 0) > 0);
+      if (activeFilter === "unread") return base.filter(c => c.unreadCount > 0);
       if (activeFilter === "favorites") return base.filter(c => c.preferences.pinned_at);
       if (activeFilter === "groups") return base.filter(c => c.chat.is_group);
     }
     return base;
-  }, [viewMode, displayChats, activeFilter, unreadCounts]);
+  }, [viewMode, displayChats, activeFilter]);
 
   const unreadTotal = useMemo(() => displayChats.filter(c => !c.preferences.locked && !c.preferences.archived && c.unreadCount > 0).length, [displayChats]);
   const selectionMode = selectedChatIds.length > 0;
@@ -267,8 +332,18 @@ export function ChatsScreen({ onOpenChat, onOpenSavedMessages, onOpenSettings, o
   const allSelectedLocked = selectionMode && selectedChatIds.every(id => (chatPreferences[id] ?? getDefaultPreferences()).locked);
 
   const handleChatPress = (chat: Chat, matchedMessageId?: string) => {
-    if (selectionMode) setSelectedChatIds(current => current.includes(chat.id) ? current.filter(id => id !== chat.id) : [...current, chat.id]);
-    else onOpenChat(chat, matchedMessageId);
+    if (selectionMode) {
+      setSelectedChatIds(current => current.includes(chat.id) ? current.filter(id => id !== chat.id) : [...current, chat.id]);
+      return;
+    }
+
+    if (decoyActiveChatIds.has(chat.id)) {
+      const now = new Date().toISOString();
+      setDecoyUnreadCounts((current) => ({ ...current, [chat.id]: 0 }));
+      setDecoyReadAtByChat((current) => ({ ...current, [chat.id]: now }));
+      void AsyncStorage.setItem(decoyReadStorageKey(chat.id), now);
+    }
+    onOpenChat(chat, matchedMessageId);
   };
 
   return (

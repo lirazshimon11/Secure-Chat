@@ -337,6 +337,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
   const [recordedKeyboardHeight, setRecordedKeyboardHeight] = useState(300);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [webKeyboardInset, setWebKeyboardInset] = useState(0);
+  const webViewportBaselineRef = useRef(0);
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [securitySettings, setSecuritySettings] = useState<ChatSecuritySettings>(DEFAULT_CHAT_SECURITY_SETTINGS);
   const [securitySettingsReadyChatId, setSecuritySettingsReadyChatId] = useState<string | null>(null);
@@ -958,6 +960,52 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       });
       return () => { s1.remove(); s2.remove(); };
     }
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined" || typeof document === "undefined") return;
+
+    const getViewportHeight = () => window.visualViewport?.height ?? window.innerHeight;
+    webViewportBaselineRef.current = Math.max(webViewportBaselineRef.current, getViewportHeight(), window.innerHeight || 0);
+
+    const composerHasFocus = () => {
+      const active = document.activeElement;
+      return active instanceof HTMLElement && !!active.closest("[data-message-composer='true']");
+    };
+
+    const updateInset = () => {
+      const viewport = window.visualViewport;
+      const baseline = Math.max(webViewportBaselineRef.current, window.innerHeight || 0);
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const viewportOffsetTop = viewport?.offsetTop ?? 0;
+      const nextInset = composerHasFocus()
+        ? Math.max(0, Math.round(baseline - viewportHeight - viewportOffsetTop))
+        : 0;
+      setWebKeyboardInset(nextInset > 80 ? nextInset : 0);
+    };
+
+    const handleFocus = () => {
+      requestAnimationFrame(updateInset);
+      setTimeout(updateInset, 80);
+      setTimeout(updateInset, 180);
+    };
+
+    const handleBlur = () => setTimeout(updateInset, 80);
+
+    window.visualViewport?.addEventListener("resize", updateInset);
+    window.visualViewport?.addEventListener("scroll", updateInset);
+    window.addEventListener("resize", updateInset);
+    document.addEventListener("focusin", handleFocus);
+    document.addEventListener("focusout", handleBlur);
+    updateInset();
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateInset);
+      window.visualViewport?.removeEventListener("scroll", updateInset);
+      window.removeEventListener("resize", updateInset);
+      document.removeEventListener("focusin", handleFocus);
+      document.removeEventListener("focusout", handleBlur);
+    };
   }, []);
 
   useEffect(() => {
@@ -2854,7 +2902,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           </View>
           {/* Composer — always visible for members (decoy users can still send real messages) */}
           {(isMember || decoyMode) && (
-            <Animated.View style={{ paddingBottom: keyboardHeightAnim }}>
+            <Animated.View style={{ paddingBottom: Platform.OS === "web" ? webKeyboardInset : keyboardHeightAnim }}>
               <View
                 ref={composerWrapperRef}
                 onLayout={(e) =>

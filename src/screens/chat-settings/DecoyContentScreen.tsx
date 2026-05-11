@@ -65,6 +65,10 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
   const [editingMessage, setEditingMessage] = useState<DecoyMessage | null>(null);
   const [editNonce, setEditNonce] = useState(0);
   const [editSaving, setEditSaving] = useState(false);
+  const [webKeyboardInset, setWebKeyboardInset] = useState(0);
+  const webViewportBaselineRef = useRef(0);
+  const webKeyboardVisibleRef = useRef(false);
+  const webKeyboardBlurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedMessages = useMemo(
     () => selectedIds.map((id) => messages.find((message) => message.id === id)).filter(Boolean) as DecoyMessage[],
@@ -229,7 +233,28 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
   useEffect(() => {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
 
+    const isComposerTarget = (target: EventTarget | null) =>
+      target instanceof HTMLElement && !!target.closest("[data-message-composer='true']");
+    const isComposerPoint = (x: number, y: number) =>
+      isComposerTarget(document.elementFromPoint(x, y));
+    const touchEventHitsComposer = (event: TouchEvent) =>
+      Array.from(event.touches).some((touch) => isComposerPoint(touch.clientX, touch.clientY)) ||
+      Array.from(event.changedTouches).some((touch) => isComposerPoint(touch.clientX, touch.clientY));
+
+    const handleComposerTouchStart = (event: TouchEvent) => {
+      if (!touchEventHitsComposer(event)) return;
+      stopDragSelect();
+    };
+    const handleComposerPointerDown = (event: PointerEvent) => {
+      if (!isComposerTarget(event.target) && !isComposerPoint(event.clientX, event.clientY)) return;
+      stopDragSelect();
+    };
+
     const handlePointerMove = (event: PointerEvent) => {
+      if (isComposerTarget(event.target) || isComposerPoint(event.clientX, event.clientY)) {
+        stopDragSelect();
+        return;
+      }
       if (!isDragSelectingRef.current) return;
       if (event.pointerType !== "touch" && event.buttons !== undefined && event.buttons !== 1) {
         stopDragSelect();
@@ -239,6 +264,10 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
       updateDragFromPageY(event.clientY);
     };
     const handleTouchMove = (event: TouchEvent) => {
+      if (touchEventHitsComposer(event)) {
+        stopDragSelect();
+        return;
+      }
       if (!isDragSelectingRef.current) return;
       const touch = event.touches[0];
       if (!touch) return;
@@ -247,6 +276,8 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
     };
     const handleEnd = () => stopDragSelect();
 
+    document.addEventListener("touchstart", handleComposerTouchStart, { capture: true, passive: true });
+    document.addEventListener("pointerdown", handleComposerPointerDown, { capture: true });
     document.addEventListener("pointermove", handlePointerMove, { capture: true });
     document.addEventListener("pointerup", handleEnd, { capture: true });
     document.addEventListener("pointercancel", handleEnd, { capture: true });
@@ -255,6 +286,8 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
     document.addEventListener("touchcancel", handleEnd, { capture: true });
 
     return () => {
+      document.removeEventListener("touchstart", handleComposerTouchStart, { capture: true } as any);
+      document.removeEventListener("pointerdown", handleComposerPointerDown, { capture: true } as any);
       document.removeEventListener("pointermove", handlePointerMove, { capture: true } as any);
       document.removeEventListener("pointerup", handleEnd, { capture: true } as any);
       document.removeEventListener("pointercancel", handleEnd, { capture: true } as any);
@@ -263,6 +296,88 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
       document.removeEventListener("touchcancel", handleEnd, { capture: true } as any);
     };
   }, [stopDragSelect, updateDragFromPageY]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
+
+    const scrollPageToTop = () => {
+      if (window.scrollX !== 0 || window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+    const getViewportHeight = () => window.visualViewport?.height ?? window.innerHeight;
+    webViewportBaselineRef.current = Math.max(webViewportBaselineRef.current, getViewportHeight(), window.innerHeight || 0);
+
+    const getFocusedComposerElement = () => {
+      if (typeof document === "undefined") return false;
+      const active = document.activeElement;
+      return active instanceof HTMLElement && active.closest("[data-message-composer='true']") ? active : null;
+    };
+
+    const updateInset = () => {
+      const viewport = window.visualViewport;
+      const baseline = Math.max(webViewportBaselineRef.current, window.innerHeight || 0);
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const viewportOffsetTop = viewport?.offsetTop ?? 0;
+      const focusedComposerElement = getFocusedComposerElement();
+      const nextInset = focusedComposerElement
+        ? Math.max(0, Math.round(baseline - viewportHeight - viewportOffsetTop))
+        : 0;
+      const keyboardVisible = nextInset > 80;
+      setWebKeyboardInset(keyboardVisible ? nextInset : 0);
+      if (webKeyboardBlurTimerRef.current) {
+        clearTimeout(webKeyboardBlurTimerRef.current);
+        webKeyboardBlurTimerRef.current = null;
+      }
+      if (!keyboardVisible && webKeyboardVisibleRef.current && focusedComposerElement) {
+        webKeyboardBlurTimerRef.current = setTimeout(() => {
+          const stillFocusedComposerElement = getFocusedComposerElement();
+          if (!stillFocusedComposerElement) return;
+
+          const liveViewport = window.visualViewport;
+          const liveViewportHeight = liveViewport?.height ?? window.innerHeight;
+          const liveViewportOffsetTop = liveViewport?.offsetTop ?? 0;
+          const liveInset = Math.max(0, Math.round(baseline - liveViewportHeight - liveViewportOffsetTop));
+          if (liveInset <= 80) {
+            stillFocusedComposerElement.blur();
+          }
+        }, 120);
+      }
+      webKeyboardVisibleRef.current = keyboardVisible;
+      scrollPageToTop();
+    };
+
+    const handleFocus = () => {
+      stopDragSelect();
+      requestAnimationFrame(updateInset);
+      setTimeout(updateInset, 80);
+      setTimeout(updateInset, 160);
+    };
+
+    const handleBlur = () => {
+      setTimeout(updateInset, 80);
+    };
+
+    const handleWindowScroll = () => scrollPageToTop();
+    window.visualViewport?.addEventListener("resize", updateInset);
+    window.visualViewport?.addEventListener("scroll", updateInset);
+    window.addEventListener("resize", updateInset);
+    window.addEventListener("scroll", handleWindowScroll, { passive: true });
+    document.addEventListener("focusin", handleFocus);
+    document.addEventListener("focusout", handleBlur);
+    updateInset();
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateInset);
+      window.visualViewport?.removeEventListener("scroll", updateInset);
+      window.removeEventListener("resize", updateInset);
+      window.removeEventListener("scroll", handleWindowScroll);
+      document.removeEventListener("focusin", handleFocus);
+      document.removeEventListener("focusout", handleBlur);
+      if (webKeyboardBlurTimerRef.current) clearTimeout(webKeyboardBlurTimerRef.current);
+    };
+  }, [stopDragSelect]);
 
   useEffect(() => {
     let active = true;
@@ -490,8 +605,8 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
             onTouchEnd={stopDragSelect}
             onTouchCancel={stopDragSelect}
             contentContainerStyle={styles.messagesContent}
-            keyboardDismissMode="on-drag"
-            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="none"
+            keyboardShouldPersistTaps="always"
             scrollEventThrottle={16}
             onLayout={(e) => {
               threadHeightRef.current = e.nativeEvent.layout.height;
@@ -578,22 +693,28 @@ export function DecoyContentScreen({ chat, onBack }: Props) {
             </View>
           ) : null}
 
-          <MessageComposer
-            onSend={(body) => {
-              if (editingMessage) {
-                void saveEdit(body);
-                return;
-              }
-              handleSend(body);
-            }}
-            onCancelReply={() => {}}
-            replyToText={null}
-            replyToName={null}
-            onAttachmentPress={() => {}}
-            keepKeyboardOpenAfterSend
-            editSession={editingMessage ? { id: editingMessage.id, text: editingMessage.body, nonce: editNonce } : null}
-            onCancelEdit={() => setEditingMessage(null)}
-          />
+          <View style={Platform.OS === "web" ? { paddingBottom: webKeyboardInset } : null}>
+            <MessageComposer
+              onInputFocus={() => {
+                stopDragSelect();
+                setSelectedIds([]);
+              }}
+              onSend={(body) => {
+                if (editingMessage) {
+                  void saveEdit(body);
+                  return;
+                }
+                handleSend(body);
+              }}
+              onCancelReply={() => {}}
+              replyToText={null}
+              replyToName={null}
+              onAttachmentPress={() => {}}
+              keepKeyboardOpenAfterSend
+              editSession={editingMessage ? { id: editingMessage.id, text: editingMessage.body, nonce: editNonce } : null}
+              onCancelEdit={() => setEditingMessage(null)}
+            />
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>

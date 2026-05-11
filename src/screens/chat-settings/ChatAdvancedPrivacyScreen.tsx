@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
-import { DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings, saveChatSecuritySettings, subscribeToChatSecuritySettings } from "@/lib/chatSecuritySettings";
+import { createChatPreviewSystemMessage, DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings, saveChatSecuritySettings, subscribeToChatSecuritySettings } from "@/lib/chatSecuritySettings";
 import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatSecuritySettings } from "@/lib/types";
 import { webSystemFont } from "@/lib/webStyles";
@@ -63,12 +63,22 @@ const rows: Array<{
     title: "Canvas נגד העתקה ו-OCR",
     subtitle: "מרנדר טקסט הודעות כקנבס עם רעש דיגיטלי.",
   },
+  {
+    key: "chat_preview_enabled",
+    icon: "message-text-lock-outline",
+    title: "תצוגה מקדימה ברשימת הצ'אטים",
+    subtitle: "כשהאפשרות כבויה ההודעה האחרונה לא מוצגת מתחת לשם הצ'אט אצל כל המשתתפים.",
+  },
 ];
 
 function getSecurityChangeMessages(previous: ChatSecuritySettings, next: ChatSecuritySettings) {
   const messages: string[] = [];
   for (const row of rows) {
     if (previous[row.key] !== next[row.key]) {
+      if (row.key === "chat_preview_enabled") {
+        messages.push(createChatPreviewSystemMessage(next.chat_preview_enabled));
+        continue;
+      }
       messages.push(`${row.title} - ${next[row.key] ? "הופעלה מחדש" : "הופסקה"}`);
     }
   }

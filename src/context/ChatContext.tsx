@@ -4,6 +4,7 @@ import { RealtimeChannel } from "@supabase/supabase-js";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { Chat, ChatLocalPreferences, ChatMuteSetting, Message, MuteDurationOption, Profile, ReactionSummary } from "@/lib/types";
+import { formatChatPreviewSystemMessage } from "@/lib/chatSecuritySettings";
 
 // Extracted modules
 import { getUtcTime, buildMuteSetting, getDefaultChatPreferences, normalizeChatPreferences } from "./ChatContextUtils";
@@ -128,6 +129,9 @@ export function ChatProvider({ children }: PropsWithChildren) {
     }
 
     if (messageKind === "system" || (body && body.startsWith("[SYSTEM_"))) {
+      const chatPreviewSystemMessage = formatChatPreviewSystemMessage(body);
+      if (chatPreviewSystemMessage) return chatPreviewSystemMessage;
+
       if (body && body.startsWith("[SYSTEM_USER_REMOVED]:")) {
         const targetId = body.split(":")[1];
         const isMe = targetId === profile?.id;

@@ -65,6 +65,7 @@ export type ChatSecuritySettings = {
   app_switcher_blackout: boolean;
   fake_screenshot_warning: boolean;
   anti_copy_canvas: boolean;
+  chat_preview_enabled: boolean;
 };
 
 export type ReactionSummary = Record<string, { userId: string; createdAt: string }[]>;

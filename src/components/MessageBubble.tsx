@@ -9,6 +9,7 @@ import { useChats } from "@/context/ChatContext";
 import { useScreenshots } from "@/context/ScreenshotContext";
 import { supabase } from "@/lib/supabase";
 import { getUserColor, getMessagePreview } from "@/screens/chat/ChatUtils";
+import { formatChatPreviewSystemMessage } from "@/lib/chatSecuritySettings";
 
 // Extracted modules
 import { createStyles } from "./message/MessageBubbleStyles";
@@ -177,7 +178,10 @@ export function MessageBubble({
     body = "הודעה זו פגה תוקף";
   }
 
-  if (isSystem && body.startsWith("[SYSTEM_USER_REMOVED]:")) {
+  const chatPreviewSystemMessage = isSystem ? formatChatPreviewSystemMessage(body) : null;
+  if (chatPreviewSystemMessage) {
+    body = chatPreviewSystemMessage;
+  } else if (isSystem && body.startsWith("[SYSTEM_USER_REMOVED]:")) {
     const targetId = body.split(":")[1];
     const isMe = targetId === currentUserId;
     if (isMe) {

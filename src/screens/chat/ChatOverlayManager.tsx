@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import { Alert, Pressable, Text, View, ScrollView, ImageBackground, Platform, Image, Animated, PanResponder, Dimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import { Chat, Message, Profile } from "@/lib/types";
 import { useAppTheme } from "@/lib/theme";
 import { describeMute } from "./ChatUtils";
@@ -83,6 +82,9 @@ type OverlayProps = {
   setShowDecoyManager: (v: boolean) => void;
   onSendSystemMessage: (body: string) => Promise<void>;
   decoyMode?: boolean;
+  /** User is viewing swapped decoy conversation under \"מגן הגנה\" — hide conspicuous security tooling. */
+  decoyProtectedViewer?: boolean;
+  onRequestDecoyMessageEdit?: (messageId: string) => void;
 };
 
 export const ChatOverlayManager = (props: OverlayProps) => {
@@ -117,6 +119,8 @@ export const ChatOverlayManager = (props: OverlayProps) => {
     setSearchOpen, keyboardHeight,
     showDecoyManager, setShowDecoyManager, onSendSystemMessage,
     decoyMode,
+    decoyProtectedViewer,
+    onRequestDecoyMessageEdit,
   } = props;
 
   const [tick, setTick] = React.useState(0);
@@ -333,6 +337,18 @@ export const ChatOverlayManager = (props: OverlayProps) => {
         <View pointerEvents="box-none" style={styles.overlayRoot}>
           <Pressable onPress={() => setShowSelectionOverflowMenu(false)} style={styles.backdrop} />
           <View {...(Platform.OS === "web" ? ({ dataSet: { chatMenu: "true" } } as any) : {})} style={styles.menuCard}>
+            {selectedIds.length === 1 &&
+              messageMap[selectedIds[0]]?.sender_id === profile?.id &&
+              messageMap[selectedIds[0]]?.message_kind === "standard" &&
+              onRequestDecoyMessageEdit && (
+                <MenuItem
+                  label="עריכה"
+                  onPress={() => {
+                    onRequestDecoyMessageEdit(selectedIds[0]);
+                    setShowSelectionOverflowMenu(false);
+                  }}
+                />
+              )}
             {selectedIds.length === 1 && (
               <MenuItem label="פרטים" onPress={() => {
                 const msg = messageMap[selectedIds[0]];
@@ -341,13 +357,6 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                 setSelectedIds([]);
               }} />
             )}
-            <MenuItem label="העתקה" onPress={async () => {
-              const text = selectedIds.map((id) => messageMap[id]?.body_ciphertext || "").join("\n");
-              await Clipboard.setStringAsync(text);
-              showToast("ההודעה הועתקה");
-              setShowSelectionOverflowMenu(false);
-              setSelectedIds([]);
-            }} />
             <MenuItem label="הצמדה" onPress={() => {
               showToast("ההודעה הוצמדה");
               setShowSelectionOverflowMenu(false);
@@ -414,31 +423,35 @@ export const ChatOverlayManager = (props: OverlayProps) => {
                 <View style={styles.attachmentRow}>
                   <AttachmentItem icon="poll" label="סקר" color="#FFB300" theme={theme} onPress={() => { setShowAttachmentMenu(false); setActiveSubScreen("createPoll"); }} />
                   <AttachmentItem icon="calendar" label="אירוע" color="#D81B60" theme={theme} />
-                  <AttachmentItem
-                    icon="camera-outline"
-                    label="בקשת צילום"
-                    color="#00A884"
-                    theme={theme}
-                    disabled={isScreenshotRequestBlocked}
-                    onPress={async () => {
-                      if (isScreenshotRequestBlocked) return;
-                      setShowAttachmentMenu(false);
-                      const targetMemberIds = chat.is_group
-                        ? groupMembers.map((m) => m.id)
-                        : Object.keys(profiles).filter(id => id !== profile?.id);
-                      const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
-                      if (reqResult?.pollBody) {
-                        sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
-                      }
-                    }}
-                  />
-                  <AttachmentItem
-                    icon="shield-check"
-                    label="מגן הגנה"
-                    color="#5C6BC0"
-                    theme={theme}
-                    onPress={() => setShowDecoyManager(true)}
-                  />
+                  {!decoyProtectedViewer ? (
+                    <AttachmentItem
+                      icon="camera-outline"
+                      label="בקשת צילום"
+                      color="#00A884"
+                      theme={theme}
+                      disabled={isScreenshotRequestBlocked}
+                      onPress={async () => {
+                        if (isScreenshotRequestBlocked) return;
+                        setShowAttachmentMenu(false);
+                        const targetMemberIds = chat.is_group
+                          ? groupMembers.map((m) => m.id)
+                          : Object.keys(profiles).filter(id => id !== profile?.id);
+                        const reqResult = await requestScreenshotPermission(chat.id, targetMemberIds);
+                        if (reqResult?.pollBody) {
+                          sendMessage({ chatId: chat.id, body: reqResult.pollBody, messageKind: "standard" });
+                        }
+                      }}
+                    />
+                  ) : null}
+                  {!decoyProtectedViewer ? (
+                    <AttachmentItem
+                      icon="shield-check"
+                      label="מגן הגנה"
+                      color="#5C6BC0"
+                      theme={theme}
+                      onPress={() => setShowDecoyManager(true)}
+                    />
+                  ) : null}
                 </View>
               </>
             )}

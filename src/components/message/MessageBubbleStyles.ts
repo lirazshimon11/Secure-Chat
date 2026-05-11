@@ -26,13 +26,13 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flexDirection: "row",
       marginVertical: 1,
       paddingVertical: 2,
-      ...(Platform.OS === "web" ? ({ direction: "ltr" } as any) : null),
+      ...(Platform.OS === "web" ? ({ writingDirection: "ltr" } as any) : null),
     },
     rowMine: {
       justifyContent: Platform.OS === "web" ? "flex-start" : "flex-end",
     },
     rowTheirs: {
-      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-start",
+      justifyContent: Platform.OS === "web" ? "flex-end" : "flex-start",
     },
     rowSystem: {
       justifyContent: "center",
@@ -44,6 +44,7 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       flex: 1,
       paddingHorizontal: 12,
       minWidth: 0,
+      ...(Platform.OS === "web" ? ({ touchAction: "pan-y" } as any) : null),
     },
     bubble: {
       borderRadius: 12,
@@ -78,17 +79,17 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       justifyContent: Platform.OS === "web" ? "flex-start" : "flex-end",
       alignItems: "flex-start",
       minWidth: 0,
-      ...(Platform.OS === "web" ? ({ direction: "ltr" } as any) : null),
+      ...(Platform.OS === "web" ? ({ writingDirection: "ltr" } as any) : null),
     },
     bubbleWrapperTheirs: {
       flex: 1,
       flexDirection: "row",
-      justifyContent: Platform.OS === "web" ? "flex-start" : "flex-start",
+      justifyContent: Platform.OS === "web" ? "flex-end" : "flex-start",
       alignItems: "flex-start",
       minWidth: 0,
       ...(Platform.OS === "web"
         ? ({
-            direction: "ltr",
+            writingDirection: "ltr",
             marginLeft: "auto",
             marginRight: 0,
           } as any)
@@ -104,6 +105,10 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       backgroundColor: theme.colors.surfaceAlt,
       alignItems: "center",
       justifyContent: "center",
+    },
+    messageAvatarAfterBubble: {
+      marginLeft: 8,
+      marginRight: 2,
     },
     messageAvatarImage: {
       width: "100%",
@@ -201,12 +206,24 @@ export const createStyles = (theme: ReturnType<typeof useAppTheme>) =>
       writingDirection: "ltr",
       alignSelf: "flex-start",
     },
-    metaRow: {
+    metaLine: {
+      width: "100%",
+      minHeight: 15,
+      position: "relative",
       marginTop: 2,
+    },
+    metaRow: {
       flexDirection: "row",
       alignItems: "center",
       alignSelf: Platform.OS === "web" ? "flex-start" : "flex-end",
       gap: 6,
+    },
+    editedMeta: {
+      position: "absolute",
+      ...(Platform.OS === "web" ? { right: 3 } : { left: 3 }),
+      top: 0,
+      color: theme.colors.textMuted,
+      fontSize: 11,
     },
     kindChip: {
       backgroundColor: theme.colors.surfaceAlt,

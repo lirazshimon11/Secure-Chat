@@ -116,6 +116,8 @@ create table if not exists public.chat_reads (
   chat_id uuid not null references public.chats(id) on delete cascade,
   user_id uuid not null references public.profiles(id) on delete cascade,
   last_read_at timestamptz not null default timezone('utc', now()),
+  last_position_message_id uuid references public.messages(id) on delete set null,
+  last_position_at timestamptz,
   primary key (chat_id, user_id)
 );
 
@@ -143,7 +145,8 @@ create trigger on_message_insert_touch_chat
 after insert on public.messages
 for each row execute procedure public.touch_chat_from_message();
 
-create or replace view public.chat_member_details
+drop view if exists public.chat_member_details;
+create view public.chat_member_details
 with (security_invoker = true) as
 select
   cm.user_id,

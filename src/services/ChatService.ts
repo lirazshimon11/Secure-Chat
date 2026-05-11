@@ -22,7 +22,7 @@ export const ChatService = {
 
   async fetchLastReadAt(userId: string, chatIds: string[]) {
     if (!chatIds.length) return { data: [] };
-    return supabase.from("chat_members").select("chat_id,last_read_at").eq("user_id", userId).in("chat_id", chatIds);
+    return supabase.from("chat_reads").select("chat_id,last_read_at,last_position_message_id,last_position_at").eq("user_id", userId).in("chat_id", chatIds);
   },
 
   async fetchMessages(chatId: string) {
@@ -50,10 +50,22 @@ export const ChatService = {
 
   async markSeen(userId: string, chatId: string, timestamp: string) {
     return supabase
-      .from("chat_members")
-      .update({ last_read_at: timestamp })
-      .eq("chat_id", chatId)
-      .eq("user_id", userId);
+      .from("chat_reads")
+      .upsert({ chat_id: chatId, user_id: userId, last_read_at: timestamp }, { onConflict: "chat_id,user_id" });
+  },
+
+  async saveChatPosition(userId: string, chatId: string, messageId: string, timestamp: string) {
+    return supabase
+      .from("chat_reads")
+      .upsert(
+        {
+          chat_id: chatId,
+          user_id: userId,
+          last_position_message_id: messageId,
+          last_position_at: timestamp,
+        },
+        { onConflict: "chat_id,user_id" },
+      );
   },
 
   async sendMessage(chatId: string, senderId: string, body: string, preview: string, kind: string, replyToId: string | null = null, expiresAt: string | null = null, id?: string) {

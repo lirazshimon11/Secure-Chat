@@ -1,4 +1,4 @@
-import { PropsWithChildren, useEffect, useMemo, useRef, useState } from "react";
+import { PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, Easing, Platform, Pressable, ScrollView, StyleSheet, Text, View, TextInput, useWindowDimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Screen } from "@/components/Screen";
@@ -26,6 +26,8 @@ import { ChatMemberActionModal } from "./chat-settings/ChatMemberActionModal";
 import { SimpleConfirmModal } from "./chat-settings/SimpleConfirmModal";
 import { DecoyContentScreen } from "./chat-settings/DecoyContentScreen";
 import { Alert } from "react-native";
+import { supabase } from "@/lib/supabase";
+import { useSendMessage } from "@/hooks/useChatMessages";
 
 type Props = {
   chat: Chat;
@@ -40,6 +42,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   const { width } = useWindowDimensions();
   const { profile } = useAuth();
   const { loadChatMembers, messagesByChat, chats, contactNicknames, createChat, setChatMemberRole, removeChatMember } = useChats();
+  const sendMessageMutation = useSendMessage();
   const [members, setMembers] = useState<Profile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [confirmData, setConfirmData] = useState<{ visible: boolean; title: string; onConfirm: () => void } | null>(null);
@@ -68,6 +71,8 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   const [showOverflowMenu, setShowOverflowMenu] = useState(false);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState<Profile | null>(null);
+  /** When the current viewer is targeted by מגן הגנה, omit entries that advertise covert tooling. */
+  const [omitCovertEntriesForViewer, setOmitCovertEntriesForViewer] = useState(false);
 
   const handleMemberAction = async (member: Profile) => {
     // Navigate to private chat with this member
@@ -121,16 +126,47 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
   };
 
   useEffect(() => {
+    let active = true;
     void (async () => {
       const nextMembers = await loadChatMembers(chat.id);
-      setMembers(nextMembers || []);
+      if (active) setMembers(nextMembers || []);
     })();
-    // Explicitly unblock screenshots whenever entering a native settings page.
     if (Platform.OS !== "web") {
       void ScreenCapture.allowScreenCaptureAsync();
       void ScreenCapture.allowScreenCaptureAsync(`sc-${chat.id}`);
     }
+    return () => { active = false; };
   }, [chat.id]);
+
+  useEffect(() => {
+    if (!profile?.id) return;
+    let cancelled = false;
+    const reloadDecoyTarget = () => {
+      void supabase
+        .from("chat_decoy_targets")
+        .select("id")
+        .eq("chat_id", chat.id)
+        .eq("target_id", profile.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!cancelled) setOmitCovertEntriesForViewer(!!data);
+        });
+    };
+    reloadDecoyTarget();
+    const channel = supabase
+      .channel(`settings-decoy-guard:${chat.id}:${profile.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chat_decoy_targets", filter: `chat_id=eq.${chat.id}` },
+        reloadDecoyTarget,
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [chat.id, profile?.id]);
 
   const filteredMembers = useMemo(() => {
     if (!searchQuery) return members;
@@ -140,7 +176,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
     );
   }, [members, searchQuery]);
 
-  const closeActiveScreen = () => setActiveScreen(null);
+  const closeActiveScreen = useCallback(() => setActiveScreen(null), []);
   const slideDistance = Math.min(width, 430);
   const activeScreenContent = useMemo(() => {
     if (activeScreen === "storage") return <ChatStorageScreen chat={chat} onBack={closeActiveScreen} />;
@@ -153,6 +189,15 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
           currentUserId={profile?.id}
           isAdmin={profile?.id === liveChat.created_by}
           onBack={closeActiveScreen}
+          onSendSystemMessage={async (body) => {
+            if (!profile?.id) return;
+            await sendMessageMutation.sendMessageAsync({
+              chatId: chat.id,
+              senderId: profile.id,
+              body,
+              messageKind: "system",
+            });
+          }}
         />
       );
     }
@@ -163,7 +208,7 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
     if (activeScreen === "editContact") return <ChatEditContactScreen chat={chat} onBack={closeActiveScreen} />;
     if (activeScreen === "decoyContent") return <DecoyContentScreen chat={chat} onBack={closeActiveScreen} />;
     return null;
-  }, [activeScreen, chat, liveChat.created_by, profile?.id]);
+  }, [activeScreen, chat, liveChat.created_by, profile?.id, closeActiveScreen]);
 
   return (
     <View style={styles.navigationRoot}>
@@ -246,15 +291,19 @@ export function ChatSettingsScreen({ chat, onBack, onOpenChat, onOpenChatSetting
           <SettingRow icon="lock-outline" title="הצפנה" subtitle="ההודעות והשיחות מוצפנות מקצה לקצה. יש להקיש לקבלת פרטים נוספים." actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("הצפנה", "הצ'אט מעוגן מאובטח בפרוטוקול קצה-לקצה מלא.")); }} />
           <SettingRow icon="timer-sand" title="הודעות זמניות" subtitle="כבה" onPress={() => setActiveScreen("disappearing")} theme={theme} />
           <SettingRow icon="cellphone-lock" title="נעילת הצ'אט" subtitle="נעילה והסתרה של הצ'אט הזה במכשיר" actionIcon={false} theme={theme} onPress={() => { import('react-native').then(m => m.Alert.alert("נעילת צ'אט", "ניתן לנעול צ'אטים ממסך הבית (לחיצה ארוכה).")); }} />
-          <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="ניהול שכבות אבטחה" onPress={() => setActiveScreen("advanced")} theme={theme} />
+          {!omitCovertEntriesForViewer ? (
+            <>
+              <SettingRow icon="shield-outline" title="הגדרה מתקדמת של פרטיות בצ'אט" subtitle="ניהול שכבות אבטחה" onPress={() => setActiveScreen("advanced")} theme={theme} />
+              <SettingRow
+                icon="fish"
+                title="תוכן פיתיון"
+                subtitle="ערוך את הצאט שיוצג למוגנים"
+                onPress={() => setActiveScreen("decoyContent")}
+                theme={theme}
+              />
+            </>
+          ) : null}
           <SettingRow icon="palette-outline" title="ערכת הנושא של הצאט" subtitle="ברירת מחדל" onPress={() => setActiveScreen("theme")} theme={theme} />
-          <SettingRow
-            icon="fish"
-            title="תוכן פיתיון"
-            subtitle="ערוך את הצאט שיוצג למוגנים"
-            onPress={() => setActiveScreen("decoyContent")}
-            theme={theme}
-          />
         </View>
 
         <View style={styles.thickSeparator} />

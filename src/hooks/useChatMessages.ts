@@ -8,6 +8,7 @@ const PAGE_SIZE = 20;
 export type MessagesPage = {
   messages: Message[];
   nextCursor: string | null;
+  totalCount?: number | null;
 };
 
 export type SendMessageInput = {
@@ -97,7 +98,7 @@ function removeMessage(
 export async function fetchMessagesPage(chatId: string, pageParam: string | null): Promise<MessagesPage> {
   let query = supabase
     .from("messages")
-    .select("*")
+    .select("*", { count: "exact" })
     .eq("chat_id", chatId)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -107,7 +108,7 @@ export async function fetchMessagesPage(chatId: string, pageParam: string | null
     query = query.lt("created_at", pageParam);
   }
 
-  const { data, error } = await query;
+  const { data, error, count } = await query;
   if (error) throw error;
 
   const messages = ((data ?? []) as Message[]).map((message) => ({ ...message, optimistic: false }));
@@ -116,6 +117,7 @@ export async function fetchMessagesPage(chatId: string, pageParam: string | null
   return {
     messages,
     nextCursor: messages.length === PAGE_SIZE && lastMessage ? lastMessage.created_at : null,
+    totalCount: pageParam ? null : count,
   };
 }
 
@@ -132,8 +134,9 @@ export function useMessages(chatId: string, enabled = true) {
     () => sortAscending(query.data?.pages.flatMap((page) => page.messages) ?? []),
     [query.data],
   );
+  const totalCount = query.data?.pages.find((page) => typeof page.totalCount === "number")?.totalCount ?? null;
 
-  return { ...query, messages };
+  return { ...query, messages, loadedCount: messages.length, totalCount };
 }
 
 export function useSendMessage() {

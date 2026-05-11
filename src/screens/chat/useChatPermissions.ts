@@ -23,7 +23,7 @@ export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMess
   }, [hasScreenshotPerm, chat.id, chat.is_group, isSuspended]);
 
   useEffect(() => {
-    if (!chat.is_group) return;
+    if (!chat.is_group || isSuspended) return;
     const sub = addScreenshotListener(() => {
       if (hasScreenshotPerm) return;
       setScreenshotHold(true);
@@ -38,7 +38,7 @@ export function useChatPermissions(chat: Chat, groupMembers: Profile[], sendMess
       });
     });
     return () => sub.remove();
-  }, [chat.id, chat.is_group, hasScreenshotPerm, groupMembers, myRequests, requestScreenshotPermission, sendMessage]);
+  }, [chat.id, chat.is_group, hasScreenshotPerm, groupMembers, isSuspended, myRequests, requestScreenshotPermission, sendMessage]);
 
   return {
     hasScreenshotPerm,

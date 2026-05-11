@@ -33,7 +33,7 @@ USING (
     SELECT 1 FROM public.messages m
     JOIN public.chat_members cm ON m.chat_id = cm.chat_id
     WHERE m.id = message_reactions.message_id
-    AND cm.member_id = auth.uid()
+    AND cm.user_id = auth.uid()
   )
 );
 
@@ -45,15 +45,40 @@ USING (user_id = auth.uid())
 WITH CHECK (user_id = auth.uid());
 
 
--- 3. ENSURE UNREAD COUNTS SYNC
--- Make sure chats and chat_members allow visibility of last_read_at
-DROP POLICY IF EXISTS "Users can view own memberships" ON public.chat_members;
-CREATE POLICY "Users can view own memberships"
-ON public.chat_members FOR SELECT TO authenticated
-USING (member_id = auth.uid());
+-- 3. ENSURE UNREAD COUNTS AND LAST POSITION SYNC
+CREATE TABLE IF NOT EXISTS public.chat_reads (
+  chat_id uuid NOT NULL REFERENCES public.chats(id) ON DELETE CASCADE,
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  last_read_at timestamptz NOT NULL DEFAULT timezone('utc', now()),
+  PRIMARY KEY (chat_id, user_id)
+);
 
-DROP POLICY IF EXISTS "Users can update own memberships" ON public.chat_members;
-CREATE POLICY "Users can update own memberships"
-ON public.chat_members FOR UPDATE TO authenticated
-USING (member_id = auth.uid())
-WITH CHECK (member_id = auth.uid());
+ALTER TABLE public.chat_reads
+  ADD COLUMN IF NOT EXISTS last_position_message_id uuid REFERENCES public.messages(id) ON DELETE SET NULL;
+
+ALTER TABLE public.chat_reads
+  ADD COLUMN IF NOT EXISTS last_position_at timestamptz;
+
+ALTER TABLE public.chat_reads ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users can read own chat reads" ON public.chat_reads;
+CREATE POLICY "users can read own chat reads"
+ON public.chat_reads FOR SELECT TO authenticated
+USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "members can insert own chat reads" ON public.chat_reads;
+CREATE POLICY "members can insert own chat reads"
+ON public.chat_reads FOR INSERT TO authenticated
+WITH CHECK (
+  user_id = auth.uid()
+  AND public.is_chat_member(chat_reads.chat_id)
+);
+
+DROP POLICY IF EXISTS "users can update own chat reads" ON public.chat_reads;
+CREATE POLICY "users can update own chat reads"
+ON public.chat_reads FOR UPDATE TO authenticated
+USING (user_id = auth.uid())
+WITH CHECK (
+  user_id = auth.uid()
+  AND public.is_chat_member(chat_reads.chat_id)
+);

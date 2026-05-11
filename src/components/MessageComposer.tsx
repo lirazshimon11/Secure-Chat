@@ -25,9 +25,12 @@ type Props = {
   onInputFocus?: () => void;
   focusTrigger?: number;
   onAttachmentPress?: () => void;
+  keepKeyboardOpenAfterSend?: boolean;
+  editSession?: { id: string; text: string; nonce: number } | null;
+  onCancelEdit?: () => void;
 };
 
-export function MessageComposer({ replyToText, replyToName, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress }: Props) {
+export function MessageComposer({ replyToText, replyToName, onCancelReply, onSend, emojiKeyboardOpen, onToggleEmojiKeyboard, emojiEvent, onInputFocus, focusTrigger, onAttachmentPress, keepKeyboardOpenAfterSend, editSession, onCancelEdit }: Props) {
   const theme = useAppTheme();
   const styles = createStyles(theme, !!replyToText);
   const [body, setBody] = useState("");
@@ -73,8 +76,17 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     }
   }, [focusTrigger]);
 
+  useEffect(() => {
+    if (!editSession) return;
+    setKind("standard");
+    setBody(editSession.text);
+    resizeInputRef.current(editSession.text);
+    const t = setTimeout(() => inputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [editSession?.id, editSession?.nonce]);
+
   const expireSeconds = kind === "temporary" ? 60 : null;
-  const placeholder = "הקלידו הודעה";
+  const placeholder = editSession ? "עריכת הודעה" : "הקלידו הודעה";
 
   function handleChangeText(nextBody: string) {
     setBody(nextBody);
@@ -87,6 +99,9 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
     setBody("");
     setKind("standard");
     setInputHeight(42);
+    if (keepKeyboardOpenAfterSend) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
     if (Platform.OS === "web" && inputRef.current) {
       const el = inputRef.current as any;
       el.style.height = '42px';
@@ -200,15 +215,33 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
   return (
     <View style={styles.safeAreaWrapper}>
       <View style={styles.wrapper}>
-        <View style={styles.modeRow}>
+        {!editSession ? <View style={styles.modeRow}>
           <ModeChip active={kind === "standard"} activeColor={theme.colors.mine} textColor={theme.colors.text} icon="message-text-outline" label="הודעה" onPress={() => setKind("standard")} />
           <ModeChip active={kind === "temporary"} activeColor="#8b5cf6" textColor="#ffffff" icon="timer-sand" label="דקה 1" onPress={() => setKind("temporary")} />
           <ModeChip active={kind === "view_once"} activeColor="#ff4444" textColor="#ffffff" icon="eye-outline" label="צפייה חד-פעמית" onPress={() => setKind("view_once")} />
-        </View>
+        </View> : null}
 
         <View style={styles.composerRow}>
           <View style={styles.mainStack}>
-            {replyToText ? (
+            {editSession ? (
+              <View style={styles.replyBanner}>
+                <View style={styles.replyContent}>
+                  <View style={[styles.replyAccent, { backgroundColor: theme.colors.accent }]} />
+                  <View style={styles.replyText}>
+                    <Text numberOfLines={1} style={[styles.replyLabel, { color: theme.colors.accent }]}>עריכת הודעה</Text>
+                    <Text numberOfLines={1} style={styles.replyPreview}>{getMessagePreview(editSession.text)}</Text>
+                  </View>
+                  <Pressable onPress={() => {
+                    setBody("");
+                    resizeInputRef.current("");
+                    setInputHeight(42);
+                    onCancelEdit?.();
+                  }} style={styles.closeButton}>
+                    <Feather color={theme.colors.headerIcon} name="x" size={18} />
+                  </Pressable>
+                </View>
+              </View>
+            ) : replyToText ? (
               <View style={styles.replyBanner}>
                 <View style={styles.replyContent}>
                   <View style={[styles.replyAccent, { backgroundColor: accentColor }]} />
@@ -242,12 +275,16 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
                   value={body}
                 />
               </View>
-              <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
-                <Feather color={theme.colors.headerIcon} name="paperclip" size={20} />
-              </Pressable>
-              <Pressable onPress={() => { }} style={[styles.innerSideButton, webNoOutline]}>
-                <Feather color={theme.colors.headerIcon} name="camera" size={20} />
-              </Pressable>
+              {!editSession ? (
+                <>
+                  <Pressable onPress={() => onAttachmentPress?.()} style={[styles.innerSideButton, webNoOutline]}>
+                    <Feather color={theme.colors.headerIcon} name="paperclip" size={20} />
+                  </Pressable>
+                  <Pressable onPress={() => { }} style={[styles.innerSideButton, webNoOutline]}>
+                    <Feather color={theme.colors.headerIcon} name="camera" size={20} />
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           </View>
 
@@ -257,7 +294,7 @@ export function MessageComposer({ replyToText, replyToName, onCancelReply, onSen
             </Pressable>
           )}
 
-          {body.trim().length === 0 && (
+          {body.trim().length === 0 && !editSession && (
             <Pressable onPress={() => { }} style={[styles.micFab, webNoOutline]}>
               <MaterialCommunityIcons color={theme.colors.textOnAccent} name="microphone" size={22} />
             </Pressable>

@@ -1,6 +1,8 @@
 import { PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Alert, AppState, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder, Easing, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, Alert, AppState, Pressable, ScrollView, Text, TextInput, View, useColorScheme, KeyboardAvoidingView, Platform, Keyboard, StyleSheet, PanResponder, Easing, useWindowDimensions } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
+import type { InfiniteData } from "@tanstack/react-query";
 import React from "react";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -14,8 +16,9 @@ import { useAppTheme } from "@/lib/theme";
 import { Chat, ChatSecuritySettings, Message, Profile } from "@/lib/types";
 import { webEmbeddedInputReset, webDefaultCursor, webSystemFont } from "@/lib/webStyles";
 import { supabase } from "@/lib/supabase";
-import { CHAT_SECURITY_SETTINGS_EVENT, DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings } from "@/lib/chatSecuritySettings";
-import { useMessages, useMessagesSubscription, useSendMessage } from "@/hooks/useChatMessages";
+import { CHAT_SECURITY_SETTINGS_EVENT, DEFAULT_CHAT_SECURITY_SETTINGS, fetchChatSecuritySettings, PLAIN_DECOY_VIEWER_CHAT_SECURITY, subscribeToChatSecuritySettings } from "@/lib/chatSecuritySettings";
+import { chatMessagesQueryKey, useMessages, useMessagesSubscription, useSendMessage } from "@/hooks/useChatMessages";
+import type { MessagesPage } from "@/hooks/useChatMessages";
 
 // Sub-screens
 import { ChatAddMembersScreen } from "./chat-settings/ChatAddMembersScreen";
@@ -54,13 +57,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const colorScheme = useColorScheme();
   const styles = useMemo(() => createStyles(theme, insets), [theme, insets]);
   const { profile } = useAuth();
+  const queryClient = useQueryClient();
   const [initialUnreadCount, setInitialUnreadCount] = useState<number>(0);
   const [initialUnreadStartIndex, setInitialUnreadStartIndex] = useState<number>(-1);
 
   const {
     loadMessages, markChatSeen, refreshChats, unreadCounts, messagesByChat, profiles, chats,
     contactNicknames, reactionsByMessage, openedViewOnceIds, muteSettings,
-    chatPreferences, setChatMute, clearChatMute, openViewOnceMessage,
+    chatPreferences, deletedForMeIds, setChatMute, clearChatMute, openViewOnceMessage,
     toggleReaction, deleteMessages, loadChatMembers, clearChatsLocally, isCurrentMember,
     createChat, setChatMemberRole, removeChatMember
   } = useChats();
@@ -70,6 +74,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     fetchNextPage: fetchNextMessagesPage,
     hasNextPage: hasOlderMessages,
     isFetchingNextPage: isFetchingOlderMessages,
+    refetch: refetchMessages,
+    loadedCount: loadedMessagesCount,
+    totalCount: totalMessagesCount,
   } = useMessages(chat.id, !decoyMode);
   const sendMessageMutation = useSendMessage();
   useMessagesSubscription(chat.id, profile?.id, !decoyMode);
@@ -86,12 +93,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         replyToId: input.replyToId,
         expireSeconds: input.expireSeconds,
       });
+      await markChatSeen(input.chatId, new Date().toISOString(), 0);
       void refreshChats(true);
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : "Could not send message.";
     }
-  }, [profile?.id, refreshChats, sendMessageMutation]);
+  }, [markChatSeen, profile?.id, refreshChats, sendMessageMutation]);
 
   const [isMember, setIsMember] = useState(false);
   const [selectedAvatarMember, setSelectedAvatarMember] = useState<Profile | null>(null);
@@ -117,7 +125,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     void (async () => {
       const { data, error } = await supabase
         .from("chat_decoy_messages")
-        .select("id, body, is_me, created_at, sender_id")
+        .select("*")
         .eq("chat_id", chat.id)
         .order("created_at", { ascending: true });
       if (!active || error || !data) return;
@@ -126,13 +134,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           id: `decoy-${r.id}`,
           _decoy_row_id: r.id,
           chat_id: chat.id,
-          sender_id: r.is_me ? profile.id : (`decoy-other-${r.sender_id}`),
+          sender_id: r.sender_id,
           body_ciphertext: r.body,
           body_preview: r.body,
           message_kind: "standard" as const,
           reply_to_id: null,
           expires_at: null,
           created_at: r.created_at,
+          edited_at: typeof r.edited_at === "string" ? r.edited_at : null,
           deleted_at: null,
         })),
       );
@@ -142,18 +151,31 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const visibleMessages = useMemo(() => {
     if (decoyMode) return decoyDbMessages;
-    const allMessages = cachedMessages.length ? cachedMessages : ((messagesByChat && chat && messagesByChat[chat.id]) ?? []);
+    const deletedForMeSet = new Set(deletedForMeIds);
+    const allMessages = (cachedMessages.length ? cachedMessages : ((messagesByChat && chat && messagesByChat[chat.id]) ?? []))
+      .filter((message) => !deletedForMeSet.has(message.id));
     const prefs = chatPreferences && chat && chatPreferences[chat.id];
     const clearedAt = prefs?.cleared_at;
     if (!clearedAt) return allMessages;
     const clearedAtMs = new Date(clearedAt).getTime();
     return allMessages.filter((m) => new Date(m.created_at).getTime() > clearedAtMs);
-  }, [cachedMessages, decoyMode, decoyDbMessages, chat?.id, chatPreferences, messagesByChat]);
+  }, [cachedMessages, decoyMode, decoyDbMessages, deletedForMeIds, chat?.id, chatPreferences, messagesByChat]);
 
   const messageMap = useMemo(() => Object.fromEntries((visibleMessages || []).map((msg) => [msg.id, msg])), [visibleMessages]);
+  const latestSystemMessageKey = useMemo(() => {
+    const latestSystemMessage = [...(visibleMessages || [])]
+      .reverse()
+      .find((message) => message.message_kind === "system");
+    return latestSystemMessage
+      ? `${latestSystemMessage.id}:${latestSystemMessage.created_at}:${latestSystemMessage.body_ciphertext}`
+      : null;
+  }, [visibleMessages]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [groupMembers, setGroupMembers] = useState<Profile[]>([]);
+  const [olderMessagesProgress, setOlderMessagesProgress] = useState(0);
+  const olderFetchAnchorRef = useRef<{ y: number; contentHeight: number } | null>(null);
+  const olderAutoLoadInFlightRef = useRef(false);
 
   // ── Decoy (guard) state (must be declared before groupedMessages) ───────
   const [showDecoyManager, setShowDecoyManager] = useState(false);
@@ -174,7 +196,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     void (async () => {
       const { data } = await supabase
         .from("chat_decoy_messages")
-        .select("id, body, is_me, created_at, sender_id")
+        .select("*")
         .eq("chat_id", chat.id)
         .order("created_at", { ascending: true });
 
@@ -194,6 +216,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           reply_to_id: null,
           expires_at: null,
           created_at: dm.created_at,
+          edited_at: typeof dm.edited_at === "string" ? dm.edited_at : null,
           deleted_at: null,
         })),
       );
@@ -234,6 +257,27 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     });
     return groups;
   }, [messageMap, searchQuery, visibleMessages, initialUnreadCount, initialUnreadStartIndex, isDecoyActive, decoyMessages]);
+
+  const showOlderMessagesLoader =
+    !decoyMode &&
+    !isDecoyActive &&
+    !searchQuery.trim() &&
+    visibleMessages.length > 0 &&
+    Boolean(hasOlderMessages || isFetchingOlderMessages);
+
+  useEffect(() => {
+    if (!showOlderMessagesLoader) {
+      setOlderMessagesProgress(0);
+      return;
+    }
+
+    if (totalMessagesCount && totalMessagesCount > 0) {
+      setOlderMessagesProgress(Math.min(100, Math.round((loadedMessagesCount / totalMessagesCount) * 100)));
+      return;
+    }
+
+    setOlderMessagesProgress(isFetchingOlderMessages ? 1 : 0);
+  }, [isFetchingOlderMessages, loadedMessagesCount, showOlderMessagesLoader, totalMessagesCount]);
 
   const groupSubtitle = useMemo(() => {
     if (!chat?.is_group || !groupMembers || (groupMembers?.length || 0) === 0) return "קבוצה";
@@ -295,10 +339,17 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [securitySettings, setSecuritySettings] = useState<ChatSecuritySettings>(DEFAULT_CHAT_SECURITY_SETTINGS);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
+
+  /** Inline message editing, shared by real chat and decoy content. */
+  const [decoyEditOpen, setDecoyEditOpen] = useState(false);
+  const [decoyEditDraft, setDecoyEditDraft] = useState("");
+  const [decoyEditNonce, setDecoyEditNonce] = useState(0);
+  const [decoyEditSaving, setDecoyEditSaving] = useState(false);
+  const decoyEditingMessageIdRef = useRef<string | null>(null);
   const [isRevealingChat, setIsRevealingChat] = useState(false);
   const isRevealingChatRef = useRef(false);
   useEffect(() => { isRevealingChatRef.current = isRevealingChat; }, [isRevealingChat]);
-  const headerTouchActionLockRef = useRef(0);
+  const backNavigationLockRef = useRef(0);
   const ignoredRevealTouchIdsRef = useRef<Set<number>>(new Set());
   const contentRevealHoldRef = useRef<{
     id: number | null;
@@ -308,7 +359,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     timer: ReturnType<typeof setTimeout> | null;
   } | null>(null);
   const [revealHoldCircle, setRevealHoldCircle] = useState<{ x: number; y: number; radius: number; active: boolean } | null>(null);
-  const [touchDebugPoints, setTouchDebugPoints] = useState<Array<{ id: number; x: number; y: number; target: string }>>([]);
   const [securityBlackout, setSecurityBlackout] = useState(false);
   const [fakeScreenshotWarning, setFakeScreenshotWarning] = useState(false);
   const [identityMagnetPoint, setIdentityMagnetPoint] = useState({ x: 214, y: 320 });
@@ -318,6 +368,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [isDragSelectLocked, setIsDragSelectLocked] = useState(false);
   const isDragSelectLockedRef = useRef(false);
   useEffect(() => { isDragSelectLockedRef.current = isDragSelectLocked; }, [isDragSelectLocked]);
+
+  const isDecoyProtectionSurface = isDecoyActive && !decoyMode;
+  const viewerSecuritySettings = useMemo(
+    () => (isDecoyProtectionSurface ? PLAIN_DECOY_VIEWER_CHAT_SECURITY : securitySettings),
+    [isDecoyProtectionSurface, securitySettings],
+  );
 
   const showScrollToBottomRef = useRef(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -331,6 +387,12 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const highlightAnim = useRef(new Animated.Value(0)).current;
   const initialScrollDone = useRef(false);
   const pendingSelfSendScrollRef = useRef(false);
+  const lastAutoScrollMessageIdRef = useRef<string | null>(null);
+  const [savedChatPosition, setSavedChatPosition] = useState<{ messageId: string | null; lastReadAt: string | null } | null>(null);
+  const [savedChatPositionReady, setSavedChatPositionReady] = useState(false);
+  const [savedScrollY, setSavedScrollY] = useState<number | null>(null);
+  const [savedScrollYReady, setSavedScrollYReady] = useState(false);
+  const lastSavedPositionIdRef = useRef<string | null>(null);
   const revealTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -369,6 +431,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated }));
   };
 
+  const isNearScrollBottom = (threshold = 150) => {
+    const { y, height, contentHeight } = scrollMetricsRef.current;
+    return contentHeight - (y + height) < threshold;
+  };
+
   const scrollToBottomAfterSelfSend = () => {
     pendingSelfSendScrollRef.current = true;
     setShowScrollToBottom(false);
@@ -377,6 +444,104 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     setTimeout(() => scrollToBottom(true), 80);
     setTimeout(() => scrollToBottom(true), 220);
   };
+
+  const fetchOlderMessagesPreservingPosition = useCallback(async () => {
+    if (decoyMode || !hasOlderMessages || isFetchingOlderMessages || olderAutoLoadInFlightRef.current) return;
+
+    olderFetchAnchorRef.current = {
+      y: scrollMetricsRef.current.y,
+      contentHeight: scrollMetricsRef.current.contentHeight,
+    };
+
+    olderAutoLoadInFlightRef.current = true;
+    try {
+      await fetchNextMessagesPage();
+    } finally {
+      olderAutoLoadInFlightRef.current = false;
+    }
+  }, [decoyMode, fetchNextMessagesPage, hasOlderMessages, isFetchingOlderMessages]);
+
+  const getCurrentAnchorMessageId = useCallback(() => {
+    const targetY = scrollMetricsRef.current.y + 18;
+    let bestId: string | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
+      if (!messageMap[id] || messageMap[id].message_kind === "system") continue;
+      const bottom = layout.y + layout.h;
+      if (bottom >= targetY) {
+        const distance = Math.abs(layout.y - targetY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestId = id;
+        }
+      }
+    }
+    return bestId;
+  }, [messageMap]);
+
+  const persistCurrentChatPosition = useCallback(async () => {
+    if (!profile?.id || decoyMode) return;
+    const scrollY = scrollMetricsRef.current.y;
+    void AsyncStorage.setItem(`chat-scroll-y:${profile.id}:${chat.id}`, String(Math.max(0, scrollY)));
+
+    const messageId = getCurrentAnchorMessageId();
+    if (!messageId || messageId === lastSavedPositionIdRef.current) return;
+    lastSavedPositionIdRef.current = messageId;
+    const message = messageMap[messageId];
+    const timestamp = message?.created_at ?? new Date().toISOString();
+    await supabase
+      .from("chat_reads")
+      .upsert(
+        {
+          chat_id: chat.id,
+          user_id: profile.id,
+          last_position_message_id: messageId,
+          last_position_at: timestamp,
+        },
+        { onConflict: "chat_id,user_id" },
+      );
+  }, [chat.id, decoyMode, getCurrentAnchorMessageId, messageMap, profile?.id]);
+  const persistCurrentChatPositionRef = useRef(persistCurrentChatPosition);
+  useEffect(() => { persistCurrentChatPositionRef.current = persistCurrentChatPosition; }, [persistCurrentChatPosition]);
+  useEffect(() => () => {
+    void persistCurrentChatPositionRef.current();
+  }, []);
+
+  const handleBack = useCallback(() => {
+    const now = Date.now();
+    if (now < backNavigationLockRef.current) return;
+    backNavigationLockRef.current = now + 360;
+    setSelectedIds([]);
+    setShowOverflowMenu(false);
+    setShowMoreMenu(false);
+    setShowSelectionOverflowMenu(false);
+    setShowReactionsForId(null);
+    setShowReactionsSheetForId(null);
+    setShowEmojiPickerForId(null);
+    setShowEmojiKeyboard(false);
+    setIsDragSelectLocked(false);
+    Keyboard.dismiss();
+    void persistCurrentChatPosition();
+    onBack();
+  }, [onBack, persistCurrentChatPosition]);
+
+  const removeMessagesFromQueryCache = useCallback((ids: string[]) => {
+    const idSet = new Set(ids);
+    if (!idSet.size) return;
+    queryClient.setQueryData<InfiniteData<MessagesPage, string | null>>(
+      chatMessagesQueryKey(chat.id),
+      (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page) => ({
+            ...page,
+            messages: page.messages.filter((message) => !idSet.has(message.id)),
+          })),
+        };
+      },
+    );
+  }, [chat.id, queryClient]);
 
   const scrollToMessageWithRetry = (msgId: string, highlight = true, attempts = 6) => {
     const layout = messageLayoutsRef.current[msgId];
@@ -451,7 +616,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   };
 
   const { hasScreenshotPerm, screenshotHold, activePermissions, myRequests, requestScreenshotPermission, approveRequest, denyRequest, revokeApproval } =
-    useChatPermissions(chat, groupMembers, (p) => sendCachedMessage(p), activeSubScreen !== null);
+    useChatPermissions(chat, groupMembers, (p) => sendCachedMessage(p), activeSubScreen !== null || isDecoyProtectionSurface);
 
   useEffect(() => {
     let active = true;
@@ -476,19 +641,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       window.addEventListener("focus", reloadSettings);
     }
 
-    const channel = supabase
-      .channel(`chat-security-settings:${chat.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "chat_security_settings", filter: `chat_id=eq.${chat.id}` },
-        (payload) => {
-          const next = payload.new as Partial<ChatSecuritySettings> | null;
-          if (next) {
-            setSecuritySettings({ ...DEFAULT_CHAT_SECURITY_SETTINGS, ...next });
-          }
-        },
-      )
-      .subscribe();
+    const subscription = subscribeToChatSecuritySettings(chat.id, (next) => {
+      if (active) setSecuritySettings(next);
+    });
 
     return () => {
       active = false;
@@ -496,26 +651,31 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         window.removeEventListener(CHAT_SECURITY_SETTINGS_EVENT, handleLocalSettingsChange);
         window.removeEventListener("focus", reloadSettings);
       }
-      void supabase.removeChannel(channel);
+      subscription.unsubscribe();
     };
   }, [chat.id]);
 
+  useEffect(() => {
+    if (!latestSystemMessageKey || decoyMode) return;
+    void fetchChatSecuritySettings(chat.id).then(setSecuritySettings);
+  }, [chat.id, decoyMode, latestSystemMessageKey]);
+
   const triggerSecurityBlackout = useCallback((showWarning: boolean) => {
-    if (!securitySettings.app_switcher_blackout && !(showWarning && securitySettings.fake_screenshot_warning)) {
+    if (!viewerSecuritySettings.app_switcher_blackout && !(showWarning && viewerSecuritySettings.fake_screenshot_warning)) {
       return;
     }
-    if (securitySettings.app_switcher_blackout) {
+    if (viewerSecuritySettings.app_switcher_blackout) {
       setSecurityBlackout(true);
       if (blackoutTimeoutRef.current) clearTimeout(blackoutTimeoutRef.current);
       blackoutTimeoutRef.current = setTimeout(() => setSecurityBlackout(false), 1400);
     }
 
-    if (showWarning && securitySettings.fake_screenshot_warning) {
+    if (showWarning && viewerSecuritySettings.fake_screenshot_warning) {
       setFakeScreenshotWarning(true);
       if (warningTimeoutRef.current) clearTimeout(warningTimeoutRef.current);
       warningTimeoutRef.current = setTimeout(() => setFakeScreenshotWarning(false), 3600);
     }
-  }, [securitySettings.app_switcher_blackout, securitySettings.fake_screenshot_warning]);
+  }, [viewerSecuritySettings.app_switcher_blackout, viewerSecuritySettings.fake_screenshot_warning]);
 
   const markSuspiciousInput = useCallback(() => {
     suspiciousInputUntilRef.current = Date.now() + 700;
@@ -574,55 +734,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       document.removeEventListener("visibilitychange", handleVisibilityChange, true);
     };
   }, [markSuspiciousInput, triggerSecurityBlackout]);
-
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
-
-    const targetLabel = (target: EventTarget | null) => {
-      if (!(target instanceof HTMLElement)) return "unknown";
-      if (target.closest("[data-secure-reveal-button='true']")) return "eye";
-      if (target.closest("[data-chat-action]")) {
-        return `header:${target.closest("[data-chat-action]")?.getAttribute("data-chat-action") ?? "action"}`;
-      }
-      if (target.closest("[data-message-id]")) return "message";
-      if (target.closest("input, textarea")) return "input";
-      return target.tagName.toLowerCase();
-    };
-
-    const updateTouches = (event: TouchEvent) => {
-      setTouchDebugPoints(
-        Array.from(event.touches).map((touch, index) => {
-          const element = document.elementFromPoint(touch.clientX, touch.clientY);
-          return {
-            id: touch.identifier,
-            x: Math.round(touch.clientX),
-            y: Math.round(touch.clientY),
-            target: targetLabel(element),
-          };
-        }),
-      );
-    };
-
-    const clearTouches = (event: TouchEvent) => {
-      if (event.touches.length) {
-        updateTouches(event);
-      } else {
-        setTouchDebugPoints([]);
-      }
-    };
-
-    document.addEventListener("touchstart", updateTouches, { capture: true, passive: true });
-    document.addEventListener("touchmove", updateTouches, { capture: true, passive: true });
-    document.addEventListener("touchend", clearTouches, { capture: true, passive: true });
-    document.addEventListener("touchcancel", clearTouches, { capture: true, passive: true });
-
-    return () => {
-      document.removeEventListener("touchstart", updateTouches, { capture: true } as any);
-      document.removeEventListener("touchmove", updateTouches, { capture: true } as any);
-      document.removeEventListener("touchend", clearTouches, { capture: true } as any);
-      document.removeEventListener("touchcancel", clearTouches, { capture: true } as any);
-    };
-  }, []);
 
   useEffect(() => {
     setSecurityBlackout(false);
@@ -810,6 +921,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   useEffect(() => {
     initialScrollDone.current = false;
+    pendingSelfSendScrollRef.current = false;
+    lastAutoScrollMessageIdRef.current = null;
+    lastSavedPositionIdRef.current = null;
+    setSavedChatPosition(null);
+    setSavedChatPositionReady(false);
+    setSavedScrollY(null);
+    setSavedScrollYReady(false);
     if (chat?.id) {
       void loadMessages(chat.id);
       void isCurrentMember(chat.id).then(setIsMember);
@@ -817,7 +935,50 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }, [chat?.id]);
 
   useEffect(() => {
-    if (!visibleMessages?.length || initialScrollDone.current) return;
+    if (!chat?.id || !profile?.id || decoyMode) {
+      setSavedScrollYReady(true);
+      return;
+    }
+
+    let active = true;
+    AsyncStorage.getItem(`chat-scroll-y:${profile.id}:${chat.id}`).then((raw) => {
+      if (!active) return;
+      const parsed = raw === null ? Number.NaN : Number(raw);
+      setSavedScrollY(Number.isFinite(parsed) ? Math.max(0, parsed) : null);
+      setSavedScrollYReady(true);
+    });
+    return () => { active = false; };
+  }, [chat?.id, decoyMode, profile?.id]);
+
+  useEffect(() => {
+    if (!chat?.id || !profile?.id || decoyMode) {
+      setSavedChatPositionReady(true);
+      return;
+    }
+    let active = true;
+    void supabase
+      .from("chat_reads")
+      .select("last_position_message_id,last_position_at,last_read_at")
+      .eq("chat_id", chat.id)
+      .eq("user_id", profile.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        setSavedChatPosition({
+          messageId: typeof data?.last_position_message_id === "string" ? data.last_position_message_id : null,
+          lastReadAt: typeof data?.last_position_at === "string"
+            ? data.last_position_at
+            : typeof data?.last_read_at === "string"
+              ? data.last_read_at
+              : null,
+        });
+        setSavedChatPositionReady(true);
+      });
+    return () => { active = false; };
+  }, [chat?.id, decoyMode, profile?.id]);
+
+  useEffect(() => {
+    if (!visibleMessages?.length || initialScrollDone.current || !savedScrollYReady) return;
     const currentUnread = (unreadCounts && chat && unreadCounts[chat.id]) || 0;
 
     // Initialize unread divider positions once per chat entry
@@ -829,24 +990,40 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     if (scrollToMessageId) {
       setTimeout(() => scrollToMessageWithRetry(scrollToMessageId, true), 100);
       initialScrollDone.current = true;
-    } else if (currentUnread > 0) {
-      const unreadStartIndex = Math.max(0, visibleMessages.length - currentUnread);
-      const firstUnreadMsg = visibleMessages[unreadStartIndex];
-      if (firstUnreadMsg) {
-        setTimeout(() => {
-          scrollToMessageWithRetry(firstUnreadMsg.id, false);
-          setTimeout(checkVisibility, 400);
-        }, 150);
-      } else {
-        scrollToBottom(false);
-      }
+    } else if (savedScrollY !== null) {
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: savedScrollY, animated: false });
+        scrollMetricsRef.current.y = savedScrollY;
+      });
       initialScrollDone.current = true;
     } else {
-      // Go to bottom immediately
-      requestAnimationFrame(() => scrollToBottom(false));
       initialScrollDone.current = true;
     }
-  }, [chat?.id, visibleMessages?.length, scrollToMessageId, unreadCounts]);
+    lastAutoScrollMessageIdRef.current = visibleMessages[visibleMessages.length - 1]?.id ?? null;
+  }, [chat?.id, messageMap, savedScrollY, savedScrollYReady, visibleMessages, visibleMessages?.length, scrollToMessageId, unreadCounts]);
+
+  useEffect(() => {
+    if (!initialScrollDone.current || decoyMode || !hasOlderMessages || isFetchingOlderMessages) return;
+    void fetchOlderMessagesPreservingPosition();
+  }, [
+    cachedMessages.length,
+    decoyMode,
+    fetchOlderMessagesPreservingPosition,
+    hasOlderMessages,
+    isFetchingOlderMessages,
+    visibleMessages.length,
+  ]);
+
+  useEffect(() => {
+    if (decoyMode || !hasOlderMessages) return;
+
+    const interval = setInterval(() => {
+      if (!initialScrollDone.current || isFetchingOlderMessages || olderAutoLoadInFlightRef.current) return;
+      void fetchOlderMessagesPreservingPosition();
+    }, 350);
+
+    return () => clearInterval(interval);
+  }, [decoyMode, fetchOlderMessagesPreservingPosition, hasOlderMessages, isFetchingOlderMessages]);
 
   // Live auto-scroll and visibility check
   useEffect(() => {
@@ -854,18 +1031,25 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
     const lastMsg = visibleMessages[visibleMessages.length - 1];
     if (!lastMsg) return;
+    const previousLastMessageId = lastAutoScrollMessageIdRef.current;
+    lastAutoScrollMessageIdRef.current = lastMsg.id;
 
-    // System messages (guard, group events, etc.) → always scroll to bottom
+    if (previousLastMessageId === lastMsg.id) {
+      const timer = setTimeout(checkVisibility, 100);
+      return () => clearTimeout(timer);
+    }
+
     if (lastMsg.sender_id === profile?.id) {
+      if (pendingSelfSendScrollRef.current || isNearScrollBottom(180)) {
+        scrollToBottom(true);
+      }
       pendingSelfSendScrollRef.current = false;
-      scrollToBottom(true);
     } else if (lastMsg.message_kind === "system") {
-      scrollToBottom(true);
+      if (isNearScrollBottom(180)) {
+        scrollToBottom(true);
+      }
     } else if (lastMsg.sender_id !== profile?.id) {
-      // Someone else's regular message — only scroll if already near bottom
-      const { y, height, contentHeight } = scrollMetricsRef.current;
-      const distanceFromBottom = contentHeight - (y + height);
-      if (distanceFromBottom < 150) {
+      if (isNearScrollBottom(150)) {
         scrollToBottom(true);
       }
     }
@@ -897,13 +1081,25 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const isDragSelectingRef = useRef(false);
   const scrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastDragPageYRef = useRef<number | null>(null);
+  const lastDragPointRef = useRef<{ x: number; y: number } | null>(null);
+  const dragAutoScrollDirectionRef = useRef<-1 | 0 | 1>(0);
 
   const dragPivotIdRef = useRef<string | null>(null);
   const dragInitialIdsRef = useRef<Set<string>>(new Set());
+  const dragOperationalTouchIdRef = useRef<number | null>(null);
+  const dragVisitedIdsRef = useRef<Set<string>>(new Set());
+  const dragLastTargetIdRef = useRef<string | null>(null);
+  const dragPathIdsRef = useRef<string[]>([]);
 
   const stopDragSelect = useCallback(() => {
     isDragSelectingRef.current = false;
+    dragOperationalTouchIdRef.current = null;
+    dragVisitedIdsRef.current = new Set();
+    dragLastTargetIdRef.current = null;
+    dragPathIdsRef.current = [];
     lastDragPageYRef.current = null;
+    lastDragPointRef.current = null;
+    dragAutoScrollDirectionRef.current = 0;
     setIsDragSelectLocked(false);
     if (scrollTimerRef.current) {
       clearInterval(scrollTimerRef.current);
@@ -1002,6 +1198,114 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     updateDragSelection(pageY);
   }, [updateDragSelection]);
 
+  const beginDragSelectAtMessage = useCallback((messageId: string, touchId?: number | null) => {
+    if (!messageMap[messageId] || messageMap[messageId].message_kind === "system") return;
+    isDragSelectingRef.current = true;
+    dragOperationalTouchIdRef.current = typeof touchId === "number" ? touchId : null;
+    dragPivotIdRef.current = messageId;
+    const initial = new Set(selectedIdsRef.current);
+    initial.add(messageId);
+    dragInitialIdsRef.current = initial;
+    dragVisitedIdsRef.current = new Set([messageId]);
+    dragLastTargetIdRef.current = messageId;
+    dragPathIdsRef.current = [messageId];
+    setSelectedIds(Array.from(initial));
+  }, [messageMap]);
+
+  const updateDragSelectionToMessage = useCallback((targetId: string | null) => {
+    const pivotId = dragPivotIdRef.current;
+    if (!pivotId || !targetId || !messageMap[targetId] || messageMap[targetId].message_kind === "system") return;
+
+    const pivotLayout = messageLayoutsRef.current[pivotId];
+    const targetLayout = messageLayoutsRef.current[targetId];
+    if (!pivotLayout || !targetLayout) return;
+
+    const minY = Math.min(pivotLayout.y, targetLayout.y);
+    const maxY = Math.max(pivotLayout.y, targetLayout.y);
+    const nextSelectedSet = new Set(dragInitialIdsRef.current);
+
+    for (const [id, layout] of Object.entries(messageLayoutsRef.current)) {
+      const centerY = layout.y + layout.h / 2;
+      if (centerY >= minY && centerY <= maxY && messageMap[id]?.message_kind !== "system") {
+        nextSelectedSet.add(id);
+      }
+    }
+
+    let changed = nextSelectedSet.size !== selectedIdsRef.current.length;
+    if (!changed) {
+      for (const id of selectedIdsRef.current) {
+        if (!nextSelectedSet.has(id)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) setSelectedIds(Array.from(nextSelectedSet));
+  }, [messageMap]);
+
+  const canDragSelectWithTouch = useCallback((touchId?: number | null) => {
+    const trackedTouchId = dragOperationalTouchIdRef.current;
+    return trackedTouchId === null || touchId === trackedTouchId;
+  }, []);
+
+  const updateDragVisitedSelectionToMessage = useCallback((targetId: string | null) => {
+    if (!targetId || !messageMap[targetId] || messageMap[targetId].message_kind === "system") return;
+
+    const orderedIds = visibleMessages
+      .filter((message) => message.message_kind !== "system")
+      .map((message) => message.id);
+    const targetIndex = orderedIds.indexOf(targetId);
+    if (targetIndex < 0) return;
+
+    const path = [...dragPathIdsRef.current];
+    const lastTargetId = path[path.length - 1] ?? dragLastTargetIdRef.current;
+    if (lastTargetId === targetId) return;
+
+    const lastIndex = lastTargetId ? orderedIds.indexOf(lastTargetId) : -1;
+
+    if (lastIndex >= 0) {
+      const existingPathIndex = path.lastIndexOf(targetId);
+      if (existingPathIndex >= 0) {
+        path.splice(existingPathIndex + 1);
+        dragPathIdsRef.current = path;
+        dragVisitedIdsRef.current = new Set(path);
+        dragLastTargetIdRef.current = targetId;
+
+        const nextSelectedSet = new Set(dragInitialIdsRef.current);
+        for (const id of path) {
+          nextSelectedSet.add(id);
+        }
+        setSelectedIds(Array.from(nextSelectedSet));
+        return;
+      }
+
+      path.push(targetId);
+    } else {
+      path.push(targetId);
+    }
+
+    const visited = new Set(path);
+    dragPathIdsRef.current = path;
+    dragVisitedIdsRef.current = visited;
+    dragLastTargetIdRef.current = targetId;
+
+    const nextSelectedSet = new Set(dragInitialIdsRef.current);
+    for (const id of visited) {
+      nextSelectedSet.add(id);
+    }
+
+    let changed = nextSelectedSet.size !== selectedIdsRef.current.length;
+    if (!changed) {
+      for (const id of selectedIdsRef.current) {
+        if (!nextSelectedSet.has(id)) {
+          changed = true;
+          break;
+        }
+      }
+    }
+    if (changed) setSelectedIds(Array.from(nextSelectedSet));
+  }, [messageMap, visibleMessages]);
+
   const stopOverlayTouch = useCallback(() => {
     if (overlayTouchRef.current?.timer) {
       clearTimeout(overlayTouchRef.current.timer);
@@ -1015,6 +1319,19 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   }, [stopDragSelect]);
 
   const scrollThreadTo = useCallback((nextY: number) => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const scroller = document.querySelector("[data-chat-scroller='true']") as HTMLElement | null;
+      if (scroller) {
+        const maxY = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const boundedY = Math.max(0, Math.min(maxY, nextY));
+        scroller.scrollTop = boundedY;
+        scrollMetricsRef.current.y = boundedY;
+        scrollMetricsRef.current.height = scroller.clientHeight || scrollMetricsRef.current.height;
+        scrollMetricsRef.current.contentHeight = scroller.scrollHeight || scrollMetricsRef.current.contentHeight;
+        return boundedY;
+      }
+    }
+
     const { height, contentHeight } = scrollMetricsRef.current;
     const maxY = Math.max(0, contentHeight - height);
     const boundedY = Math.max(0, Math.min(maxY, nextY));
@@ -1022,6 +1339,115 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     scrollRef.current?.scrollTo({ y: boundedY, animated: false });
     return boundedY;
   }, []);
+
+  const resolveDecoyRowUuid = useCallback((msg: Message): string | null => {
+    const raw = (msg as Message & { _decoy_row_id?: unknown })._decoy_row_id;
+    if (typeof raw === "string" && raw.length > 0) return raw;
+    const m = /^decoy-(.+)$/i.exec(msg.id);
+    return m?.[1] ?? null;
+  }, []);
+
+  const beginDecoyMessageEdit = useCallback(
+    (messageId: string) => {
+      if (!profile?.id) return;
+      const msg = messageMap[messageId];
+      if (!msg || msg.sender_id !== profile.id || msg.message_kind !== "standard") return;
+      decoyEditingMessageIdRef.current = messageId;
+      setDecoyEditDraft(msg.body_ciphertext || msg.body_preview || "");
+      setDecoyEditNonce((current) => current + 1);
+      setDecoyEditOpen(true);
+      setSelectedIds([]);
+      scrollToMessageWithRetry(messageId, true);
+    },
+    [messageMap, profile?.id],
+  );
+
+  const saveDecoyMessageEdit = useCallback(async (nextText?: string) => {
+    const mid = decoyEditingMessageIdRef.current;
+    if (!mid || !profile?.id || decoyEditSaving) return;
+    const text = (nextText ?? decoyEditDraft).trim();
+    if (!text) {
+      Alert.alert("עריכה", "הטקסט ריק.");
+      return;
+    }
+    const msg = messageMap[mid];
+    if (!msg || msg.sender_id !== profile.id) return;
+    const rowId = decoyMode ? resolveDecoyRowUuid(msg) : msg.id;
+    if (!rowId) {
+      Alert.alert("עריכה", "לא נמצא מזהה להודעה.");
+      return;
+    }
+    setDecoyEditSaving(true);
+    const editedAt = new Date().toISOString();
+    let error: any = null;
+    if (decoyMode) {
+      const result = await supabase
+          .from("chat_decoy_messages")
+          .update({ body: text, edited_at: editedAt })
+          .eq("id", rowId)
+          .eq("sender_id", profile.id);
+      error = result.error;
+      if (error && /edited_at|schema|column/i.test(String(error.message ?? ""))) {
+        const retry = await supabase
+          .from("chat_decoy_messages")
+          .update({ body: text })
+          .eq("id", rowId)
+          .eq("sender_id", profile.id);
+        error = retry.error;
+      }
+    } else {
+      const result = await supabase
+          .from("messages")
+          .update({ body_ciphertext: text, body_preview: text, edited_at: editedAt })
+          .eq("id", rowId)
+          .eq("sender_id", profile.id);
+      error = result.error;
+      if (error && /edited_at|schema|column/i.test(String(error.message ?? ""))) {
+        const retry = await supabase
+          .from("messages")
+          .update({ body_ciphertext: text, body_preview: text })
+          .eq("id", rowId)
+          .eq("sender_id", profile.id);
+        error = retry.error;
+      }
+    }
+    setDecoyEditSaving(false);
+    if (error) {
+      Alert.alert("עריכה", "לא ניתן לשמור. ודא/י שמדיניות Supabase מאפשרת עדכון להודעות שלך.");
+      return;
+    }
+    if (decoyMode) {
+      setDecoyDbMessages((prev) => prev.map((m) => (m.id === mid ? { ...m, body_ciphertext: text, body_preview: text, edited_at: editedAt } : m)));
+    } else {
+      queryClient.setQueryData<InfiniteData<MessagesPage, string | null>>(
+        chatMessagesQueryKey(chat.id),
+        (oldData) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page) => ({
+              ...page,
+              messages: page.messages.map((message) =>
+                message.id === mid
+                  ? {
+                      ...message,
+                      body_ciphertext: text,
+                      body_preview: text,
+                      edited_at: editedAt,
+                      optimistic: false,
+                    }
+                  : message,
+              ),
+            })),
+          };
+        },
+      );
+      void refetchMessages();
+    }
+    setDecoyEditOpen(false);
+    decoyEditingMessageIdRef.current = null;
+    setDecoyEditDraft("");
+  }, [chat.id, decoyMode, decoyEditDraft, decoyEditSaving, messageMap, profile?.id, queryClient, refetchMessages, resolveDecoyRowUuid]);
 
   const startOverlayMomentum = useCallback((initialVelocityY: number) => {
     if (overlayMomentumRef.current !== null) {
@@ -1068,6 +1494,71 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }
     return null;
   }, []);
+
+  const getChatScrollerElement = useCallback(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return null;
+    return document.querySelector("[data-chat-scroller='true']") as HTMLElement | null;
+  }, []);
+
+  const getDragTargetMessageIdFromPoint = useCallback((x: number, y: number) => getMessageIdAtPoint(x, y), [getMessageIdAtPoint]);
+
+  const updateDragSelectionFromPoint = useCallback((x: number, y: number) => {
+    updateDragVisitedSelectionToMessage(getDragTargetMessageIdFromPoint(x, y));
+  }, [getDragTargetMessageIdFromPoint, updateDragVisitedSelectionToMessage]);
+
+  const updateDragAutoScroll = useCallback((x: number, y: number) => {
+    lastDragPointRef.current = { x, y };
+
+    const scroller = getChatScrollerElement();
+    const rect = scroller?.getBoundingClientRect();
+    const top = rect?.top ?? (insets.top + 58 + (searchOpen ? 52 : 0));
+    const height = rect?.height ?? threadHeightRef.current;
+    const bottom = top + height;
+    const edgeSize = 64;
+    const overshootTop = Math.max(0, top + edgeSize - y);
+    const overshootBottom = Math.max(0, y - (bottom - edgeSize));
+    const direction: -1 | 0 | 1 = overshootTop > 0 ? -1 : overshootBottom > 0 ? 1 : 0;
+
+    dragAutoScrollDirectionRef.current = direction;
+    if (!direction) {
+      if (scrollTimerRef.current) {
+        clearInterval(scrollTimerRef.current);
+        scrollTimerRef.current = null;
+      }
+      return false;
+    }
+
+    if (scrollTimerRef.current) return true;
+    scrollTimerRef.current = setInterval(() => {
+      const point = lastDragPointRef.current;
+      const currentDirection = dragAutoScrollDirectionRef.current;
+      if (!point || !currentDirection) return;
+
+      const scrollerElement = getChatScrollerElement();
+      const liveRect = scrollerElement?.getBoundingClientRect();
+      const liveTop = liveRect?.top ?? top;
+      const liveBottom = liveRect?.bottom ?? bottom;
+      const currentY = scrollerElement?.scrollTop ?? scrollMetricsRef.current.y;
+      const speed = currentDirection < 0
+        ? Math.min(28, Math.max(10, liveTop + edgeSize - point.y))
+        : Math.min(28, Math.max(10, point.y - (liveBottom - edgeSize)));
+      const nextY = currentY + currentDirection * speed;
+
+      if (scrollerElement) {
+        const maxY = Math.max(0, scrollerElement.scrollHeight - scrollerElement.clientHeight);
+        const boundedY = Math.max(0, Math.min(maxY, nextY));
+        scrollerElement.scrollTop = boundedY;
+        scrollMetricsRef.current.y = boundedY;
+        scrollMetricsRef.current.height = scrollerElement.clientHeight || scrollMetricsRef.current.height;
+        scrollMetricsRef.current.contentHeight = scrollerElement.scrollHeight || scrollMetricsRef.current.contentHeight;
+      } else {
+        scrollThreadTo(nextY);
+      }
+
+      updateDragSelectionFromPoint(point.x, point.y);
+    }, 16);
+    return true;
+  }, [getChatScrollerElement, insets.top, scrollThreadTo, searchOpen, updateDragSelectionFromPoint]);
 
   const toggleMessageSelection = useCallback((messageId: string) => {
     if (!messageMap[messageId] || messageMap[messageId].message_kind === "system") return;
@@ -1156,7 +1647,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   const handleContentRevealTouchStart = useCallback((event: any) => {
     updateIdentityMagnet(event);
-    if (Platform.OS !== "web" || !securitySettings.require_hold_to_reveal) return;
+    if (Platform.OS !== "web" || !viewerSecuritySettings.require_hold_to_reveal) return;
 
     const current = contentRevealHoldRef.current;
     if (current || isRevealingChatRef.current) return;
@@ -1188,7 +1679,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }, 650);
 
     contentRevealHoldRef.current = nextHold;
-  }, [clearContentRevealHold, securitySettings.require_hold_to_reveal, updateIdentityMagnet]);
+  }, [clearContentRevealHold, viewerSecuritySettings.require_hold_to_reveal, updateIdentityMagnet]);
 
   const handleContentRevealTouchMove = useCallback((event: any) => {
     updateIdentityMagnet(event);
@@ -1310,17 +1801,14 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         const current = overlayTouchRef.current;
         if (!current || current.moved) return;
         current.longPressed = true;
-        if (messageId && !selectedIdsRef.current.includes(messageId)) {
-          toggleMessageSelection(messageId);
-        }
-        beginDragSelect(current.startY);
+        beginDragSelectAtMessage(messageId, current.id);
       }, 430);
     }
 
     overlayTouchRef.current = nextTouch;
     event?.preventDefault?.();
     event?.stopPropagation?.();
-  }, [beginDragSelect, getMessageIdAtPoint, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu, toggleMessageSelection]);
+  }, [beginDragSelectAtMessage, getMessageIdAtPoint, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu]);
 
   const handleOperationalOverlayTouchMove = useCallback((event: any) => {
     const current = overlayTouchRef.current;
@@ -1333,7 +1821,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     if (movedEnough) current.moved = true;
 
     if (current.longPressed) {
-      beginDragSelect(point.y);
+      if (canDragSelectWithTouch(point.id)) {
+        updateDragAutoScroll(point.x, point.y);
+        updateDragSelectionFromPoint(point.x, point.y);
+      }
     } else if (movedEnough) {
       if (current.timer) {
         clearTimeout(current.timer);
@@ -1351,7 +1842,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     setIdentityMagnetPoint({ x: point.x, y: point.y });
     event?.preventDefault?.();
     event?.stopPropagation?.();
-  }, [beginDragSelect, scrollThreadTo]);
+  }, [canDragSelectWithTouch, scrollThreadTo, updateDragAutoScroll, updateDragSelectionFromPoint]);
 
   const handleOperationalOverlayTouchEnd = useCallback((event: any) => {
     const current = overlayTouchRef.current;
@@ -1499,8 +1990,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       if (!action) return false;
       switch (action) {
         case "back":
-          if (selectedIdsRef.current.length) setSelectedIds([]);
-          else onBack();
+          handleBack();
           return true;
         case "settings":
           onOpenChatSettings();
@@ -1510,6 +2000,11 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           const message = selected ? messageMap[selected] : null;
           if (message) setReplyTo(message);
           setSelectedIds([]);
+          return true;
+        }
+        case "edit-selected": {
+          const selected = selectedIdsRef.current[0];
+          if (selected) beginDecoyMessageEdit(selected);
           return true;
         }
         case "delete-selected":
@@ -1621,10 +2116,18 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       !!target?.closest?.("[data-chat-thread='true']");
 
     const shouldHandleTouch = (touch: Touch, target: HTMLElement | null) => {
-      if (!isRevealingChatRef.current) return false;
+      const selectionSurfaceActive = isRevealingChatRef.current || !viewerSecuritySettings.require_hold_to_reveal;
+      if (!selectionSurfaceActive) return false;
       if (revealTouchIds.has(touch.identifier)) return false;
       if (isRevealTarget(target)) return false;
-      return !!findChatAction(target) || isChatThreadTarget(target);
+      const headerOrChromeAction = !!findChatAction(target);
+      if (headerOrChromeAction) return true;
+      // When hold-to-reveal is off, leave message/body touches native. The message Pressables still
+      // handle long-press selection, while ScrollView keeps its normal slow-drag physics.
+      if (!viewerSecuritySettings.require_hold_to_reveal) {
+        return false;
+      }
+      return isChatThreadTarget(target);
     };
 
     const handleTouchStart = (event: TouchEvent) => {
@@ -1664,15 +2167,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       const messageId = findMessageId(target);
       const chatAction = findChatAction(target);
       const scrollElement = findScrollElement(target);
-      if (chatAction) {
-        const now = performance.now();
-        if (now > headerTouchActionLockRef.current) {
-          headerTouchActionLockRef.current = now + 280;
-          runChatAction(chatAction);
-        }
-        hideOriginalTouchEvent(event);
-        return;
-      }
 
       if (overlayMomentumRef.current !== null) {
         cancelAnimationFrame(overlayMomentumRef.current);
@@ -1700,13 +2194,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           const current = operationalTouchRef.current;
           if (!current || current.id !== nextTouch.id || current.moved) return;
           current.longPressed = true;
-          if (messageId && !selectedIdsRef.current.includes(messageId)) {
-            toggleSelection(messageId);
-          }
-          isDragSelectingRef.current = true;
-          dragPivotIdRef.current = null;
-          dragInitialIdsRef.current = new Set(selectedIdsRef.current);
-          beginDragSelect(current.startY);
+          beginDragSelectAtMessage(messageId, current.id);
         }, 430);
       }
 
@@ -1745,7 +2233,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       dispatchPrimaryMouse(currentTarget || current.downTarget, "mousemove", touch);
 
       if (current.longPressed) {
-        beginDragSelect(touch.clientY);
+        if (canDragSelectWithTouch(touch.identifier)) {
+          updateDragAutoScroll(touch.clientX, touch.clientY);
+          updateDragSelectionFromPoint(touch.clientX, touch.clientY);
+        }
       } else if (movedEnough) {
         clearOperationalTimer();
         const now = performance.now();
@@ -1867,7 +2358,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       document.removeEventListener("touchend", handleTouchEnd, { capture: true } as any);
       document.removeEventListener("touchcancel", handleTouchCancel, { capture: true } as any);
     };
-  }, [beginDragSelect, messageMap, onBack, onForward, onOpenChatSettings, scrollThreadTo, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu, startOverlayMomentum, stopDragSelect]);
+  }, [beginDragSelectAtMessage, canDragSelectWithTouch, getMessageIdAtPoint, handleBack, messageMap, onForward, onOpenChatSettings, scrollThreadTo, viewerSecuritySettings.require_hold_to_reveal, showOverflowMenu, showReactionsForId, showSelectionOverflowMenu, startOverlayMomentum, stopDragSelect, updateDragAutoScroll, updateDragSelectionFromPoint]);
 
   const webDragHandlers = useMemo(() => {
     if (Platform.OS !== "web") return {};
@@ -1876,23 +2367,32 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       onPointerMove: (event: any) => {
         updateIdentityMagnet(event);
         if (!isDragSelectLockedRef.current && !isDragSelectingRef.current) return;
-        if (event?.nativeEvent?.buttons !== undefined && event.nativeEvent.buttons !== 1) {
+        const pointerType = event?.nativeEvent?.pointerType;
+        const isTouchPointer = pointerType === "touch";
+        if (!isTouchPointer && event?.nativeEvent?.buttons !== undefined && event.nativeEvent.buttons !== 1) {
           stopDragSelect();
           return;
         }
 
         event?.preventDefault?.();
-        beginDragSelect(event.nativeEvent.pageY);
+        const x = event.nativeEvent.clientX ?? event.nativeEvent.pageX ?? event.nativeEvent.locationX;
+        const y = event.nativeEvent.clientY ?? event.nativeEvent.pageY ?? event.nativeEvent.locationY;
+        if (typeof x === "number" && typeof y === "number") {
+          updateDragAutoScroll(x, y);
+          updateDragSelectionFromPoint(x, y);
+        }
       },
       onPointerUp: stopDragSelect,
       onPointerCancel: stopDragSelect,
       onPointerLeave: (event: any) => {
-        if (isDragSelectingRef.current && event?.nativeEvent?.buttons !== 1) {
+        const pointerType = event?.nativeEvent?.pointerType;
+        const isTouchPointer = pointerType === "touch";
+        if (isDragSelectingRef.current && !isTouchPointer && event?.nativeEvent?.buttons !== 1) {
           stopDragSelect();
         }
       },
     } as any;
-  }, [beginDragSelect, stopDragSelect, updateIdentityMagnet]);
+  }, [stopDragSelect, updateDragAutoScroll, updateDragSelectionFromPoint, updateIdentityMagnet]);
 
   const selectionPanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponderCapture: () => false,
@@ -1966,13 +2466,30 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         return false;
       }}>
       <ChatBackground colorScheme={colorScheme} />
-      <SafeAreaView edges={["top"]} style={{ backgroundColor: theme.colors.header, zIndex: 10 }}>
+      <SafeAreaView
+        edges={["top"]}
+        style={{
+          backgroundColor: theme.colors.header,
+          position: "relative",
+          zIndex: 1000,
+          elevation: 1000,
+        }}
+      >
         <ChatHeader
           chat={chat} theme={theme} styles={styles} isSelectionMode={selectedIds && selectedIds.length > 0}
           selectedIds={selectedIds} savedMessageIds={savedMessageIds} chatMuted={isChatMuted(muteSettings && chat && muteSettings[chat.id])}
           muteSetting={muteSettings && chat && muteSettings[chat.id]} groupSubtitle={groupSubtitle} chatLocked={chatPreferences && chat && chatPreferences[chat.id]?.locked}
-          onBack={() => selectedIds.length ? setSelectedIds([]) : onBack()} onOpenChatSettings={() => onOpenChatSettings()}
+          onBack={handleBack} onOpenChatSettings={() => onOpenChatSettings()}
           onReplyToSelected={() => { const m = messageMap[selectedIds[0]]; if (m) setReplyTo(m); setSelectedIds([]); }}
+          canEditSelected={
+            selectedIds.length === 1 &&
+            messageMap[selectedIds[0]]?.sender_id === profile?.id &&
+            messageMap[selectedIds[0]]?.message_kind === "standard"
+          }
+          onEditSelected={() => {
+            if (selectedIds.length !== 1) return;
+            beginDecoyMessageEdit(selectedIds[0]);
+          }}
           onToggleStarSelected={async () => {
             const allStarred = selectedIds.every(id => savedMessageIds.has(id));
             const key = `saved-messages:${profile?.id ?? "guest"}`;
@@ -2019,7 +2536,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 ref={threadContainerRef}
                 style={[
                   styles.thread,
-                  !securitySettings.require_hold_to_reveal || isRevealingChat
+                  !viewerSecuritySettings.require_hold_to_reveal || isRevealingChat
                     ? chatLeakShieldStyles.protectedThreadRevealed
                     : chatLeakShieldStyles.protectedThreadBlurred,
                 ]}
@@ -2036,11 +2553,21 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   onTouchMove={handleContentRevealTouchMove}
                   onTouchEnd={handleContentRevealTouchEnd}
                   onTouchCancel={handleContentRevealTouchCancel}
-                  // Initial offset to bottom to reduce jump
-                  contentOffset={{ x: 0, y: 10000 }}
                   onLayout={(e) => { scrollMetricsRef.current.height = e.nativeEvent.layout.height; checkVisibility(); }}
                   onContentSizeChange={(w, h) => {
+                    const olderFetchAnchor = olderFetchAnchorRef.current;
                     scrollMetricsRef.current.contentHeight = h;
+                    if (olderFetchAnchor) {
+                      const delta = h - olderFetchAnchor.contentHeight;
+                      if (delta > 0) {
+                        const nextY = olderFetchAnchor.y + delta;
+                        scrollMetricsRef.current.y = nextY;
+                        requestAnimationFrame(() => {
+                          scrollRef.current?.scrollTo({ y: nextY, animated: false });
+                        });
+                      }
+                      olderFetchAnchorRef.current = null;
+                    }
                     if (pendingSelfSendScrollRef.current) {
                       scrollToBottom(true);
                     }
@@ -2054,7 +2581,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     scrollMetricsRef.current.contentHeight = ch;
 
                     if (!decoyMode && y < 80 && hasOlderMessages && !isFetchingOlderMessages) {
-                      void fetchNextMessagesPage();
+                      void fetchOlderMessagesPreservingPosition();
                     }
 
                     // Show the button when we are more than 200px away from the bottom.
@@ -2066,19 +2593,33 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     }
                   }}
                   onScrollBeginDrag={() => { if (showReactionsForId) setShowReactionsForId(null); }}
-                  onMomentumScrollEnd={() => checkVisibility()} onScrollEndDrag={() => checkVisibility()}
+                  onMomentumScrollEnd={() => { checkVisibility(); void persistCurrentChatPosition(); }}
+                  onScrollEndDrag={() => { checkVisibility(); void persistCurrentChatPosition(); }}
                 >
                   <Pressable style={[{ flexGrow: 1 }, webDefaultCursor]} onPress={() => { 
                     if (showReactionsForId) setShowReactionsForId(null); 
                     if (showEmojiKeyboard) setShowEmojiKeyboard(false);
                     if (showEmojiPickerForId) setShowEmojiPickerForId(null);
                   }}>
+                    {showOlderMessagesLoader ? (
+                      <View style={styles.olderMessagesLoader}>
+                        <View style={styles.olderMessagesLoaderPill}>
+                          <ActivityIndicator color={theme.colors.datePillText} size="small" />
+                          <Text style={styles.olderMessagesLoaderText}>
+                            {totalMessagesCount
+                              ? `טוען הודעות קודמות... ${olderMessagesProgress}% (${loadedMessagesCount}/${totalMessagesCount})`
+                              : `טוען הודעות קודמות... ${olderMessagesProgress}%`}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : null}
                     {groupedMessages.map((item, idx) => {
                       if (item.type === "date") return <View key={`date-${idx}`} style={styles.dateSeparator}><View style={styles.datePill}><Text style={styles.datePillText}>{item.dateLabel}</Text></View></View>;
                       if (item.type === "unread") return <View key={`unread-${idx}`} style={styles.unreadSeparator}><View style={styles.unreadPill}><Text style={styles.unreadPillText}>{item.unreadCount === 1 ? "1 הודעה שלא נקראה" : `${item.unreadCount} הודעות שלא נקראו`}</Text></View></View>;
                       const msg = item.message;
+                      const isEditingList = decoyEditOpen;
                       return (
-                        <View key={msg.id} onLayout={(e) => messageLayoutsRef.current[msg.id] = { y: e.nativeEvent.layout.y, h: e.nativeEvent.layout.height }}>
+                        <View key={msg.id} style={isEditingList ? { opacity: 0.62, ...(Platform.OS === "web" ? ({ filter: "blur(1px)" } as any) : {}) } : null} onLayout={(e) => messageLayoutsRef.current[msg.id] = { y: e.nativeEvent.layout.y, h: e.nativeEvent.layout.height }}>
                           {highlightedMessageId === msg.id ? (
                             <Animated.View style={{ backgroundColor: highlightAnim.interpolate({ inputRange: [0, 1], outputRange: ['transparent', theme.colors.selectionModeBackground] }) }}>
                               <MessageBubble author={profiles && profiles[msg.sender_id]} currentUserId={profile?.id ?? ""} message={msg} onReply={setReplyTo} onScrollToReply={(replyToId) => { Keyboard.dismiss(); scrollToMessageWithRetry(replyToId, true); }}
@@ -2089,16 +2630,21 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                                 }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
                                 reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                                 onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
-                                onInitiateDragSelect={() => {
+                                onInitiateDragSelect={(messageId, selectImmediately) => {
                                   if (Platform.OS === "web") {
-                                    isDragSelectingRef.current = true;
-                                    dragPivotIdRef.current = null;
-                                    dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+                                    if (messageId && selectImmediately) {
+                                      beginDragSelectAtMessage(messageId, null);
+                                    } else {
+                                      isDragSelectingRef.current = true;
+                                      dragPivotIdRef.current = null;
+                                      dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+                                    }
                                   } else {
                                     setIsDragSelectLocked(true);
                                   }
                                 }}
-                                renderSecureText={securitySettings.anti_copy_canvas}
+                                renderSecureText={viewerSecuritySettings.anti_copy_canvas}
+                                allowWebLongPressSelection={!viewerSecuritySettings.require_hold_to_reveal}
                                 onAvatarPress={(author) => setSelectedAvatarMember(author)}
                                 replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                                 replyToName={(() => {
@@ -2120,16 +2666,21 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                               }} onToggleReaction={(e) => handleToggleReaction(msg.id, e)} onToggleSelection={(id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id])} onShowReactions={setShowReactionsForId} onShowReactionsSheet={setShowReactionsSheetForId} onPlusExtra={setShowEmojiPickerForId}
                               reactions={reactionsByMessage && reactionsByMessage[msg.id]} isSelected={selectedIds.includes(msg.id)} isSelectionMode={selectedIds.length > 0} showReactions={showReactionsForId === msg.id} onReportPickerLayout={setPickerLayout} isSaved={savedMessageIds.has(msg.id)}
                               onOpenPollVotes={(id) => { setViewPollVotesMessage(messageMap[id]); setActiveSubScreen("pollVotes"); }}
-                              onInitiateDragSelect={() => {
+                              onInitiateDragSelect={(messageId, selectImmediately) => {
                                 if (Platform.OS === "web") {
-                                  isDragSelectingRef.current = true;
-                                  dragPivotIdRef.current = null;
-                                  dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+                                  if (messageId && selectImmediately) {
+                                    beginDragSelectAtMessage(messageId, null);
+                                  } else {
+                                    isDragSelectingRef.current = true;
+                                    dragPivotIdRef.current = null;
+                                    dragInitialIdsRef.current = new Set(selectedIdsRef.current);
+                                  }
                                 } else {
                                   setIsDragSelectLocked(true);
                                 }
                               }}
-                              renderSecureText={securitySettings.anti_copy_canvas}
+                              renderSecureText={viewerSecuritySettings.anti_copy_canvas}
+                              allowWebLongPressSelection={!viewerSecuritySettings.require_hold_to_reveal}
                               onAvatarPress={(author) => setSelectedAvatarMember(author)}
                               replyToText={msg.reply_to_id ? messageMap[msg.reply_to_id]?.body_preview : null}
                               replyToName={(() => {
@@ -2205,19 +2756,22 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   style={operationalTouchStyles.overlay}
                 />
               )}
+              {!isDecoyProtectionSurface ? (
               <ChatLeakShield
                 revealHeld={isRevealingChat}
                 blackout={securityBlackout}
                 warningVisible={fakeScreenshotWarning}
-                magnetPoint={identityMagnetPoint}
+                magnetPoint={revealHoldCircle ? { x: revealHoldCircle.x, y: revealHoldCircle.y } : identityMagnetPoint}
                 username={profile?.username || profile?.full_name || "משתמש"}
                 onRevealChange={setIsRevealingChat}
                 bottomOffset={16}
                 revealButtonsEnabled={false}
-                identityMagnetEnabled={securitySettings.identity_magnet}
-                shutterFlickerEnabled={securitySettings.shutter_flicker}
+                identityMagnetEnabled={viewerSecuritySettings.identity_magnet}
+                shutterFlickerEnabled={viewerSecuritySettings.shutter_flicker}
+                shutterFlickerFps={viewerSecuritySettings.shutter_flicker_fps}
               />
-              {Platform.OS === "web" && revealHoldCircle
+              ) : null}
+              {Platform.OS === "web" && revealHoldCircle && !isDecoyProtectionSurface
                 ? React.createElement("div", {
                     "aria-hidden": true,
                     style: {
@@ -2237,20 +2791,6 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     },
                   })
                 : null}
-              {Platform.OS === "web" && (
-                <View pointerEvents="none" style={touchDebugStyles.panel}>
-                  <Text style={[touchDebugStyles.title, webSystemFont]}>Touch debug</Text>
-                  {touchDebugPoints.length ? (
-                    touchDebugPoints.map((point, index) => (
-                      <Text key={point.id} style={[touchDebugStyles.line, webSystemFont]}>
-                        {`אצבע ${index + 1} | id ${point.id} | x:${point.x} y:${point.y} | ${point.target}`}
-                      </Text>
-                    ))
-                  ) : (
-                    <Text style={[touchDebugStyles.line, webSystemFont]}>אין אצבעות פעילות</Text>
-                  )}
-                </View>
-              )}
             </View>
           </View>
           {/* Composer — always visible for members (decoy users can still send real messages) */}
@@ -2263,6 +2803,30 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                 }
                 style={{ paddingBottom: (showEmojiKeyboard || keyboardHeight > 0) ? 16 : insets.bottom }}
               >
+                {decoyEditOpen && decoyEditingMessageIdRef.current && messageMap[decoyEditingMessageIdRef.current] ? (
+                  <View pointerEvents="none" style={{ paddingTop: 6, paddingBottom: 2 }}>
+                    <MessageBubble
+                      author={profiles && profiles[messageMap[decoyEditingMessageIdRef.current].sender_id]}
+                      currentUserId={profile?.id ?? ""}
+                      message={messageMap[decoyEditingMessageIdRef.current]}
+                      onReply={setReplyTo}
+                      onScrollToReply={(replyToId) => scrollToMessageWithRetry(replyToId, true)}
+                      onRevealViewOnce={() => {}}
+                      onToggleReaction={() => {}}
+                      onToggleSelection={() => {}}
+                      onShowReactions={() => {}}
+                      onShowReactionsSheet={() => {}}
+                      onPlusExtra={() => {}}
+                      reactions={reactionsByMessage && reactionsByMessage[decoyEditingMessageIdRef.current]}
+                      isSelected={false}
+                      isSelectionMode={false}
+                      showReactions={false}
+                      isSaved={savedMessageIds.has(decoyEditingMessageIdRef.current)}
+                      renderSecureText={false}
+                      allowWebLongPressSelection
+                    />
+                  </View>
+                ) : null}
                 <MessageComposer
                   onInputFocus={() => {
                     setShowReactionsForId(null);
@@ -2272,6 +2836,10 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                   }}
                   onCancelReply={() => setReplyTo(null)}
                   onSend={(body, kind, expireSeconds) => {
+                    if (decoyEditOpen) {
+                      void saveDecoyMessageEdit(body);
+                      return;
+                    }
                     scrollToBottomAfterSelfSend();
                     setReplyTo(null);
                     if (decoyMode && profile?.id) {
@@ -2279,7 +2847,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                       void supabase
                         .from("chat_decoy_messages")
                         .insert([{ chat_id: chat.id, sender_id: profile.id, body, is_me: true }])
-                        .select("id, body, is_me, created_at, sender_id")
+                        .select("*")
                         .single()
                         .then(({ data }) => {
                           if (data) {
@@ -2287,6 +2855,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                               ...prev,
                               {
                                 id: `decoy-${data.id}`,
+                                _decoy_row_id: data.id,
                                 chat_id: chat.id,
                                 sender_id: profile.id,
                                 body_ciphertext: data.body,
@@ -2295,8 +2864,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                                 reply_to_id: null,
                                 expires_at: null,
                                 created_at: data.created_at,
+                                edited_at: typeof data.edited_at === "string" ? data.edited_at : null,
                                 deleted_at: null,
-                              } as any,
+                              } as Message,
                             ]);
                           }
                         });
@@ -2330,6 +2900,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
                     return contactNicknames[authorId]?.first_name || profiles[authorId]?.full_name || profiles[authorId]?.username || "משתתף/ת";
                   })()}
                   emojiKeyboardOpen={showEmojiKeyboard} focusTrigger={composerFocusTrigger} onAttachmentPress={() => setShowAttachmentMenu(true)}
+                  editSession={decoyEditOpen && decoyEditingMessageIdRef.current ? { id: decoyEditingMessageIdRef.current, text: decoyEditDraft, nonce: decoyEditNonce } : null}
+                  onCancelEdit={() => {
+                    if (decoyEditSaving) return;
+                    setDecoyEditOpen(false);
+                    decoyEditingMessageIdRef.current = null;
+                    setDecoyEditDraft("");
+                  }}
                   onToggleEmojiKeyboard={() => { 
                     // No longer active from composer, but keeping the prop to avoid breaking MessageComposer type
                   }} emojiEvent={composerEmojiEvent} />
@@ -2383,21 +2960,59 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           muteSelection, setMuteSelection, clearSelection, setClearSelection, clearStarred, setClearStarred, reportExit, setReportExit, selectedIds, setSelectedIds, messageMap, viewInfoMessage, setViewInfoMessage, showReactionsSheetForId, setShowReactionsSheetForId, reactionsByMessage, contactNicknames, showEmojiPickerForId, setShowEmojiPickerForId, toastMessage, activeSubScreen, setActiveSubScreen, onOpenChatSettings, onCreateGroupWith, setChatMute, clearChatsLocally, showToast, toggleReaction, toggleSelection: (id) => setSelectedIds((current) => current.includes(id) ? current.filter(x => x !== id) : [...current, id]), requestScreenshotPermission, sendMessage: sendCachedMessage, hasScreenshotPerm, myRequests, groupMembers, setSearchOpen,
           muteSetting: (muteSettings && chat) ? muteSettings[chat.id] : undefined,
           performDelete: async (everyone) => {
+            const idsToDelete = [...selectedIds];
+            if (!idsToDelete.length) {
+              setShowDeleteModal(false);
+              return;
+            }
             if (decoyMode) {
-              const rowIds = selectedIds.map(id => {
-                const msg = decoyDbMessages.find(m => m.id === id);
-                return (msg as any)?._decoy_row_id;
-              }).filter(Boolean);
-              if (rowIds.length > 0) {
-                await supabase.from("chat_decoy_messages").delete().in("id", rowIds);
-                setDecoyDbMessages((prev) => prev.filter((m) => !selectedIds.includes(m.id)));
+              const resolveRow = (mid: string): string | null => {
+                const fromList = decoyDbMessages.find((m) => m.id === mid);
+                const msg = fromList ?? messageMap[mid];
+                return msg ? resolveDecoyRowUuid(msg) : null;
+              };
+              const ownSelected = selectedIds.filter((id) => messageMap[id]?.sender_id === profile?.id);
+              if (ownSelected.length === 0) {
+                Alert.alert("מחיקה", "ניתן למחוק בתוכן הפיתיון רק הודעות ששלחת.");
+                setSelectedIds([]);
+                setShowDeleteModal(false);
+                return;
+              }
+              const rowIds = [...new Set(ownSelected.map(resolveRow).filter(Boolean))] as string[];
+              if (rowIds.length === 0) {
+                Alert.alert("מחיקה", "לא נמצא מזהה ההודעה — נסה לרענן.");
+                setSelectedIds([]);
+                setShowDeleteModal(false);
+                return;
+              }
+              const { error } = await supabase.from("chat_decoy_messages").delete().in("id", rowIds);
+              if (error) {
+                Alert.alert("מחיקה", "לא ניתן למחוק בשרת. ודא/י שמדיניות Supabase מאפשרת מחיקת הודעות שאת/ה שלחת.");
+              } else {
+                setDecoyDbMessages((prev) => prev.filter((m) => !ownSelected.includes(m.id)));
               }
               setSelectedIds([]);
               setShowDeleteModal(false);
             } else {
-              await deleteMessages(selectedIds, everyone);
-              setSelectedIds([]);
-              setShowDeleteModal(false);
+              if (everyone) {
+                const nonOwnSelected = idsToDelete.filter((id) => messageMap[id]?.sender_id !== profile?.id);
+                if (nonOwnSelected.length > 0) {
+                  Alert.alert("מחיקה", "אפשר למחוק אצל כולם רק הודעות שאת/ה שלחת.");
+                  setShowDeleteModal(false);
+                  return;
+                }
+              }
+              try {
+                await deleteMessages(idsToDelete, everyone);
+                removeMessagesFromQueryCache(idsToDelete);
+                setSelectedIds([]);
+                setShowDeleteModal(false);
+                if (everyone) {
+                  void refetchMessages();
+                }
+              } catch (error) {
+                Alert.alert("מחיקה", "לא ניתן למחוק. ודא/י שיש לך הרשאה למחיקה הזו.");
+              }
             }
           },
           keyboardHeight: showEmojiKeyboard ? (recordedKeyboardHeight || 300) : keyboardHeight,
@@ -2406,6 +3021,8 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             await sendCachedMessage({ chatId: chat.id, body, messageKind: "system" });
           },
           decoyMode,
+          decoyProtectedViewer: isDecoyProtectionSurface,
+          onRequestDecoyMessageEdit: beginDecoyMessageEdit,
         }}
       />
 
@@ -2420,7 +3037,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         onRemove={profile?.id === chat.created_by ? handleRemoveMember : undefined}
       />
 
-      {screenshotHold && (
+      {screenshotHold && !isDecoyProtectionSurface && (
         <View style={{ ...StyleSheet.absoluteFillObject, zIndex: 999999, top: -100, bottom: -100 }}>
           {/* Shutter effect - quick flash */}
           <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: "#fff" }} />
@@ -2511,37 +3128,6 @@ function SlidingChatPage({ visible, distance, children }: PropsWithChildren<{ vi
     </Animated.View>
   );
 }
-
-const touchDebugStyles = StyleSheet.create({
-  panel: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    right: 10,
-    zIndex: 999,
-    backgroundColor: "rgba(0, 0, 0, 0.72)",
-    borderColor: "rgba(0, 168, 132, 0.9)",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  title: {
-    color: "#00f5c8",
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "left",
-    writingDirection: "ltr",
-    marginBottom: 3,
-  },
-  line: {
-    color: "#ffffff",
-    fontSize: 12,
-    lineHeight: 17,
-    textAlign: "left",
-    writingDirection: "ltr",
-  },
-});
 
 const operationalTouchStyles = StyleSheet.create({
   overlay: {

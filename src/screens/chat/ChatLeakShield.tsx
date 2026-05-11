@@ -18,18 +18,21 @@ type Props = {
   revealButtonsEnabled?: boolean;
   identityMagnetEnabled?: boolean;
   shutterFlickerEnabled?: boolean;
+  shutterFlickerFps?: number;
 };
 
 export function ChatLeakShield({
   revealHeld,
   blackout,
   warningVisible,
+  magnetPoint,
   username,
   onRevealChange,
   bottomOffset,
   revealButtonsEnabled = true,
   identityMagnetEnabled = true,
   shutterFlickerEnabled = true,
+  shutterFlickerFps = 30,
 }: Props) {
   const flicker = useRef(new Animated.Value(0)).current;
   const webFlickerRef = useRef<HTMLDivElement | null>(null);
@@ -90,6 +93,22 @@ export function ChatLeakShield({
       setWebButtonsInteractive(true);
     }
   }, [revealHeld, setWebButtonsInteractive]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const styleId = "secureapp-shutter-frame-keyframes";
+    if (document.getElementById(styleId)) return;
+
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = `
+      @keyframes secureapp-shutter-frame-gate {
+        0%, 48% { opacity: 0; }
+        49%, 100% { opacity: 0.72; }
+      }
+    `;
+    document.head.appendChild(style);
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -158,6 +177,14 @@ export function ChatLeakShield({
   }, [onRevealChange, setWebButtonsInteractive]);
 
   const watermarkText = useMemo(() => `הודלף ע"י ${username || "משתמש"}`, [username]);
+  const webFlickerFrameMs = Math.max(16, Math.min(200, Math.round(1000 / Math.max(5, Math.min(60, shutterFlickerFps)))));
+  const dynamicWebFlickerStyle = useMemo(
+    () => ({
+      ...webFlickerStyle,
+      animation: `secureapp-shutter-frame-gate ${webFlickerFrameMs}ms steps(1, end) infinite`,
+    }),
+    [webFlickerFrameMs],
+  );
 
   const renderNativeRevealButton = (side: "left" | "right") => {
     return (
@@ -211,7 +238,7 @@ export function ChatLeakShield({
         React.createElement("div", {
           "aria-hidden": true,
           ref: webFlickerRef,
-          style: webFlickerStyle,
+          style: dynamicWebFlickerStyle,
         })
       ) : revealHeld && shutterFlickerEnabled ? (
         <Animated.View
@@ -226,14 +253,40 @@ export function ChatLeakShield({
 
       {blackout && <View pointerEvents="none" style={styles.blackout} />}
 
-      {revealHeld && identityMagnetEnabled && (
+      {revealHeld && identityMagnetEnabled && Platform.OS === "web"
+        ? React.createElement(
+            "div",
+            {
+              "aria-hidden": true,
+              style: {
+                position: "fixed",
+                left: Math.max(8, magnetPoint.x - 95),
+                top: Math.max(8, magnetPoint.y - 88),
+                minWidth: 190,
+                padding: "4px 8px",
+                borderRadius: 6,
+                border: "1px solid rgba(255,0,0,0.8)",
+                backgroundColor: "rgba(255,255,255,0.78)",
+                color: "#ff0000",
+                fontWeight: 900,
+                fontSize: 13,
+                textAlign: "center",
+                pointerEvents: "none",
+                zIndex: 9999,
+              },
+            },
+            watermarkText,
+          )
+        : null}
+
+      {revealHeld && identityMagnetEnabled && Platform.OS !== "web" && (
         <View
           pointerEvents="none"
           style={[
             styles.identityMagnet,
             {
-              right: 6,
-              bottom: bottomOffset + 66,
+              left: Math.max(8, magnetPoint.x - 95),
+              top: Math.max(8, magnetPoint.y - 88),
             },
           ]}
         >
@@ -375,14 +428,10 @@ const webShieldRootStyle = {
 const webFlickerStyle = {
   position: "absolute",
   inset: 0,
-  backgroundColor: "transparent",
-  backgroundImage:
-    "radial-gradient(circle at 20% 30%, rgba(0,0,0,0.62) 0 1px, transparent 1px 4px), radial-gradient(circle at 70% 60%, rgba(0,0,0,0.48) 0 1px, transparent 1px 5px), repeating-linear-gradient(0deg, rgba(0,0,0,0.36) 0 1px, transparent 1px 3px)",
-  backgroundSize: "11px 11px, 17px 17px, 100% 4px",
-  opacity: 0.58,
+  backgroundColor: "#000000",
+  opacity: 0,
   pointerEvents: "none",
-  animation:
-    "secureapp-shutter-flicker 33ms steps(1, end) infinite, secureapp-shutter-noise 50ms steps(1, end) infinite",
-  willChange: "opacity, transform, background-position",
+  animation: "secureapp-shutter-frame-gate 33ms steps(1, end) infinite",
+  willChange: "opacity",
   zIndex: 8,
 } as const;

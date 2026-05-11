@@ -40,9 +40,10 @@ type Props = {
   onReportPickerLayout?: (layout: { x: number; y: number; width: number; height: number } | null) => void;
   isSaved?: boolean;
   onOpenPollVotes?: (id: string) => void;
-  onInitiateDragSelect?: () => void;
+  onInitiateDragSelect?: (messageId?: string, selectImmediately?: boolean) => void;
   onAvatarPress?: (author: Profile) => void;
   renderSecureText?: boolean;
+  allowWebLongPressSelection?: boolean;
 };
 
 const quickReactions = ["\u{1F44D}", "\u{2764}", "\u{1F602}", "\u{1F62E}", "\u{1F622}", "\u{1F64F}"];
@@ -85,7 +86,7 @@ export function MessageBubble({
   isSelected, isSelectionMode, onReply, onScrollToReply, onToggleReaction, onRevealViewOnce,
   onToggleSelection, onShowReactions, onShowReactionsSheet, onPlusExtra,
   showReactions, onReportPickerLayout, isSaved, onOpenPollVotes, onInitiateDragSelect,
-  onAvatarPress, renderSecureText = true
+  onAvatarPress, renderSecureText = true, allowWebLongPressSelection = false
 }: Props) {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -95,6 +96,14 @@ export function MessageBubble({
   const translateX = useRef(new Animated.Value(0)).current;
   const lastTap = useRef<number>(0);
   const pickerRef = useRef<View>(null);
+  const webLongPressRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    fired: boolean;
+    timer: ReturnType<typeof setTimeout> | null;
+  } | null>(null);
+  const webSuppressNextPressRef = useRef(false);
 
   useEffect(() => {
     if (showReactions && pickerRef.current && onReportPickerLayout) {
@@ -200,12 +209,17 @@ export function MessageBubble({
   const d = new Date(message.created_at);
   const timeLabel = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")} `;
   const metaLabel = message.message_kind === "view_once" ? (viewOnceState === "revealed" ? "נפתח" : viewOnceState === "opened" ? "נקרא" : null) : null;
+  const wasEdited = Boolean(message.edited_at);
   const hasReactions = reactions && Object.entries(reactions).filter(([e, u]) => Array.isArray(u) && u.length > 0 && !e.startsWith("poll:")).length > 0;
 
   const handleLongPress = () => {
     if (isSystem) return;
-    if ((Platform.OS as string) === "web") return;
-    onInitiateDragSelect?.();
+    if ((Platform.OS as string) === "web") {
+      if (!allowWebLongPressSelection) return;
+      onInitiateDragSelect?.(message.id, true);
+      return;
+    }
+    onInitiateDragSelect?.(message.id, true);
     if (!isSelected) {
       onToggleSelection(message.id);
     }
@@ -213,12 +227,63 @@ export function MessageBubble({
       onShowReactions(message.id);
     }
   };
+  const clearWebLongPress = () => {
+    if (webLongPressRef.current?.timer) {
+      clearTimeout(webLongPressRef.current.timer);
+    }
+    webLongPressRef.current = null;
+  };
+  const webLongPressHandlers = Platform.OS === "web"
+    ? ({
+        onPointerDown: (event: any) => {
+          if (isSystem || !allowWebLongPressSelection) return;
+          const nativeEvent = event?.nativeEvent ?? event;
+          clearWebLongPress();
+          const pointerId = typeof nativeEvent.pointerId === "number" ? nativeEvent.pointerId : null;
+          const startX = nativeEvent.clientX ?? nativeEvent.pageX ?? 0;
+          const startY = nativeEvent.clientY ?? nativeEvent.pageY ?? 0;
+          const next = {
+            pointerId,
+            startX,
+            startY,
+            fired: false,
+            timer: null as ReturnType<typeof setTimeout> | null,
+          };
+          next.timer = setTimeout(() => {
+            const current = webLongPressRef.current;
+            if (!current || current.pointerId !== pointerId || current.fired) return;
+            current.fired = true;
+            webSuppressNextPressRef.current = true;
+            handleLongPress();
+          }, 450);
+          webLongPressRef.current = next;
+        },
+        onPointerMove: (event: any) => {
+          const current = webLongPressRef.current;
+          if (!current) return;
+          const nativeEvent = event?.nativeEvent ?? event;
+          if (current.pointerId !== null && nativeEvent.pointerId !== current.pointerId) return;
+          const x = nativeEvent.clientX ?? nativeEvent.pageX ?? current.startX;
+          const y = nativeEvent.clientY ?? nativeEvent.pageY ?? current.startY;
+          if (Math.hypot(x - current.startX, y - current.startY) > 7) {
+            clearWebLongPress();
+          }
+        },
+        onPointerUp: clearWebLongPress,
+        onPointerCancel: clearWebLongPress,
+        onPointerLeave: clearWebLongPress,
+      } as any)
+    : {};
   const handlePress = () => {
     if (isSystem) return;
+    if (Platform.OS === "web" && webSuppressNextPressRef.current) {
+      webSuppressNextPressRef.current = false;
+      return;
+    }
     if (isSelectionMode) { onToggleSelection(message.id); return; }
     const now = Date.now();
     if (lastTap.current && now - lastTap.current < 300) {
-      onInitiateDragSelect?.();
+      onInitiateDragSelect?.(message.id, false);
       onToggleSelection(message.id);
       onShowReactions(null);
       lastTap.current = 0;
@@ -284,23 +349,13 @@ export function MessageBubble({
         ) : (
           <Pressable
             delayLongPress={450}
-            onLongPress={handleLongPress}
+            onLongPress={Platform.OS === "web" ? undefined : handleLongPress}
             onPress={handlePress}
+            {...webLongPressHandlers}
             {...(Platform.OS === "web" ? ({ dataSet: { messageId: message.id } } as any) : {})}
             style={[styles.fullWidthSelection, webDefaultCursor]}
           >
             <View style={[mine ? styles.bubbleWrapperMine : styles.bubbleWrapperTheirs]}>
-              {!mine && author && (
-                <Pressable onPress={() => onAvatarPress && onAvatarPress(author)} style={[styles.messageAvatarWrap, { backgroundColor: authorColor }]}>
-                  {(author as any).avatar_url ? (
-                    <Image source={{ uri: (author as any).avatar_url }} style={styles.messageAvatarImage} />
-                  ) : (
-                    <Text style={[styles.messageAvatarText, { color: "#FFF" }]}>
-                      {(contactNicknames?.[author.id]?.first_name || author.full_name || author.username || "?").slice(0, 1).toUpperCase()}
-                    </Text>
-                  )}
-                </Pressable>
-              )}
               <View style={[styles.bubble, bubbleWidthStyle, mine ? styles.bubbleMine : styles.bubbleTheirs, hasReactions ? { marginBottom: 14 } : null]}>
                 {(!mine && author) || (message.message_kind === "temporary" && message.expires_at) || (message.message_kind === "view_once") ? (
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -335,8 +390,8 @@ export function MessageBubble({
                           פעם אחת
                         </Text>
                       </View>
-                    )}
-                  </View>
+                )}
+              </View>
                 ) : null}
                 {replyToText && !isTemporaryExpired && (
                   <Pressable
@@ -391,12 +446,15 @@ export function MessageBubble({
                     </View>
                 }
 
-                <View style={styles.metaRow}>
-                  {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
-                  <View style={styles.timeRow}>
-                    {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
-                    <Text style={styles.meta}>{timeLabel}</Text>
+                <View style={styles.metaLine}>
+                  <View style={styles.metaRow}>
+                    {metaLabel && <View style={styles.kindChip}><Text style={styles.kindChipText}>{metaLabel}</Text></View>}
+                    <View style={styles.timeRow}>
+                      {isSaved && <MaterialCommunityIcons name="star" size={13} color={theme.colors.textMuted} />}
+                      <Text style={styles.meta}>{timeLabel}</Text>
+                    </View>
                   </View>
+                  {wasEdited ? <Text style={styles.editedMeta}>נערכה</Text> : null}
                 </View>
 
                 {showReactions && (
@@ -424,6 +482,17 @@ export function MessageBubble({
                   );
                 })()}
               </View>
+              {!mine && author && (
+                <Pressable onPress={() => onAvatarPress && onAvatarPress(author)} style={[styles.messageAvatarWrap, styles.messageAvatarAfterBubble, { backgroundColor: authorColor }]}>
+                  {(author as any).avatar_url ? (
+                    <Image source={{ uri: (author as any).avatar_url }} style={styles.messageAvatarImage} />
+                  ) : (
+                    <Text style={[styles.messageAvatarText, { color: "#FFF" }]}>
+                      {(contactNicknames?.[author.id]?.first_name || author.full_name || author.username || "?").slice(0, 1).toUpperCase()}
+                    </Text>
+                  )}
+                </Pressable>
+              )}
             </View>
           </Pressable>
         )}

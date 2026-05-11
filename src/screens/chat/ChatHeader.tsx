@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { Chat, ChatMuteSetting } from "@/lib/types";
@@ -19,10 +19,12 @@ type Props = {
   onOpenChatSettings: () => void;
   onReplyToSelected: () => void;
   onToggleStarSelected: () => void;
+  onEditSelected: () => void;
   onDeleteSelected: () => void;
   onForwardSelected: () => void;
   onShowSelectionOverflow: () => void;
   onShowOverflowMenu: () => void;
+  canEditSelected?: boolean;
   decoyMode?: boolean;
 };
 
@@ -41,20 +43,40 @@ export const ChatHeader = ({
   onOpenChatSettings,
   onReplyToSelected,
   onToggleStarSelected,
+  onEditSelected,
   onDeleteSelected,
   onForwardSelected,
   onShowSelectionOverflow,
   onShowOverflowMenu,
+  canEditSelected,
   decoyMode,
 }: Props) => {
+  const lastBackPressRef = useRef(0);
   const webAction = (action: string) =>
     Platform.OS === "web" ? ({ dataSet: { chatAction: action } } as any) : {};
 
+  const pressBack = () => {
+    const now = Date.now();
+    if (now - lastBackPressRef.current < 320) return;
+    lastBackPressRef.current = now;
+    onBack();
+  };
+
   return (
     <View style={styles.header}>
-      <Pressable {...webAction("back")} onPress={onBack} style={styles.headerButton}>
-        <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
-      </Pressable>
+      <View style={styles.headerBackSlot}>
+        <Pressable
+          {...webAction("back")}
+          onPressIn={pressBack}
+          onPress={pressBack}
+          style={({ pressed }) => [
+            styles.headerBackButton,
+            pressed && styles.headerBackButtonPressed,
+          ]}
+        >
+          <Feather color={theme.colors.headerIcon} name="arrow-right" size={24} />
+        </Pressable>
+      </View>
 
       {isSelectionMode ? (
         <>
@@ -72,6 +94,11 @@ export const ChatHeader = ({
                 size={24} 
               />
             </Pressable>
+            {canEditSelected ? (
+              <Pressable {...webAction("edit-selected")} onPress={onEditSelected} style={styles.headerButton}>
+                <MaterialCommunityIcons color={theme.colors.headerIcon} name="pencil-outline" size={23} />
+              </Pressable>
+            ) : null}
             <Pressable {...webAction("delete-selected")} onPress={onDeleteSelected} style={styles.headerButton}>
               <MaterialCommunityIcons color={theme.colors.headerIcon} name="trash-can-outline" size={24} />
             </Pressable>

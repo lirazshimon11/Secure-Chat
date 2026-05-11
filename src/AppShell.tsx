@@ -1,5 +1,6 @@
 import { PropsWithChildren, useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Animated, BackHandler, Easing, Platform, StyleSheet, View, useWindowDimensions } from "react-native";
+import { pushShell, readSaShell, replaceShell } from "@/lib/webShellHistory";
 import { AuthScreen } from "@/screens/AuthScreen";
 import { LoadingScreen } from "@/screens/LoadingScreen";
 import { ChatsScreen } from "@/screens/ChatsScreen";
@@ -15,6 +16,7 @@ import { Chat, Message, Profile } from "@/lib/types";
 import React from "react";
 import { chatMessagesQueryKey, fetchMessagesPage, MessagesPage } from "@/hooks/useChatMessages";
 import { queryClient } from "@/lib/queryClient";
+import { ChatBackgroundPreloader, preloadChatBackgrounds } from "@/screens/chat/ChatBackground";
 
 export function AppShell() {
   const { session, loading } = useAuth();
@@ -29,6 +31,13 @@ export function AppShell() {
   const [forwardPayload, setForwardPayload] = useState<Message[] | null>(null);
   const [scrollToMessageId, setScrollToMessageId] = useState<string | null>(null);
   const warmedChatIdsRef = useRef<Set<string>>(new Set());
+  const selectedChatRef = useRef<Chat | null>(null);
+  selectedChatRef.current = selectedChat;
+  const syncingFromHistoryRef = useRef(false);
+
+  useEffect(() => {
+    preloadChatBackgrounds();
+  }, []);
 
   const warmChatMessages = useCallback((chatId: string) => {
     if (warmedChatIdsRef.current.has(chatId)) return;
@@ -47,20 +56,131 @@ export function AppShell() {
     chats.slice(0, 10).forEach((chat) => warmChatMessages(chat.id));
   }, [chats, session, warmChatMessages]);
 
-  const openChat = useCallback((chat: Chat | null) => {
-    if (!chat) {
-      setSelectedChat(null);
-      return;
-    }
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return;
 
-    warmChatMessages(chat.id);
-    setSelectedChat(chat);
-  }, [warmChatMessages]);
+    const onPopState = () => {
+      syncingFromHistoryRef.current = true;
+      try {
+        const shell = readSaShell();
+        if (!shell) {
+          setSelectedChat(null);
+          setShowChatSettings(false);
+          setSettingsChatStack([]);
+          setScrollToMessageId(null);
+          return;
+        }
+        const ch = chats.find((x) => x.id === shell.c) ?? null;
+        setSelectedChat(ch);
+        setShowChatSettings(!!shell.s && !!ch);
+        if (!shell.s) setSettingsChatStack([]);
+        if (!ch) {
+          setShowChatSettings(false);
+          setSettingsChatStack([]);
+        }
+      } finally {
+        syncingFromHistoryRef.current = false;
+      }
+    };
+
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [chats]);
+
+  const openChat = useCallback(
+    (chat: Chat | null) => {
+      if (!chat) {
+        if (Platform.OS === "web") replaceShell(null);
+        setSelectedChat(null);
+        return;
+      }
+
+      warmChatMessages(chat.id);
+      const prevId = selectedChatRef.current?.id ?? null;
+      setSelectedChat(chat);
+
+      if (Platform.OS !== "web" || syncingFromHistoryRef.current) return;
+      if (prevId) {
+        replaceShell({ c: chat.id, s: false });
+      } else {
+        pushShell({ c: chat.id });
+      }
+    },
+    [warmChatMessages],
+  );
 
   const closeChat = useCallback(() => {
-    setSelectedChat(null);
     setScrollToMessageId(null);
+    replaceShell(null);
+    setSelectedChat(null);
+    setShowChatSettings(false);
+    setSettingsChatStack([]);
   }, []);
+
+  const openChatSettingsLayer = useCallback((stackPreset?: Chat[]) => {
+    setSettingsChatStack(stackPreset ?? []);
+    setShowChatSettings(true);
+    const id = selectedChatRef.current?.id;
+    if (Platform.OS === "web" && id && !syncingFromHistoryRef.current) {
+      pushShell({ c: id, s: true });
+    }
+  }, []);
+
+  const handleChatSettingsBack = useCallback(() => {
+    if (settingsChatStack.length > 0) {
+      setSettingsChatStack((c) => c.slice(0, -1));
+      return;
+    }
+    if (Platform.OS === "web" && typeof window !== "undefined" && readSaShell()?.s) {
+      window.history.back();
+      return;
+    }
+    setShowChatSettings(false);
+  }, [settingsChatStack.length]);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return undefined;
+
+    const onHardwareBack = () => {
+      if (forwardPayload) {
+        setForwardPayload(null);
+        return true;
+      }
+      if (selectedChat && showChatSettings) {
+        handleChatSettingsBack();
+        return true;
+      }
+      if (showSettings) {
+        setShowSettings(false);
+        return true;
+      }
+      if (showSavedMessages) {
+        setShowSavedMessages(false);
+        return true;
+      }
+      if (showCreateChat) {
+        setShowCreateChat(false);
+        return true;
+      }
+      if (selectedChat) {
+        closeChat();
+        return true;
+      }
+      return false;
+    };
+
+    const sub = BackHandler.addEventListener("hardwareBackPress", onHardwareBack);
+    return () => sub.remove();
+  }, [
+    forwardPayload,
+    selectedChat,
+    showChatSettings,
+    showSettings,
+    showSavedMessages,
+    showCreateChat,
+    closeChat,
+    handleChatSettingsBack,
+  ]);
 
   if (loading) {
     return <LoadingScreen />;
@@ -90,12 +210,9 @@ export function AppShell() {
       chat={chat}
       onBack={closeChat}
       onOpenChatSettings={(nextChat) => {
-        if (nextChat && nextChat?.id !== chat?.id) {
-          setSettingsChatStack([nextChat]);
-        } else {
-          setSettingsChatStack([]);
-        }
-        setShowChatSettings(true);
+        const preset =
+          nextChat && nextChat.id !== chat.id ? [nextChat] : [];
+        openChatSettingsLayer(preset);
       }}
       scrollToMessageId={scrollToMessageId}
       onForward={(messages) => setForwardPayload(messages)}
@@ -110,6 +227,7 @@ export function AppShell() {
 
   return (
     <View style={styles.root}>
+      <ChatBackgroundPreloader />
       <View style={styles.layer}>
         {chatsScreen}
       </View>
@@ -159,6 +277,7 @@ export function AppShell() {
                   openChat(nextChat);
                 }
               } else {
+                replaceShell(null);
                 setSelectedChat(null);
               }
 
@@ -181,13 +300,7 @@ export function AppShell() {
         {selectedChat ? (
           <ChatSettingsScreen
             chat={settingsChatStack.length > 0 ? settingsChatStack[settingsChatStack.length - 1] : selectedChat}
-            onBack={() => {
-              if (settingsChatStack.length > 0) {
-                setSettingsChatStack(cur => cur.slice(0, -1));
-              } else {
-                setShowChatSettings(false);
-              }
-            }}
+            onBack={handleChatSettingsBack}
             onOpenChat={(chat) => {
               setShowChatSettings(false);
               setSettingsChatStack([]);

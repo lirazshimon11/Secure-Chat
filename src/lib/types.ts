@@ -39,6 +39,7 @@ export type Message = {
   reply_to_id: string | null;
   expires_at: string | null;
   created_at: string;
+  edited_at?: string | null;
   deleted_at: string | null;
   optimistic?: boolean;
 };
@@ -60,6 +61,7 @@ export type ChatSecuritySettings = {
   require_hold_to_reveal: boolean;
   identity_magnet: boolean;
   shutter_flicker: boolean;
+  shutter_flicker_fps: number;
   app_switcher_blackout: boolean;
   fake_screenshot_warning: boolean;
   anti_copy_canvas: boolean;

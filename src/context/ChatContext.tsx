@@ -13,7 +13,7 @@ export type ContactNicknameData = { first_name: string; last_name: string; phone
 type MessageComposerInput = { chatId: string; body: string; messageKind: "standard" | "temporary" | "view_once" | "system"; replyToId?: string | null; expireSeconds?: number | null; };
 
 type ChatContextValue = {
-  chats: Chat[]; profiles: Record<string, Profile>; messagesByChat: Record<string, Message[]>; reactionsByMessage: Record<string, ReactionSummary>; unreadCounts: Record<string, number>; muteSettings: Record<string, ChatMuteSetting>; chatPreferences: Record<string, ChatLocalPreferences>; contactNicknames: Record<string, ContactNicknameData>; openedViewOnceIds: Record<string, boolean>; loading: boolean;
+  chats: Chat[]; profiles: Record<string, Profile>; messagesByChat: Record<string, Message[]>; reactionsByMessage: Record<string, ReactionSummary>; unreadCounts: Record<string, number>; muteSettings: Record<string, ChatMuteSetting>; chatPreferences: Record<string, ChatLocalPreferences>; deletedForMeIds: string[]; contactNicknames: Record<string, ContactNicknameData>; openedViewOnceIds: Record<string, boolean>; loading: boolean;
   refreshChats: (silent?: boolean) => Promise<void>; loadMessages: (chatId: string) => Promise<void>; loadChatMembers: (chatId: string) => Promise<Profile[]>; markChatSeen: (chatId: string, timestamp?: string, nextUnreadCount?: number) => Promise<void>;
   setChatMute: (chatId: string, duration: MuteDurationOption) => void; clearChatMute: (chatId: string) => void; archiveChats: (chatIds: string[]) => void; unarchiveChats: (chatIds: string[]) => void; togglePinnedChats: (chatIds: string[]) => void; lockChats: (chatIds: string[]) => void; unlockChats: (chatIds: string[]) => void; clearChatsLocally: (chatIds: string[]) => void;
   searchUsers: (query: string) => Promise<Profile[]>; sendMessage: (input: MessageComposerInput) => Promise<string | null>; createChat: (title: string, memberUsernames: string[]) => Promise<{ chat: Chat | null; error: string | null }>; toggleReaction: (messageId: string, emoji: string) => Promise<void>; openViewOnceMessage: (message: Message) => Promise<void>; deleteMessages: (messageIds: string[], forEveryone: boolean) => Promise<void>; updateChatDescription: (chatId: string, description: string) => Promise<void>; updateChatTitle: (chatId: string, title: string) => Promise<void>; deleteChats: (chatIds: string[]) => Promise<void>; setContactNickname: (userId: string, data: ContactNicknameData) => Promise<void>; searchMessagesGlobal: (query: string) => Promise<{ chat_id: string; message: Message }[]>;
@@ -425,16 +425,11 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
   const deleteMessages = async (ids: string[], everyone: boolean) => {
     if (!ids.length) return;
-    if (everyone) await ChatService.deleteMessages(ids);
-    else {
-      const key = `${LOCAL_CHAT_STATE_KEY_PREFIX}:deleted_for_me:${profile?.id}`;
-      const next = [...new Set([...deletedForMeIds, ...ids])];
-      setDeletedForMeIds(next); deletedForMeIdsRef.current = next;
-      void AsyncStorage.setItem(key, JSON.stringify(next));
-      
+    const removeFromLocalState = (idsToRemove: string[]) => {
+      const removeSet = new Set(idsToRemove);
       setMessagesByChat(prevMsgs => {
         const nextMsgs = { ...prevMsgs };
-        Object.keys(nextMsgs).forEach(cid => { nextMsgs[cid] = (nextMsgs[cid] ?? []).filter(m => !next.includes(m.id)); });
+        Object.keys(nextMsgs).forEach(cid => { nextMsgs[cid] = (nextMsgs[cid] ?? []).filter(m => !removeSet.has(m.id)); });
 
         // Synchronize rawChats with the updated messages
         setRawChats(cur => cur.map(c => {
@@ -450,6 +445,18 @@ export function ChatProvider({ children }: PropsWithChildren) {
 
         return nextMsgs;
       });
+    };
+
+    if (everyone) {
+      const { error } = await ChatService.deleteMessages(ids);
+      if (error) throw error;
+      removeFromLocalState(ids);
+    } else {
+      const key = `${LOCAL_CHAT_STATE_KEY_PREFIX}:deleted_for_me:${profile?.id}`;
+      const next = [...new Set([...deletedForMeIds, ...ids])];
+      setDeletedForMeIds(next); deletedForMeIdsRef.current = next;
+      void AsyncStorage.setItem(key, JSON.stringify(next));
+      removeFromLocalState(ids);
     }
   };
 
@@ -465,7 +472,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       if (profiles[oId]) return { ...c, title: profiles[oId].username || "משתתף/ת" };
       return c;
     }),
-    profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, contactNicknames, loading, refreshChats, loadMessages, markChatSeen,
+    profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, deletedForMeIds, contactNicknames, loading, refreshChats, loadMessages, markChatSeen,
     clearChatsLocally: (ids: string[]) => updateChatPreferences(ids, c => ({ ...c, cleared_at: new Date().toISOString() })),
     loadChatMembers: async (chatId: string) => { 
       const viewerId = profile?.id;
@@ -557,7 +564,7 @@ export function ChatProvider({ children }: PropsWithChildren) {
       setPrivateChatPartners({});
       setMessagesByChat({});
     }
-  }), [rawChats, profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, contactNicknames, loading, privateChatPartners, profile?.id]);
+  }), [rawChats, profiles, messagesByChat, reactionsByMessage, openedViewOnceIds, unreadCounts, muteSettings, chatPreferences, deletedForMeIds, contactNicknames, loading, privateChatPartners, profile?.id]);
 
   return <ChatContext.Provider value={chatValue}>{children}</ChatContext.Provider>;
 }

@@ -180,6 +180,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   // ── Decoy (guard) state (must be declared before groupedMessages) ───────
   const [showDecoyManager, setShowDecoyManager] = useState(false);
   const [isDecoyActive, setIsDecoyActive] = useState(false);
+  const [decoyGuardReadyChatId, setDecoyGuardReadyChatId] = useState<string | null>(null);
   /** DB bait messages loaded from chat_decoy_messages when decoy activates */
   const [dbDecoyMessages, setDbDecoyMessages] = useState<Message[]>([]);
   /** Messages sent by this user during decoy mode — shown in fake chat, cleared when guard lifts */
@@ -338,6 +339,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [activeSubScreen, setActiveSubScreen] = useState<"addMembers" | "media" | "disappearing" | "theme" | "createPoll" | "pollVotes" | null>(null);
   const [securitySettings, setSecuritySettings] = useState<ChatSecuritySettings>(DEFAULT_CHAT_SECURITY_SETTINGS);
+  const [securitySettingsReadyChatId, setSecuritySettingsReadyChatId] = useState<string | null>(null);
   const [viewPollVotesMessage, setViewPollVotesMessage] = useState<Message | null>(null);
 
   /** Inline message editing, shared by real chat and decoy content. */
@@ -374,6 +376,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     () => (isDecoyProtectionSurface ? PLAIN_DECOY_VIEWER_CHAT_SECURITY : securitySettings),
     [isDecoyProtectionSurface, securitySettings],
   );
+  const chatSecurityReady =
+    securitySettingsReadyChatId === chat.id &&
+    (decoyMode || decoyGuardReadyChatId === chat.id);
 
   const showScrollToBottomRef = useRef(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -620,20 +625,27 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   useEffect(() => {
     let active = true;
+    setSecuritySettingsReadyChatId(null);
+
+    const applyLoadedSettings = (next: ChatSecuritySettings) => {
+      if (!active) return;
+      setSecuritySettings(next);
+      setSecuritySettingsReadyChatId(chat.id);
+    };
+
     const reloadSettings = () => {
-      void fetchChatSecuritySettings(chat.id).then((next) => {
-        if (active) setSecuritySettings(next);
-      });
+      void fetchChatSecuritySettings(chat.id).then(applyLoadedSettings);
     };
     const handleLocalSettingsChange = (event: Event) => {
       const detail = (event as CustomEvent<{ chatId: string; settings: ChatSecuritySettings }>).detail;
       if (detail?.chatId === chat.id) {
         setSecuritySettings({ ...DEFAULT_CHAT_SECURITY_SETTINGS, ...detail.settings });
+        setSecuritySettingsReadyChatId(chat.id);
       }
     };
 
-    void fetchChatSecuritySettings(chat.id).then((next) => {
-      if (active) setSecuritySettings(next);
+    void fetchChatSecuritySettings(chat.id).then(applyLoadedSettings).catch(() => {
+      if (active) setSecuritySettingsReadyChatId(chat.id);
     });
 
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -642,7 +654,9 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
     }
 
     const subscription = subscribeToChatSecuritySettings(chat.id, (next) => {
-      if (active) setSecuritySettings(next);
+      if (!active) return;
+      setSecuritySettings(next);
+      setSecuritySettingsReadyChatId(chat.id);
     });
 
     return () => {
@@ -792,7 +806,20 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
 
   // ── Decoy detection: initial fetch + real-time subscription ───────────
   useEffect(() => {
-    if (!profile?.id || !chat?.id) return;
+    if (decoyMode) {
+      setIsDecoyActive(false);
+      setDecoyGuardReadyChatId(chat.id);
+      return;
+    }
+
+    if (!profile?.id || !chat?.id) {
+      setIsDecoyActive(false);
+      setDecoyGuardReadyChatId(chat.id);
+      return;
+    }
+
+    let active = true;
+    setDecoyGuardReadyChatId(null);
 
     // 1. Initial fetch — is this user currently protected?
     void supabase
@@ -801,7 +828,13 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
       .eq("chat_id", chat.id)
       .eq("target_id", profile.id)
       .maybeSingle()
-      .then(({ data }) => setIsDecoyActive(!!data));
+      .then(({ data }) => {
+        if (!active) return;
+        setIsDecoyActive(!!data);
+        setDecoyGuardReadyChatId(chat.id);
+      }, () => {
+        if (active) setDecoyGuardReadyChatId(chat.id);
+      });
 
     // 2. Realtime — react instantly when guard is toggled
     const channel = supabase
@@ -817,6 +850,7 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
         (payload) => {
           if (payload.new?.target_id === profile.id) {
             setIsDecoyActive(true);
+            setDecoyGuardReadyChatId(chat.id);
           }
         },
       )
@@ -836,13 +870,20 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
             .eq("chat_id", chat.id)
             .eq("target_id", profile.id)
             .maybeSingle()
-            .then(({ data }) => setIsDecoyActive(!!data));
+            .then(({ data }) => {
+              if (!active) return;
+              setIsDecoyActive(!!data);
+              setDecoyGuardReadyChatId(chat.id);
+            });
         },
       )
       .subscribe();
 
-    return () => { void supabase.removeChannel(channel); };
-  }, [chat?.id, profile?.id]);
+    return () => {
+      active = false;
+      void supabase.removeChannel(channel);
+    };
+  }, [chat?.id, decoyMode, profile?.id]);
 
   useEffect(() => {
     let active = true;
@@ -2519,6 +2560,24 @@ export function ChatScreen({ chat, onBack, onOpenChatSettings, scrollToMessageId
           decoyMode={decoyMode}
         />
       </SafeAreaView>
+
+      {!chatSecurityReady ? (
+        <View
+          pointerEvents="auto"
+          style={[
+            StyleSheet.absoluteFillObject,
+            {
+              zIndex: 900,
+              elevation: 900,
+              backgroundColor: theme.colors.chatBackdrop,
+              alignItems: "center",
+              justifyContent: "center",
+            },
+          ]}
+        >
+          <ActivityIndicator color={theme.colors.accentStrong} size="large" />
+        </View>
+      ) : null}
 
       <SafeAreaView edges={["left", "right"]} style={{ flex: 1, backgroundColor: 'transparent' }}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }} enabled={Platform.OS === "ios"}>
